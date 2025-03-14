@@ -1,41 +1,21 @@
-# Resonate Docs
+# Resonate documentation
 
 This website is built using [Docusaurus 2](https://docusaurus.io/), a modern static website generator.
 
-### Installation
+Install dependencies:
 
-```
-$ yarn
-```
-
-### Local Development
-
-```
-$ yarn start
+```shell
+npm install
 ```
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+Run the development server:
 
-### Build
-
-```
-$ yarn build
+```shell
+npm run start
 ```
 
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+Run a production build check:
 
-### Deployment
-
-Using SSH:
-
+```shell
+npm run build
 ```
-$ USE_SSH=true yarn deploy
-```
-
-Not using SSH:
-
-```
-$ GIT_USER=<Your GitHub username> yarn deploy
-```
-
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
