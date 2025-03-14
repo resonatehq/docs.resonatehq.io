@@ -1,0 +1,48 @@
+---
+id: get-started
+title: Get started with Resonate
+sidebar_label: Get started
+sidebar_position: 2
+last_update:
+  date: "03-13-2025"
+tags:
+  - get-started
+---
+
+**How to get started using Resonate?**
+
+### 1. Install the CLI
+
+You can install the CLI using brew or download a binary from the [releases page](https://github.com/resonatehq/resonate/releases)
+
+```shell
+brew install resonatehq/tap/resonate
+```
+
+### 2. Scaffold a project
+
+Scaffold a project from one of our templates.
+
+```shell
+resonate project create --name template --template
+```
+
+The language is indicated in the name of the template.
+
+You can list the available templates and their descriptions using:
+
+```shell
+resonate project list
+```
+
+### 3. Optional - Run the Resonate Server
+
+Depending on the template you choose and the features you want to use, you will want to run the Resonate Server:
+
+```shell
+resonate serve
+```
+
+### 4. Start customizing the template!
+
+From here, if you are familiar with Resonate you can make your way using the [feature development guides](/develop), [tutorials](/learn), and [example apps](https://github.com/resonatehq/awesome-examples).

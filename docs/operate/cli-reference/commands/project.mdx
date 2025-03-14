@@ -1,0 +1,36 @@
+---
+id: project
+title: CLI project command
+sidebar_label: Project
+description: Scaffold a new project with the Resonate CLI.
+tags:
+  - cli
+  - project
+---
+
+The `project` command allows you to scaffold a new project with the Resonate CLI.
+
+```shell
+resonate project <sub-command> [flags]
+```
+
+## create
+
+Scaffolds a new project with the specified template.
+
+```shell
+resonate project list --name <your_project_name> --template <template_name>
+```
+
+Flags:
+
+- [--name](/operate/cli-reference/flags#--name)
+- [--template](/operate/cli-reference/flags#--template)
+
+## list
+
+List all project templates available for scaffolding.
+
+```shell
+resonate project list
+```

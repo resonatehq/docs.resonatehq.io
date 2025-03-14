@@ -1,8 +1,8 @@
 {
   "label": "Operate",
-  "position": 4,
-  "collapsed": false,
-  "collapsible": false,
+  "position": 5,
+  "collapsed": true,
+  "collapsible": true,
   "link": {
     "type": "doc",
     "id": "operate/index"

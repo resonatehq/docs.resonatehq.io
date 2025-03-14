@@ -1,10 +1,10 @@
 {
-  "label": "Features",
-  "position": 5,
+  "label": "Learn",
+  "position": 3,
   "collapsed": true,
   "collapsible": true,
   "link": {
     "type": "doc",
-    "id": "evaluate/features/index"
+    "id": "learn/index"
   }
 }
