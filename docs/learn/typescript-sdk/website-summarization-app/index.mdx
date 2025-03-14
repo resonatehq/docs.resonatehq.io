@@ -2,7 +2,7 @@
 id: index
 title: Resonate TypeScript SDK quickstart tutorial
 description: Get started with the Resonate TypeScript SDK by following this quickstart tutorial.
-sidebar_label: TypeScript SDK quickstart
+sidebar_label: Website summarization app
 sidebar_position: 2
 pagination_next: null
 pagination_prev: null
@@ -26,7 +26,7 @@ tags:
   - getting-started
 ---
 
-This quickstart tutorial introduces you to the Resonate TypeScript SDK by building a mock summarization service using Resonate.
+This tutorial introduces you to the Resonate TypeScript SDK by building a mock summarization service using Resonate.
 The first part of the tutorial showcases how Resonate provides Durable Execution for application-level failures using the SDK's local promise storage.
 
 Durable Execution for application-level failures means that you get promise resolution timeouts, transparent function execution retries, and retry rate limits without adding an additional supervisor service.
@@ -63,8 +63,6 @@ npm install @resonatehq/sdk express @types/express
 
 Create a file named **app.ts** and copy and paste the minimal distributed async/await application below:
 
-<!--SNIPSTART quickstart-ts-part-1-app-->
-[docs/get-started/typescript-quickstart/code/part-1/src/app.ts](https://github.com/resonatehq/docs/blob/main/docs/get-started/typescript-quickstart/code/part-1/src/app.ts)
 ```ts
 import { Context } from "@resonatehq/sdk";
 
@@ -115,7 +113,6 @@ async function summarize(ctx: Context, text: string): Promise<string> {
   });
 }
 ```
-<!--SNIPEND-->
 
 The code that makes up `app.ts` is a simple mock application that simulates downloading a page from the internet and then summarizing the content of that page.
 It represents the "business logic" of the service.
@@ -129,8 +126,6 @@ When they return a “rejected” promise, Resonate automatically retries them u
 
 Next, create a file named `gateway.ts` and paste in the following express server code that uses Resonate:
 
-<!--SNIPSTART quickstart-ts-part-1-gateway-->
-[docs/get-started/typescript-quickstart/code/part-1/src/gateway.ts](https://github.com/resonatehq/docs/blob/main/docs/get-started/typescript-quickstart/code/part-1/src/gateway.ts)
 ```ts
 import express, { Request, Response } from "express";
 import { Resonate, Context } from "@resonatehq/sdk";
@@ -173,7 +168,6 @@ app.listen(3000, () => {
   console.log("Listening on port 3000");
 });
 ```
-<!--SNIPEND-->
 
 The `gateway.ts` file contains an Express server that listens on port 3000 and includes a single route handler that leverages Resonate to run the `downloadAndSummarize()` function.
 To set it up, you instantiate a Resonate object, register the top-level function via `resonate.run()`, call `resonate.start()`, and create an Express HTTP handler for the `/summarize` route before starting the server on port 3000.
@@ -225,7 +219,7 @@ In the next part of the tutorial, you will connect to a Resonate Server which st
 Now it is time to connect your service to a Resonate Server to enable recovery from platform-level failures, otherwise known as Durable Execution.
 To simulate a platform-level failure, you will kill the HTTP server process in the middle of the execution of the `downloadAndSummarize()` function.
 
-Follow the steps in the [Resonate Server install guide](/get-started/server-quickstart) to install and run the server on your machine.
+Follow the steps in the [get started guide](/get-started) to install and run the server on your machine.
 
 By default, the Server runs on localhost port 8001.
 
@@ -235,18 +229,13 @@ There are three places where you need to update your code for this nex part of t
 
 First, in your `gateway.ts` file, update the `new Resonate()` call and provide it with the URL of the server, in this case `http://localhost:8001`.
 
-<!--SNIPSTART quickstart-ts-part-2-server-url-->
-[docs/get-started/typescript-quickstart/code/part-2/src/gateway.ts](https://github.com/resonatehq/docs/blob/main/docs/get-started/typescript-quickstart/code/part-2/src/gateway.ts)
 ```ts
 // Initialize a Resonate application.
 const resonate = new Resonate({ url: "http://localhost:8001" });
 ```
-<!--SNIPEND-->
 
 Then, extend the top-level promise resolution timeout to a full minute.
 
-<!--SNIPSTART quickstart-ts-part-2-register-timeout-->
-[docs/get-started/typescript-quickstart/code/part-2/src/gateway.ts](https://github.com/resonatehq/docs/blob/main/docs/get-started/typescript-quickstart/code/part-2/src/gateway.ts)
 ```ts
 // Register a function as a Resonate function
 resonate.register(
@@ -255,14 +244,11 @@ resonate.register(
   resonate.options({ timeout: 60000 }) // set a total execution timeout of 1 minute
 );
 ```
-<!--SNIPEND-->
 
 You are increasing the top-level promise resolution timeout to a full minute so that you have time to kill the service and bring it back up again.
 
 And finally, in your `app.ts` file add a 10 second sleep to the `downloadAndSummarize()` function between `download()` and `summarize()`.
 
-<!--SNIPSTART quickstart-ts-part-2-add-sleep-->
-[docs/get-started/typescript-quickstart/code/part-2/src/app.ts](https://github.com/resonatehq/docs/blob/main/docs/get-started/typescript-quickstart/code/part-2/src/app.ts)
 ```ts
 export async function downloadAndSummarize(ctx: Context, url: string) {
   console.log("Downloading and summarizing content from", url);
@@ -280,7 +266,6 @@ export async function downloadAndSummarize(ctx: Context, url: string) {
   return summary;
 }
 ```
-<!--SNIPEND-->
 
 You are adding a 10 second sleep so that you have time between the `download()` step and the `summarize()` step so that you have time to kill the service before the `summarize()` step starts.
 

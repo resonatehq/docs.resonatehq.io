@@ -1,0 +1,939 @@
+---
+id: website-summarization-app
+title: Build a durable summarization app in Python with Resonate, Flask, and Ollama
+description: Get started with the Resonate Python SDK.
+sidebar_label: Website summarization app
+sidebar_position: 1
+last_update:
+  date: "03-12-2026"
+pagination_next: null
+pagination_prev: null
+tags:
+  - python
+  - tutorial
+---
+
+In this tutorial, you’ll build a website summarization application using the Resonate Python SDK, Flask, and Ollama.
+
+By doing so, you’ll gain experience with Resonate’s implementation of the **Distributed Async Await** programming model and the core features of the Python SDK.
+
+This tutorial follows the philosophy of _progressive disclosure_ and is broken into several parts, starting with a simple example and building on it step by step.
+Each part introduces new concepts.
+You can choose to stop at the end of any part of the tutorial and still have a working application.
+
+Each part of the tutorial corresponds to a working example in the [website summarization app repository](https://github.com/flossypurse/website-summarization-app).
+
+In part 1, you will start with a single [Application Node](/concepts/application-node) and observe the SDK's ability to automatically retry application-level failures (failed function executions).
+Then in part 2 you will connect your application to the Resonate Server to enable recovery from platform-level failures and see how a function execution can recover from a process crash (Durable Execution).
+In part 3 you will build on the previous example by separating your HTTP Server from your application code and run multiple Application Nodes to see how Resonate facilitates fan-out/fan-in use cases.
+After, in part 4 you will add a third step to your workflow that blocks the execution on input from a human-in-the-loop and unblock it from another process.
+Finally, in part 5 you will integrate a webscraper, such as Beautiful Soup, and an LLM, such as Ollama, to bring your application to life.
+
+By the end of this tutorial you'll have a good understanding of the Resonate Python SDK and how to build Distributed Async Await applications with it.
+
+### Prerequisites
+
+This tutorial assumes that you have [Python 3](https://www.python.org/downloads/) and a package manager installed.
+
+This tutorial recommends using [uv](https://docs.astral.sh/uv/) as the package manager.
+
+This tutorial was written and tested with Resonate Server v0.7.6 and Resonate Python SDK v0.4.12.
+
+Part 5 of this tutorial assumes you have [Ollama](https://ollama.com/) installed and model "llama3.1" running locally on your machine.
+
+## Automatic retries
+
+In this part of the tutorial you'll create an application that is error prone to see how Resonate automatically Retries failed function executions.
+
+Start by scaffolding a new project.
+
+First, install the CLI:
+
+```shell
+brew install resonatehq/tap/resonate
+```
+
+Navigate to the directory you want to scaffold your project in and run the following command:
+
+```shell
+resonate project create --name summarization-app --template lfi-workflow-py
+```
+
+You should now have a directory called “summarization-app” with the following structure:
+
+```text
+summarization-app
+    - src/
+        - app.py
+    - pyproject.toml
+```
+
+The app.py file should contain the following code:
+
+```python
+from resonate import Resonate
+from resonate.stores import LocalStore
+
+
+# Create a Resonate instance with a local store
+resonate = Resonate(store=LocalStore())
+
+
+# Register the top-level function with Resonate
+@resonate.register
+def foo(ctx, greeting):
+    print("running foo")
+    greeting = yield ctx.lfc(bar, greeting)
+    greeting = yield ctx.lfc(baz, greeting)
+    return greeting
+
+
+def bar(_, v):
+    print("running bar")
+    return f"{v} world"
+
+
+def baz(_, v):
+    print("running baz")
+    return f"{v}!"
+
+
+# Define a main function to start the Flask app
+def main():
+    try:
+        handle = foo.run("hello-world-greeting", greeting="hello")
+        print(handle.result())
+    except Exception as e:
+        print(e)
+
+
+# Run the main function when the script is invoked
+if __name__ == "__main__":
+    main()
+```
+
+In this template, `foo()` takes a string argument, greeting, and passes it first to `bar()` and then to `baz()`, each step concatenating to the string.
+The greeting is then returned back to the caller and printed.
+
+The `@resonate.register` decorator registers `foo()` with the Resonate instance enabling it to be invoked with a the `.run()` method.
+
+The handle variable is a promise.
+Calling `handle.result()` blocks progress of `main()` until `foo()` returns a result.
+
+Both `bar()` and `baz()` are invoked using the Resonate Context’s LFC API.
+LFC stands for Local Function Call, and gives Resonate control over the invocation and execution of those functions.
+
+Move into the root of the project and run the following commands to execute the app as-is:
+
+```shell
+uv sync
+uv run app
+```
+
+You should see the following output:
+
+```shell
+running foo
+running bar
+running baz
+hello world!
+```
+
+Now, lets add some code to steps`bar()` and `baz()` so they fail 50% of the time.
+
+First, import the random package into the app.
+
+```python
+# ...
+import random
+```
+
+Then, in each of the step functions, bar() and baz(), directly after the print statements, randomly generate a number between 0 and 100 and raise an exception if the number is greater than 50.
+
+```python
+#...
+import random
+
+#...
+
+def bar(_, v):
+    print("running bar")
+    if random.randint(0, 100) > 50:
+        raise Exception("Failed to run bar")
+    return f"{v} world"
+
+
+def baz(_, v):
+    print("running baz")
+    if random.randint(0, 100) > 50:
+        raise Exception("Failed to run baz")
+    return f"{v}!"
+```
+
+Now, each time you run the app, both `bar()` and `baz()` have a 50% chance of raising an exception.
+
+**Without Resonate**, if an exception is raised the execution would stop and no more progress would be made.
+
+Consider if the app was written without Resonate, like this:
+
+```python
+def foo(greeting):
+    print("running foo")
+    greeting = bar(greeting)
+    greeting = baz(greeting)
+    return greeting
+
+
+def bar(v):
+    print("running bar")
+    if random.randint(0, 100) > 50:
+        raise Exception("Failed to run bar")
+    return f"{v} world"
+
+
+def baz(v):
+    print("running baz")
+    if random.randint(0, 100) > 50:
+        raise Exception("Failed to run baz")
+    return f"{v}!"
+
+
+def main():
+    try:
+        greeting = foo("hello")
+        print(greeting)
+    except Exception as e:
+        print(e)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+If either `bar()` or `baz()` raise an exception, the execution of `foo()` stops where the exception is raised, `main()` prints the error, and that’s that.
+
+**With Resonate** you will notice that even if an exception is raised, the failed function will be tried again, until it succeeds, enabling `foo()` to complete and return the greeting.
+
+Run your app several times until you encounter an error, and then wait and watch.
+
+You should eventually see something like this:
+
+```shell
+running foo
+running bar
+running baz
+Error processing record hello-world-greeting.3: Retrying execution.
+Traceback (most recent call last):
+  File "/Users/flossypurse/Resonate/website-summarization-app/part-2/.venv/lib/python3.12/site-packages/resonate/processor/processor.py", line 48, in _run
+    result = Ok(sqe.thunk())
+                ^^^^^^^^^^^
+  File "/Users/flossypurse/Resonate/website-summarization-app/part-2/src/app.py", line 33, in baz
+    raise Exception("encountered unexpected error")
+Exception: encountered unexpected error
+running baz
+hello world!
+```
+
+You will notice that if an exception is thrown, Resonate automatically Retries executing the function.
+By default, this will happen forever until the execution succeeds.
+
+We say, “by default”, because this behaviour is configurable.
+You can adjust the backoff interval (time between Retries), maximum attempts, and which errors cause Retries and which do not.
+For example, here we adjust the Retry Policy of the invocation of bar to be “linear”:
+
+```python
+from resonate.retry_policy import linear
+
+#...
+
+    greeting = yield ctx.lfc(bar, greeting).options(
+        retry_policy=linear(delay=1, max_attempts=10)
+    )
+```
+
+The Retry Policy in the previous code example sets the initial delay to 1 second, with a linear increase of the delay up to maximum of 10 attempts.
+
+Later in the tutorial we will customize our Retry Policy to ignore certain application-level errors that we know shouldn’t be retried.
+
+The previous part of the tutorial showcased Resonate’s ability to automatically Retry function executions when an exception is raised, and runs the top-level function to completion.
+
+But what if the process crashes altogether while the application is running?
+
+In the next part of the tutorial, we will connect the application to a Resonate Server to enable Recovery!
+
+## Crash recovery
+
+In this part of the tutorial you’ll connect your app to a Resonate Server to enable recovery process crashes (platform-level failures), effectively providing "Durable Execution".
+The Resonate Server acts as a supervisor and orchestrator for your application, storing promises and providing tasks to Application Nodes.
+
+Run the following command in a separate terminal to start the Resonate Server:
+
+```shell
+resonate serve
+```
+
+After the server is running, update your application code.
+
+There are two code updates you need to make for this part of the tutorial.
+
+1. Change the Local Store to a Remote Store so that the app can recover from a process crash.
+2. Add a 10 second sleep to between the workflow steps so you have time to simulate a process crash.
+
+First, instantiate Resonate in your app with a Remote Store instead of a Local Store.
+
+In Part 1, the template you used scaffolded an app that used a Local Store (in-process memory).
+
+```python
+# ...
+from resonate.stores import LocalStore
+# ...
+
+# Create a Resonate instance with a local store
+resonate = Resonate(store=LocalStore())
+```
+
+Update the app to import a Remote Store and Task Poller from the SDK, and update the Resonate instance to use those.
+
+```python
+# ...
+from resonate.task_sources.poller import Poller
+from resonate.stores.remote import RemoteStore
+# ...
+
+# Create a Resonate instance connected to the Resonate Server
+resonate = Resonate(
+    store=RemoteStore(url="http://localhost:8001"),
+    task_source=Poller(url="http://localhost:8002"),
+)
+
+# ...
+```
+
+Next, add a 10 second sleep to `foo()` between the `bar()` and `baz()` steps.
+You don't need to import anything to do this.
+You can use the `sleep()` API provided by the Resonate Context.
+
+```python
+@resonate.register
+def foo(ctx, greeting):
+    print("running foo")
+    greeting = yield ctx.lfc(bar, greeting)
+    # highlight-next-line
+    yield ctx.sleep(10)
+    greeting = yield ctx.lfc(baz, greeting)
+    return greeting
+```
+
+Now try running your app again.
+
+```shell
+uv run app
+```
+
+You will see the following logs:
+
+```
+running foo
+running bar
+```
+
+After you see the log "running bar", kill the process.
+
+It doesn't matter how long you wait, but when you are ready to continue, restart the app.
+
+```shell
+uv run app
+```
+
+Remember, each step is still going to fail 50% of the time, so you may see errors.
+But besides the errors, you should see the following logs:
+
+```shell
+running foo
+running baz
+hello world!
+```
+
+Notice that you don't see the log "running bar"?
+That's because the Resonate Server stored the result of `bar()` in a promise.
+When you restarted the application after the process crash, `foo()` re-executed and the result of `bar()` was retrieved from the promise.
+
+You have just witnessed Durable Execution in action!
+
+Don't change anything in the code and run the app again.
+
+This time the only log you should see is the following:
+
+```shell
+hello world!
+```
+
+That's because the Resonate Server stored the result of `foo()` in a promise.
+
+If you look at the code where we invoke `foo()`, you'll notice the string `hello-world-greeting`:
+
+```python
+
+# ...
+
+    handle = foo.run("hello-world-greeting", greeting="hello")
+
+    # ...
+```
+
+This the promise ID associated with the invocation of `foo()`.
+
+You can inspect the promise ID in the Resonate Server using the Resonate CLI.
+
+```shell
+resonate promise get hello-world-greeting
+```
+
+You should see something like this:
+
+```shell
+Id:       hello-world-greeting
+State:    RESOLVED
+Timeout:  9223372036854775807
+
+Idempotency Key (create):    344c
+Idempotency Key (complete):  344c
+
+Param:
+  Headers:
+  Data:
+    {"func": "foo", "args": [], "kwargs": {"greeting": "hello"}}
+
+Value:
+  Headers:
+  Data:
+    "hello world!"
+
+Tags:
+  resonate:invoke:  {"type": "poll", "data": {"group": "default", "id": "b98b2150be68499ea6dfaae00664f4a1"}}
+```
+
+Promise IDs are unique identifiers in a Resonate Application, and you must specify the promise ID for top-level invocations.
+The promise IDs of `bar()` and `baz()` are generated automatically by default (you can turn off idempotency) and Resonate will know not to re-invoke those functions if `foo()` is invoked again with the same promise ID.
+
+If you are using the local store, the promise ID persists only as long as the process is alive.
+If you are using the Resonate Server, the promise ID persists indefinitely.
+
+Change the promise ID to something else and run the app again.
+
+```python
+# ...
+
+    handle = foo.run("another-greeting", greeting="hello")
+
+    # ...
+```
+
+You will see that foo() executes again from the top.
+
+In the next part of the tutorial, you will break up our app into two separate processes: an HTTP service and an Application Node, and switch from making local function invocatins to remote function invocations.
+
+## Asynchronous RPC
+
+## Part 3 Fan-out/Fan-in
+
+In this part of the tutorial, you will separate the HTTP service code from the Application Node code so that the HTTP service and the workflow code can run in different processes.
+Once separated you will run multiple Application Nodes and send multiple requests to the HTTP service and see which Application Node picks up the work.
+
+![downloadAndSummmarize Fan-out/Fan-in diagram](/img/downloadAndSummarize-call-graph-fan-out-fan-in.svg)
+
+Start by creating a new file `gateway.py` in `src/summarize`.
+
+Move the HTTP service code from `app.py` to `gateway.py`.
+You will also need to update the instantiation of the Resonate specify a task source and the method by which the tasks are acquired.
+And lastly you will need to introduce a `dispatch()` function which can be invoked with Resonate's `.run()` method.
+
+It should look like the following:
+
+<!--SNIPSTART quickstart-py-part-3-gateway-->
+
+[quickstart/part-3/src/summarize/gateway.py](https://github.com/resonatehq/examples-py/blob/main/quickstart/part-3/src/summarize/gateway.py)
+
+```py
+# highlight-next-line
+from resonate.task_sources.poller import Poller
+from resonate.stores.remote import RemoteStore
+from resonate.resonate import Resonate
+from resonate.context import Context
+
+# highlight-next-line
+from resonate.targets import poll
+from flask import Flask, request, jsonify
+
+
+app = Flask(__name__)
+
+# Create an instance of Resonate
+resonate = Resonate(
+    store=RemoteStore(url="http://localhost:8001"),
+    # highlight-next-line
+    task_source=Poller(url="http://localhost:8002", group="gateway"),
+)
+
+
+# highlight-start
+# Define and register a top-level orchestrator coroutine
+@resonate.register
+def dispatch(ctx: Context, url: str):
+    yield ctx.rfi("downloadAndSummarize", url).options(
+        send_to=poll("summarization-nodes")
+    )
+    return
+
+
+# highlight-end
+
+
+# Define a route handler for the /summarize endpoint
+@app.route("/summarize", methods=["POST"])
+def summarize_route_handler():
+    try:
+        # Extract JSON data from the request
+        data = request.get_json()
+        if "url" not in data:
+            return jsonify({"error": "URL not provided"}), 400
+
+        # Extract the URL from the request
+        url = data["url"]
+
+        # Use a Remote Function Invocation
+
+        # highlight-next-line
+        dispatch.run(id=f"downloadAndSummarize-{url}", url=url)
+
+        # Return the result as JSON
+        return jsonify({"summary": "workflow started"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# Define a main function to start the Flask app
+def main():
+    app.run(host="127.0.0.1", port=5000)
+    print("Serving HTTP on port 5000...")
+
+
+# Run the main function when the script is executed
+if __name__ == "__main__":
+    main()
+
+```
+
+<!--SNIPEND-->
+
+In the previous code example, the highlighted lines indicate the changes you will need to make after moving the HTTP service code to `gateway.py`.
+
+The `dispatch()` function uses `ctx.rfi()`, a [Remote Function Invocation](/concepts/distributed-async-await#remote-function-invocation), to invoke the `downloadAndSummarize()` workflow.
+**Note** that in future iterations of the SDK, Remote Function Invocations should be possible directly from the `Resonate` instance.
+
+The decision to not await on the result of the workflow in the gateway is purely so that you can start multiple workflows concurrently and see which Application Node picks up the work.
+
+Next, update the `app.py` file with the following changes:
+
+- Update the instantiation of the Resonate instance to specify a task source and a method by which the tasks are acquired.
+- Import `Event` from `threading` and unpdate the `main()` function so that the Application Node stays alive waiting on thread events.
+
+<!--SNIPSTART quickstart-py-part-3-app {"selectedLines": ["1-11", "54-60"]}-->
+
+[quickstart/part-3/src/summarize/app.py](https://github.com/resonatehq/examples-py/blob/main/quickstart/part-3/src/summarize/app.py)
+
+```py
+# highlight-next-line
+from resonate.task_sources.poller import Poller
+from resonate.stores.remote import RemoteStore
+from resonate.resonate import Resonate
+from resonate.context import Context
+
+# highlight-next-line
+from threading import Event
+import random
+import time
+
+# ...
+
+
+# Define a main function to start the Application Node
+def main():
+    print("App node running")
+    # highlight-next-line
+    Event().wait()
+```
+
+<!--SNIPEND-->
+
+The addition of `Event().wait()` ensures the Application Node runs indefinitely as a worker service.
+
+Finally, update the `[project.scripts]` section of your `pyproject.toml` file to include the gateway script:
+
+```toml
+[project.scripts]
+    "gateway" = "summarize.gateway:main"
+    "app" = "summarize.app:main"
+```
+
+Now you can simulate a fan-out/fan-in use case by running multiple Application Nodes and sending multiple requests to the HTTP service.
+
+In one terminal run the HTTP service:
+
+```shell
+rye run gateway
+```
+
+Then open two more terminals and in each one run an Application Node:
+
+```shell
+rye run app
+```
+
+Open one more terminal and use it to send multiple cURL requests to the HTTP service:
+
+```shell
+curl -X POST http://localhost:5000/summarize -H "Content-Type: application/json" -d '{"url": "<url>"}'
+```
+
+As you send more and more requests, you should start to see both of the Application Nodes picking up summarization tasks and processing them.
+
+Then, kill one of the Application Nodes and notice how the other Application Node picks up the work from the failed one.
+
+Next, you will add a step to the workflow that blocks the execution on input from a human-in-the-loop.
+
+## Part 4 - Human-in-the-loop
+
+In this part of the tutorial, you will add a step to the workflow that blocks the execution on input from a human-in-the-loop.
+Resonate enables you to create and wait on a promise, blocking progress until the promise resolves.
+So far, you have created promises attached to function executions.
+But you can also create a promise that is resolved by an external process, such as a human-in-the-loop.
+
+Let's update the application (`app.py`) to send the summarization of the text to a human for review.
+In this case we will pretend the summarization is sent in an email and that it contains two links: one link to accept the summarization as correct and another link to reject it, requiring the application to try summarizing the content again.
+
+Therefore the `summarization()` function and a new `send_email()` function will be inside a loop that will continue until the summarization is accepted.
+
+<!--SNIPSTART quickstart-py-part-4-app {"selectedLines": ["16-42", "64-74"]}-->
+
+[quickstart/part-4/src/summarize/app.py](https://github.com/resonatehq/examples-py/blob/main/quickstart/part-4/src/summarize/app.py)
+
+```py
+# ...
+# Define and register the downloadAndSummarize workflow
+@resonate.register
+def downloadAndSummarize(ctx: Context, url: str, email: str):
+    print("Downloading and summarizing content from", url)
+    # Download the content from the provided URL
+    content = yield ctx.lfc(download, url)
+    # Loop until the summary is confirmed
+    while True:
+        # Summarize the downloaded content
+        summary = yield ctx.lfc(summarize, url, content)
+
+        # Create a Durable Promise to wait for confirmation
+        promise = yield ctx.rfi(DurablePromise(id=None))
+
+        # Send an email with the summary
+        yield ctx.lfc(send_email, summary, email, promise.id)
+
+        # Wait for the summary to be accepted or rejected
+        print("Waiting on confirmation")
+        confirmed = yield promise
+
+        if confirmed:
+            break
+
+    print("Workflow complete")
+    return
+
+# ...
+
+def send_email(ctx: Context, summary: str, email: str, promise_id: str):
+    print(f"Summary: {summary}")
+    print(
+        f"Click to confirm: http://localhost:5000/confirm?confirm=true&promise_id={promise_id}"
+    )
+    print(
+        f"Click to reject: http://localhost:5000/confirm?confirm=false&promise_id={promise_id}"
+    )
+    print("Email sent successfully")
+    return
+```
+
+<!--SNIPEND-->
+
+In the previous code example, the `downloadAndSummarize()` function now includes a loop that continues until the summarization is accepted.
+The 10 second sleep was also removed to focus on the human-in-the-loop aspect of the workflow.
+
+The entire workflow will wait until the promise is resolved by the human-in-the-loop.
+And the loop will break if the data we receive via the promise resolution is `true`, and continue if `false`.
+
+Next, update the `gateway.py` file to include a route handler for the `/confirm` endpoint.
+This route handler resolves the promise created inside the loop that blocks progress after sending the email.
+Use a `GET` endpoint so that our links work in the browser.
+Additionally, make sure to separate the instance of the `RemoteStore()` into a global variable so that it can be accessed by the route handler.
+
+<!--SNIPSTART quickstart-py-part-4-gateway {"selectedLines":["11-17", "49-79"]}-->
+
+[quickstart/part-4/src/summarize/gateway.py](https://github.com/resonatehq/examples-py/blob/main/quickstart/part-4/src/summarize/gateway.py)
+
+```py
+# ...
+# Create an instance of Resonate
+# highlight-next-line
+store = RemoteStore(url="http://localhost:8001")
+resonate = Resonate(
+    store=store, task_source=Poller(url="http://localhost:8002", group="gateway")
+)
+
+# ...
+
+# Define a route handler for the /confirm endpoint
+@app.route("/confirm", methods=["GET"])
+def confirm_email_route_handler():
+    global store
+    try:
+        # Extract parameters from the request
+        promise_id = request.args.get("promise_id")
+        confirm = request.args.get("confirm")
+
+        # Check if the required parameters are present
+        if not promise_id or confirm is None:
+            return jsonify({"error": "url and confirmation params are required"}), 400
+
+        # Convert to boolean
+        confirm = confirm.lower() == "true"
+
+        # Resolve the promise
+        store.resolve(
+            id=promise_id,
+            ikey=None,
+            strict=False,
+            headers=None,
+            data=json.dumps(confirm),
+        )
+        if confirm:
+            return jsonify({"message": "Summarization confirmed."}), 200
+        else:
+            return jsonify({"message": "Summarization rejected."}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+```
+
+<!--SNIPEND-->
+
+After updating `gateway.py`, restart your application and update your cURL request to include the email address.
+
+```shell
+curl -X POST http://localhost:5000/summarize -H "Content-Type: application/json" -d '{"email": "<email>", "url": "<url>"}'
+```
+
+You should eventually see the two links to confirm or reject the summarization.
+Click on the confirm link and notice how the workflow completes.
+Click on the reject link and notice how the summarization step runs again.
+The summarization step will repeat until you confirm the summarization.
+
+Next, you will integrate a webscraper and an LLM to bring your application to life.
+
+<!--SNIPEND-->
+
+## Part 5 Ollama integration
+
+In this part of the tutorial, you will use Selenium and Beautiful Soup to scrape a webpage and Ollama to summarize the content.
+Besides integrating the libraries, the other key change will be to store the downloaded content on the Application Node instead of in a Durable Promise.
+Because we are downloading real content from the internet, we must plan for the possibility of downloading large amounts of data.
+While a Durable Promise can store many MBs of data, this example will show how you can enable and disable durability for local function invocations.
+
+First, install the required libraries:
+
+```shell
+rye add selenium bs4 ollama
+```
+
+Next, make and propagate a change to `gateway.py` that creates a "clean" URL for use in promise IDs and file paths.
+A "clean" URL removes the `http://` and `https://` and replaces all "/" with "-".
+
+<!--SNIPSTART quickstart-py-part-5-gateway {"selectedLines": ["19-32", "40-52", "84-90"]}-->
+
+[quickstart/part-5/src/summarize/gateway.py](https://github.com/resonatehq/examples-py/blob/main/quickstart/part-5/src/summarize/gateway.py)
+
+```py
+# ...
+# highlight-start
+@resonate.register
+def dispatch(ctx: Context, url: str, clean_url: str, email: str):
+    yield ctx.rfi("downloadAndSummarize", url, clean_url, email).options(
+        send_to=poll("summarization-nodes")
+    )
+    return
+    # highlight-end
+
+
+# Define a route handler for the /summarize endpoint
+@app.route("/summarize", methods=["POST"])
+def summarize_route_handler():
+    try:
+# ...
+        email = data["email"]
+        # highlight-next-line
+        clean_url = clean(url)
+
+        # Use a Remote Function Invocation
+        # highlight-next-line
+        dispatch.run(f"downloadAndSummarize-{clean_url}", url, clean_url, email)
+
+        # Return the result as JSON
+        return jsonify({"summary": "workflow started"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ...
+
+# highlight-start
+def clean(url):
+    tmp = re.sub(r"^https?://", "", url)
+    return tmp.replace("/", "-")
+    # highlight-end
+
+```
+
+<!--SNIPEND-->
+
+You are doing this because the webscraper requires a full-path URL to scrape the content, such as "https://example.com".
+In previous examples, you may have been providing "example.com" as the URL.
+This change ensures that we can provide a full-path URL to the webscraper and ensures that the promise ID and file path are clean, easy to read, and valid.
+
+There are a few more places in `app.py` where you will make the distiction between using the clean URL vs the full-path URL.
+
+You will also want to add `.options(durable=False)` to the invocation of the `download()` function to disable durability for the downloaded content.
+
+<!--SNIPSTART quickstart-py-part-5-app {"selectedLines": ["20-27", "47-52"]}-->
+
+[quickstart/part-5/src/summarize/app.py](https://github.com/resonatehq/examples-py/blob/main/quickstart/part-5/src/summarize/app.py)
+
+```py
+# ...
+# highlight-start
+@resonate.register
+def downloadAndSummarize(ctx: Context, url: str, clean_url: str, email: str):
+    # highlight-end
+    print("Downloading and summarizing content from", url)
+    # Download the content from the provided URL
+    # highlight-next-line
+    filename = yield ctx.lfc(download, url, clean_url).options(durable=False)
+# ...
+
+
+# highlight-next-line
+def download(ctx: Context, url: str, clean_url: str):
+    filename = f"{clean_url}.txt"
+
+```
+
+<!--SNIPEND-->
+
+Up until this point we have been assuming a small amount of text is downloaded from the URL and the result of `download()` has been stored in a Durable Promise.
+But one of the benefits of running multiple Application Nodes, is to not just enable fan-out/fan-in use cases, but also to enable the ability to pick up work from a failed Application Node.
+
+But what if the URL represents a large website that results in many MBs of content?
+If we store all that data into a Durable Promise, this could drastically affect the performance of our application.
+
+Therefore, we want to store the downloaded content on the Application Node.
+If we do that, then we need to turn off durability for the invocation of the `download()` function, so that if the workflow resumes on another Application Node, the content will re-download on that node.
+That is what we did with adding `.options(durable=False)` to the invocation of the `download()` function.
+
+Next, update the `download()` function to use Selenium and Beautiful Soup to scrape the content from the URL.
+
+<!--SNIPSTART quickstart-py-part-5-app {"selectedLines": ["50-71"]}-->
+
+[quickstart/part-5/src/summarize/app.py](https://github.com/resonatehq/examples-py/blob/main/quickstart/part-5/src/summarize/app.py)
+
+```py
+# ...
+def download(ctx: Context, url: str, clean_url: str):
+    filename = f"{clean_url}.txt"
+
+    # Check if the file already exists
+    if os.path.exists(filename):
+        print(f"File {filename} already exists. Skipping download.")
+        return filename
+
+    print(f"Downloading data from {url}")
+    try:
+        driver = webdriver.Chrome()
+        driver.get(url)
+        soup = BeautifulSoup(driver.page_source, "html.parser")
+        content = soup.get_text()
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(content)
+        driver.quit()
+        print(f"Content saved to {filename}")
+        return filename
+    except Exception as e:
+        print(f"Download failed: {e}")
+        raise Exception(f"Failed to download data: {e}")
+```
+
+<!--SNIPEND-->
+
+The `download()` function will now scrape content from a url and save it to a file.
+Notice that the filename is now returned and stored in the Durable Promise instead of the content itself.
+
+Next, update the `summarize()` function to read the file and use Ollama to summarize the content.
+
+<!--SNIPSTART quickstart-py-part-5-app {"selectedLines": ["74-96"]}-->
+
+[quickstart/part-5/src/summarize/app.py](https://github.com/resonatehq/examples-py/blob/main/quickstart/part-5/src/summarize/app.py)
+
+```py
+# ...
+def summarize(ctx: Context, url: str, filename: str):
+    print(f"Summarizing content from {url}")
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            file_content = f.read()
+
+        options: ollama.Options | None = None
+
+        summary = ollama.chat(
+            model="llama3.1",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You review text scraped from a website and summarize it. Ignore text that does not support the narrative and purpose of the website.",
+                },
+                {"role": "user", "content": f"Content to summarize: {file_content}"},
+            ],
+            options=options,
+        )
+        return summary
+    except Exception as e:
+        print(f"Summarization failed: {e}")
+        raise Exception(f"Failed to summarize content: {e}")
+```
+
+<!--SNIPEND-->
+
+The `summarize()` function will now read the content from the file and provide a basic prompt to Ollama requesting a summarization.
+
+You are now ready to run your application.
+
+Restart your gateway and Application Nodes and send a cURL request to the `/summarize` endpoint with the URL of a website you would like to summarize.
+
+Congratulations! You have successfully built a summarization application.
+
+## Conclusion
+
+In this tutorial, you gained experience building Distributed Async Await applications using the Resonate Python SDK.
+And you were exposed to many of Resonates core value propositions, including:
+
+- A holistic programming model that enables you to build applications that are resilient to platform-level failures.
+- Incremental adoption that allows you to start building applications without connecting to an external orchestrator.
+- Faciliation of fan-out/fan-in use cases that enable you to run multiple Application Nodes and have them pick up work from failed Application Nodes.
+- Ability to block the execution of a workflow on input from a human-in-the-loop.
+- Flexibility to choose where to invoke functions and when to enable durability.
+
+You now also have a fully functioning summarization application that is distributed, scalable, and durable built with Resonate, Flask, and Ollama.
+
+If you have questions or any other feedback, feel free to reach out to the Resonate community on [Discord](https://resonatehq.io/discord)!

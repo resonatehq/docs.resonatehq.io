@@ -21,12 +21,6 @@ This guide covers installation and features that the SDK offers.
 
 ➡️ [Resonate TypeScript SDK API reference](https://resonatehq.github.io/resonate-sdk-ts/index.html)
 
-:::tip
-
-If you are new to Resonate, we recommend following the **[Resonate TypeScript SDK quickstart tutorial](/get-started/typescript-quickstart)** to get started learning how to use Resonate. 🚀
-
-:::
-
 ## Installation
 
 **How to install and use the TypeScript SDK in your project.**
@@ -292,7 +286,9 @@ Otherwise, the Schedule will persist in local memory and disappear when the proc
 You can execute your function periodically with a cron expression.
 
 <!--SNIPSTART examples-ts-schedule-flow-function-example-->
+
 [schedules/index.ts](https://github.com/resonatehq/examples-ts/blob/main/schedules/index.ts)
+
 ```ts
 import { Resonate, Context } from "@resonatehq/sdk";
 
@@ -332,6 +328,7 @@ console.log(sched);
 resonate.start();
 console.log("Running");
 ```
+
 <!--SNIPEND-->
 
 If the above process crashes, you can restart it and the interval of the function executions will pick back up.

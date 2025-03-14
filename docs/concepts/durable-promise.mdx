@@ -88,11 +88,6 @@ It enables you to integrate Distributed Async Await into a single Application No
 
 It also serves use cases where there is a requirement of very low latency on single Application Nodes that do not need to make any Remote Function Calls and are not concerned with the Application Node restarting the execution from scratch should it crash, but you still want individual functions to be transparently retried if they fail.
 
-Part 1 of the quickstart tutorials showcases this functionality:
-
-- [Python SDK quickstart - Part 1 Incremental adoption](/get-started/python-quickstart#part-1-incremental-adoption)
-- [TypeScript SDK quickstart - Part 1 Incremental adoption](/get-started/typescript-quickstart#part-1-incremental-adoption)
-
 ### Remote storage
 
 Remote storage, sometimes called "Remote mode", stores all Durable Promises in the Resonate Server (the supervisor service).
@@ -152,11 +147,6 @@ Using Remote storage enables two things:
 
 In regards to platform-level recovery, for example when your (Application Node) crashes, Remote storage can ensure that when your process comes back up, any "in-progress" executions continue from where they left off.
 It also enables the Call Graph to recover on a completely different Application Node.
-
-Part 2 of the quickstart tutorials showcases this functionality:
-
-- [Python SDK quickstart - Part 2 Durable Execution](/get-started/python-quickstart#part-2-crash-recovery)
-- [TypeScript SDK quickstart - Part 2 Durable Execution](/get-started/typescript-quickstart#part-2-crash-recovery)
 
 Now let's look at the distribution aspect that is enabled by Remote storage.
 

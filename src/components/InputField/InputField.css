@@ -1,34 +1,22 @@
 .input-container {
-    width: 100%;
-    padding: 20px;
-    box-sizing: border-box;
-  }
-  
-  .full-width-input {
-    width: 100%;
-    padding: 15px 20px;
-    font-size: 18px;
-    border: 2px solid #3498db;
-    border-radius: 30px;
-    background-color: #f8f9fa;
-    color: #333;
-    transition: all 0.3s ease;
-    cursor: pointer;
-  }
-  
-  .full-width-input:hover {
-    background-color: #e8f4f8;
-    border-color: #2980b9;
-    box-shadow: 0 0 10px rgba(52, 152, 219, 0.3);
-  }
-  
-  .full-width-input:focus {
-    outline: none;
-    border-color: #2980b9;
-    box-shadow: 0 0 15px rgba(52, 152, 219, 0.5);
-  }
-  
-  /* Placeholder styling */
-  .full-width-input::placeholder {
-    color: #7f8c8d;
-  }
+  width: 100%;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.full-width-input {
+  width: 100%;
+  padding: 15px 20px;
+  font-size: 18px;
+  border: 2px solid #b0b8c3;
+  border-radius: 0px;
+  background-color: #f8f9fa;
+  color: #353f58;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.full-width-input:hover {
+  background-color: #ffffff;
+  border-color: #88a7f6;
+}
