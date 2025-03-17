@@ -104,11 +104,6 @@ article a {
   margin-right: 4px;
 }
 
-.menu__caret::before {
-  color: white !important; /* If the caret is text-based */
-  filter: invert(1); /* Inverts colors if it's an image */
-}
-
 .navbar {
   border-width: 0px 0 1px 0;
   border-style: solid;
