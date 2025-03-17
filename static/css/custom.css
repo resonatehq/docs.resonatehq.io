@@ -80,14 +80,14 @@ article a {
 
 .menu {
   font-family: "Space Mono", monospace;
-  background-color: #080a0e;
-  border-width: 0 2px 0 0;
+  background-color: white;
+  border-width: 0 1px 0 0;
   border-style: solid;
   border-color: #b0b8c3;
 }
 
 .menu__link {
-  color: white !important;
+  color: #353f58 !important;
 }
 
 .menu__link:hover {
@@ -110,7 +110,7 @@ article a {
 }
 
 .navbar {
-  border-width: 0px 0 2px 0;
+  border-width: 0px 0 1px 0;
   border-style: solid;
   border-color: #b0b8c3;
   box-shadow: none !important;
@@ -137,7 +137,7 @@ article a {
 
 .footer {
   background-color: white;
-  border-width: 2px 0 0 0;
+  border-width: 1px 0 0 0;
   border-style: solid;
   border-color: #b0b8c3;
   font-family: "Space Mono", monospace;
@@ -161,14 +161,14 @@ article a {
 
 .pagination-nav__link {
   font-family: "Space Mono", monospace;
-  border-width: 2px;
+  border-width: 1px;
   border-color: #b0b8c3;
   border-style: solid;
   border-radius: 0 !important;
 }
 
 .card {
-  border-width: 2px !important;
+  border-width: 1px !important;
   border-color: #b0b8c3 !important;
   border-style: solid !important;
   border-radius: 0 !important;
