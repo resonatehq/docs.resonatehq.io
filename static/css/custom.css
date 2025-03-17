@@ -154,7 +154,7 @@ article a {
 
 .table-of-contents {
   font-family: "Space Mono", monospace;
-  border-width: 0 0 0 2px;
+  border-width: 0 0 0 1px;
   border-style: solid;
   border-color: #b0b8c3;
 }
