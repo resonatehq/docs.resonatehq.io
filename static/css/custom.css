@@ -167,6 +167,10 @@ article a {
   border-radius: 0 !important;
 }
 
+pagination-nav__link:hover {
+  border-color: #88a7f6 !important;
+}
+
 .card {
   border-width: 1px !important;
   border-color: #b0b8c3 !important;
