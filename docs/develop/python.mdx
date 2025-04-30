@@ -4,7 +4,7 @@ title: Resonate Python SDK
 description: Get started with the Resonate Python SDK.
 sidebar_label: Python SDK
 last_update:
-  date: "08-22-2024"
+  date: "04-28-2025"
 pagination_next: null
 pagination_prev: null
 tags:
@@ -16,7 +16,9 @@ Welcome to the Resonate Python SDK guide!
 This SDK makes it possible to write Distributed Async Await applications with Python.
 This guide covers installation and features that the SDK offers.
 
-➡️ [Resonate Python SDK API reference](https://resonatehq.github.io/resonate-sdk-py/)
+:::tip [API reference](https://resonatehq.github.io/resonate-sdk-py/)
+
+:::
 
 ## Installation
 
@@ -24,216 +26,385 @@ This guide covers installation and features that the SDK offers.
 
 To install the Resonate Python SDK, you can use any of your favorite package managers.
 
-**Rye**
+### `uv add resonate-sdk`
 
 ```shell
-rye add resonate-sdk
+uv add resonate-sdk
 ```
 
-**Pip**
+### `pip install resonate-sdk`
 
 ```shell
 pip install resonate-sdk
 ```
 
-Then initialize the SDK in your project, register your top-level function(s) and call the `.run()` method:
+## Initialization
+
+**How to initialize Resonate in your Worker / Application Node.**
+
+There are two ways to initialize Resonate, local and remote.
+
+### `resonate = Resonate()`
+
+**Local initialization**
+
+Local initialization means that Resonate uses local memory.
+
+:::tip Quickly integrate into an existing application
+
+This is ideal for getting started quickly or for integrating Resonate into an existing application without relying on dependencies.
+
+:::
 
 ```python
-# Import the Resonate SDK
-from resonate.stores.local import LocalStore, MemoryStorage
-from resonate.resonate import Resonate
+from resonate import Resonate
 
-# ...
-
-# Create a Resonate instance with a local store
-resonate = Resonate(store=LocalStore(MemoryStorage()))
-
-# Define and register your function
-@resonate.register
-def your_function(ctx, args):
-    # ...
-    return
-
-# Invoke the function using the run method
-your_function.run("your_promise_id", args)
+# highlight-next-line
+resonate = Resonate()
 ```
 
-## Promise storage modes
+**Remote initialization**
 
-The Resonate Python SDK supports two storage modes: Local and Remote.
+Remote initialization means that Resonate stores promises remotely in a Resonate Server and can receive messages from other Application Nodes.
 
-### Local storage
+:::tip Add reliability and scalability
 
-**How to use Local storage mode in the Resonate Python SDK.**
+This is ideal for building a distributed application that is reliable and can scale across multiple Application Nodes.
 
-[Local storage mode](/concepts/durable-promise#local-storage) is ideal for starting out with Resonate.
+:::
 
-```python
-from resonate.stores.local import LocalStore, MemoryStorage
-from resonate.resonate import Resonate
-
-# ...
-
-# Create a Resonate instance with a local store
-resonate = Resonate(store=LocalStore(MemoryStorage()))
-```
-
-### Remote storage
-
-**How to use Remote storage mode in the Resonate Python SDK.**
-
-Remote storage ensures promises are stored in the Resonate Server.
-To enable Remote storage, pass the Resonate Server's address when initializing Resonate:
+The quickest way to get started with Remote initialization is to use Resonate's default Poller to receive messages directly from a Resonate Server.
 
 ```python
-from resonate.task_sources.poller import Poller
+from resonate import Resonate
 from resonate.stores.remote import RemoteStore
-from resonate.resonate import Resonate
+from resonate.task_sources.poller import Poller
 
-# ...
-
-# Initialize the Resonate using the Resonate Server as remote storage
+# highlight-start
 resonate = Resonate(
-    store=RemoteStore(url="http://localhost:8001"),
-    task_source=Poller(url="http://localhost:8002"),
+    store=RemoteStore(url="http://localhost:8001"), # Resonate Server address
+    message_source=Poller(url="http://localhost:8002"), # Message source configuration
 )
+# highlight-end
 ```
 
-## Function registration
+Resonate Application Nodes can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
+The Poller is a great starting place as it will long-poll for messages from the Resonate Server without any additional setup.
+
+## Registration
 
 **How to register a function with Resonate in the Python SDK.**
 
 There are two ways to register a function with Resonate: using the `register` method or using the `@resonate.register` decorator.
 
+### `@resonate.register`
+
 **Decorator**
 
 ```python
-from resonate.stores.local import LocalStore, MemoryStorage
-from resonate.resonate import Resonate
-from resonate.context import Context
-
-# ...
-
-# Create a Resonate instance with a local store or remote store
-resonate = Resonate(store=LocalStore(MemoryStorage()))
-
-# Define your function
-# Use the register decorator to register a function
+# highlight-next-line
 @resonate.register
-def your_function(ctx, args):
+def foo(ctx, args):
     # ...
     return
-
-# Invoke the function using the run method
-your_function.run("your_promise_id", args)
 ```
+
+### `resonate.register()`
 
 **Method**
 
 ```python
-from resonate.stores.local import LocalStore, MemoryStorage
-from resonate.resonate import Resonate
-
-# ...
-
-# Create a Resonate instance with a local store or remote store
-resonate = Resonate(store=LocalStore(MemoryStorage()))
-
-# Define your function
-def your_function(ctx, args):
+def foo(ctx, args):
     # ...
     return
 
-# Register the function with Resonate using the register method
-resonate.register(your_function)
-
-# Invoke the function using the run method
-resonate.run("your_promise_id", your_function, args)
+# highlight-next-line
+resonate.register(foo)
 ```
 
-## Set a Retry Policy
+## Ephemeral-to-Durable
 
-**How to set a Retry Policy in the Resonate Python SDK.**
+**How to invoke a function in the ephemeral world with the Resonate Class.**
 
-:::warning Older version
+To move from the ephemeral world to the durable world you use the Resonate Class to invoke functions.
 
-The following documentation reflects version 0.2.4 of the Resonate Python SDK.
+There are two methods that you can use `.run()` and `.rpc()`.
 
-:::
+### `.run()`
 
-You can set a Retry Policy to control how a function should be retried if it fails.
-A Retry Policy can be set at the function level or when the individual function is invoked.
+Resonate's `.run()` method will invoke the function in the same process.
+You can think of it as a "run right here" invocation.
+After invocation, the function is considered durable and can recover in another process if desired.
 
-There are several different [built in Retry Policies available](/concepts/failure-detection-and-recovery#retry-policies), and each one can be refined to your needs.
-
-### Function registration
-
-Here is an example of setting an Exponential Retry Policy when registering a function:
-
-```python
-from resonate.retry_policy import Exponential
-
-// ...
-
-resonate.register(your_func, retry_policy=Exponential())
-```
-
-### Function invocation
-
-Here is an example of setting a Constant Retry Policy when invoking a function:
-
-```python
-from resonate.retry_policy import Constant
-
-// ...
-
-ctx.lfc(another_func, retry_policy=Constant())
-```
-
-## Dependency injection
-
-**How to use Dependency injection in the Resonate Python SDK.**
-
-You can inject dependencies into your Resonate instance and use them in functions that receive the Resonate Context.
-
-```python
-from resonate.stores.local import LocalStore, MemoryStorage
-from resonate.resonate import Resonate
-from resonate.context import Context
-
-# ...
-
-# Create a Resonate instance with a local or remote store
-resonate = Resonate(store=LocalStore(MemoryStorage()))
-
-# ...
-resonate.set_dependency("dependency-a", dependency())
-resonate.set_dependency"dependency-b", "some-dependency")
-```
-
-Then you can access the dependencies in your functions:
-
-```python
-def yourFunc(ctx: Context):
-# ...
-dep = ctx.get_dependency("dependency-a")
-```
-
-## Sleep
-
-**How to sleep inside a function with the Resonate Python SDK.**
-
-Resonate's sleep is durable, meaning it will persist across restarts and failures.
+**Decorated function invocation**
 
 ```python
 @resonate.register
-def your_function(ctx, args):
+def foo(ctx, args):
     # ...
-    ctx.sleep(5)
+    return
+
+# highlight-next-line
+handle = foo.run("invocation-id", args)
+# do more stuff
+result = handle.result()
+```
+
+**Method registered invocation**
+
+```python
+def foo(ctx, args):
+    # ...
+    return
+
+resonate.register(foo)
+# highlight-next-line
+handle = resonate.run("invocation-id", foo, args)
+# do more stuff
+result = handle.result()
+```
+
+### `.rpc()`
+
+Resonate's `.rpc()` method (Remote Procedure Call) invokes the function in a remote process.
+
+:::tip Remote initialization required
+
+The RPC method requires that the Worker / Application Node is connected with a Resonate Server.
+It also assumes that the Worker / Application Node where the invoked function is running is also connected to a Resonate Server and can receive messages.
+
+:::
+
+You can think of this API as a "run somewhere else" invocation (Asynchronous Remote Procedure Call).
+However, if the function is registered locally, it is still possible for the function to execute in the same process.
+After invocation, the function is considered durable and can recover in another process if desired.
+
+The invocation returns a promise which can be awaited on at any point after.
+
+**process a**
+
+```python
+# process a
+@resonate.register
+def foo(ctx, args):
+    # ...
+    return
+```
+
+**process b**
+
+```python
+# process b
+# highlight-next-line
+handle = resonate.rpc("invocation-id", "foo", args)
+# do more stuff
+result = handle.result()
+```
+
+### `.set_dependency()`
+
+Resonate's `.set_dependency()` method allows you to set a dependency for the Application Node.
+You can then access the dependency in the function using the [Context's `.get_dependency()`](#get_dependency) method.
+
+Dependencies can only be added in the ephemeral world.
+
+```python
+resonate.set_dependency("dependency-name", dependency)
+```
+
+The dependency can be accesses from any function in the Call Graph on that Application Node.
+This is useful for things like database connections or other resources that you want to share across functions.
+
+### `.promises.resolve()`
+
+Resonate's `.promise.resolve()` method allows you to resolve a promise by ID.
+
+This is useful for HITL use cases where you want to wait for a human to approve or reject a function execution.
+It works well in conjunction with [Context's `.promise()` method](#promise).
+
+```python
+resonate.promise.resolve(
+    id="promise-id"
+    # optional
+    result={}
+)
+```
+
+## Durable
+
+**How to use the Resonate Context object in the Python SDK.**
+
+Resonate's Context object enables you to invoke functions from inside a Durable Function.
+This is how you extend the Call Graph and create a world of Durable Functions.
+Inside a Durable Function you use the `yield` keyword to interact with the Context object.
+
+### `.lfi()`
+
+Context's `.lfi()` method (Local Function Invocation) invokes a function in the **same process** in an **asynchronous manner**.
+That is — the invocation returns a promise which can be awaited on at any point after.
+
+```python
+@resonate.register
+def foo(ctx, args):
+    # ...
+    promise = yield ctx.lfi(bar, args)
+    # do more sture
+    result = yield promise
+    # ...
+
+
+def bar(ctx, args):
+    # ...
+    return
+```
+
+### `.lfc()`
+
+Context's `.lfc()` method (Local Function Call) invokes a function in the **same process** in a **synchronous manner**.
+That is — the calling function blocks until the invoked function returns.
+
+```python
+@resonate.register
+def foo(ctx, args):
+    # ...
+    result = yield ctx.lfc(bar, args)
+    # do more stuff
+    # ...
+
+
+def bar(ctx, args):
+    # ...
+    return
+```
+
+### `.rfi()`
+
+Context's `.rfi()` method (Remote Function Invocation) invokes a function in a **remote process** in an **asynchronous manner**.
+That is — the invocation returns a promise which can be awaited on at any point after.
+
+**process a**
+
+```python
+# process a
+@resonate.register
+def foo(ctx, args):
+    # ...
+    promise = yield ctx.rfi("bar", args)
+    # do more stuff
+    result = yield promise
+    # ...
+```
+
+**process b**
+
+```python
+# process b
+@resonate.register
+def bar(ctx, args):
+    # ...
+    return
+```
+
+### `.rfc()`
+
+Context's `.rfc()` method (Remote Function Call) invokes a function in a **remote process** in a **synchronous manner**.
+That is — the calling function blocks until the invoked function returns.
+
+**process a**
+
+```python
+# process a
+@resonate.register
+def foo(ctx, args):
+    # ...
+    # highlight-next-line
+    result = yield ctx.rfc("bar", args)
+    # do more stuff
+    # ...
+```
+
+**process b**
+
+```python
+# process b
+@resonate.register
+def bar(ctx, args):
+    # ...
+    return
+```
+
+### `.get_dependency()`
+
+Context's `.get_dependency()` method allows you to get a dependency that was set in the ephemeral world using the `.set_dependency()` method and use it the Durable World.
+
+```python
+@resonate.register
+def foo(ctx, args):
+    # ...
+    dependency = ctx.get_dependency("dependency-name")
+    # do something with the dependency
+    # ...
+```
+
+### `.sleep()`
+
+Context's `.sleep()` method allows you to sleep inside a function.
+There is no limit to how long you can sleep.
+The sleep method accepts an integer value in seconds.
+
+```python
+@resonate.register
+def foo(ctx, args):
+    # ...
+    yield ctx.sleep(5)
+    # do more stuff
     # ...
 ```
 
 The previous function will sleep for 5 seconds and then continue execution.
+
+### `.promise()`
+
+Context's `.promise()` method allows you to get or create a promise that can be awaited on.
+You can optionally pass an ID using the [options method](#options).
+
+If no ID is provided, one is generated and a new promise is created.
+If an ID is provided and a promise alread exists with that ID, then the existing promise is returned.
+
+This is very useful for HITL (Human-In-The-Loop) use cases where you want to block progress until a human has taken an action or provided data.
+It works well in conjunction with [Resonate's `.promise.resolve()` method](#promiseresolve).
+
+```python
+@resonate.register
+def foo(ctx, args):
+    # ...
+    promise = yield ctx.promise("promise-id")
+    # do more stuff
+    result = yield promise
+    # ...
+```
+
+You can also pass custom data into the promise.
+
+- In a Pending state, custom data stores in the `data` field of the promise.
+- In a Resolved state the custom data stores in the `result` field of the promise.
+- In a Rejected state the custom data stores in the `error` field of the promise.
+
+```python
+@resonate.register
+def foo(ctx, args):
+    # ...
+    promise = yield ctx.promise({"key": "value"}).options(
+        id="promise-id",
+    )
+    # do more stuff
+    result = yield promise
+    # ...
+```
+
+### `.options()`
+
+Many of Context's methods support options on the call you are making.
 
 ## Batch operations
 
