@@ -73,7 +73,7 @@ Resonate offers two promise storage modes: Local and Remote.
 
 **How to use local storage for Durable Promises.**
 
-When using [Local storage](/concepts/durable-promise#local-storage) (Local mode), which is the default, Resonate utilizes a volatile in-memory promise store.
+When using local storage (Local mode), which is the default, Resonate utilizes a volatile in-memory promise store.
 
 ```ts
 import { Resonate } from "@resonatehq/sdk";
@@ -88,7 +88,7 @@ This mode provides out-of-the-box features like automatic retries, tracing, and 
 
 **How to enable remote storage for Durable Promises.**
 
-[Remote storage](/concepts/durable-promise#remote-storage) ensures promises get stored in the Resonate Server.
+Remote storage ensures promises get stored in the Resonate Server.
 To enable Remote storage, pass the Resonate Server's address when initializing Resonate:
 
 ```ts
@@ -105,7 +105,7 @@ Set timeouts for Durable Promises to detect failures.
 
 ### Application Node default
 
-You can configure a default Durable Promise Timeout for all function executions in the [Application Node](/concepts/application-node) via top-level Resonate object:
+You can configure a default Durable Promise Timeout for all function executions in the Application Node via top-level Resonate object:
 
 ```ts
 import { Resonate, Retry } from "@resonatehq/sdk";
@@ -150,7 +150,7 @@ If it is longer, the minimum will take precedence.
 
 ## Trigger a retry
 
-If you want a function to retry in an attempt to [recover from an application-level](/concepts/failure-detection-and-recovery#application-level) issue, you need to either throw an error, or return a rejected promise.
+If you want a function to retry in response to an error, you need to either throw the error, or return a rejected promise.
 You cannot return a custom object that contains error information.
 
 **✅ Throw an error:**
@@ -207,7 +207,7 @@ Set Retry Policies to automatically retry function executions.
 
 ### Application Node default
 
-You can configure a default Retry Policy for all function executions in the [Application Node](/concepts/application-node) via the top-level Resonate object:
+You can configure a default Retry Policy for all function executions in the Application Node via the top-level Resonate object:
 
 ```ts
 import { Resonate, Retry } from "@resonatehq/sdk";

@@ -4,7 +4,7 @@ title: How Resonate works
 sidebar_label: How it works
 sidebar_position: 7
 last_update:
-  date: "02-28-2025"
+  date: "04-30-2025"
 tags:
   - why-resonate
   - architecture
@@ -15,18 +15,20 @@ Resonate facilitates the development and operation of distributed applications.
 
 ## System architecture
 
+There are two core components involved that enable Resonate to provide its unique benefits and it's important to understand the architecture of the system to understand how it works.
+
 The following diagram illustrates the system architecture of Resonate:
 
 ![Resonate system architecture](/img/resonate-architecture.svg)
 
 ### Resonate SDK
 
-Developers use the Resonate SDK to build applications.
-It enables developers to write sequential programs using just functions and promises that execute asynchronously across multiple processes or machines.
+Developers use the Resonate SDK to build distributed applications with a simple, sequential programming model.
+With it, they write functions that execute asynchronously across multiple processes or machines.
 
-Each process where the Resonate SDK is used to call `resonate.run()` is known as an [Application Node](/concepts/application-node).
-A Resonate application can have between 1 and n Application Nodes.
-The Application Nodes are responsible for executing functions.
+Each process that runs the Resonate SDK acts as a Worker, also called an Application Node.
+A Resonate application can consist of as many Application Nodes as needed.
+These nodes actively execute the application’s functions and coordinate their execution across the system.
 
 Resonate offers SDKs for the following langauges:
 
@@ -36,12 +38,50 @@ Resonate offers SDKs for the following langauges:
 ### Resonate Server
 
 Each Application Node connects to a Resonate Server.
-The Resonate Server is a superivisor service that manages the storage of [Durable Promises](/concepts/durable-promise) and routes Remote Function Calls (RFIs).
+The Resonate Server acts as a supervisor and orchestrator by storing Durable Promises and sending messages to Application Nodes.
 
-### Resonate CLI
+Resonate Servers can communication with each other, enabling a system to contain multiple Resonate Servers.
+This prevents a star-like topology and enables a fully decentralized system.
 
-The Resonate CLI is a command-line interface that allows you to interact with the Resonate Server.
+## Durable Promises
 
-It comes with the Resonate Server.
+The core developer facing primitive that developers need to work with, other than a function is the Durable Promise.
 
-Review the [Resonate CLI reference](/operate/cli-reference) for more information.
+A Durable Promise represents a function invocation.
+It is durable because it is stored in a database outside of the process that created it.
+
+The Durable Promise contains the function invocation information and after the function returns, contains the result of the function.
+By using unique identifiers for Durable Promises, Resonate can replay function executions using the results stored in Durable Promises, enabling recovery of a function execution should the process crash.
+
+## Global Event Loop
+
+The core underlying mechanism that all of the components play a role in is the Global Event Loop.
+The Global Event Loop is responsible for passing messages between the processes and ensuring the recovery and the coordination of function executions across the system.
+
+## Invocation locality
+
+A Resonate SDK enables developers to invoke functions locally or remotely in an asynchronous manner.
+That is — a developer can choose to invoke a function in the same process as the caller or in a different process without blocking the caller and await on the results when it suits them.
+
+This enables developers to write sequential, procedure oriented code that is easy to understand and reason about.
+
+The two core invocation types are:
+
+- Local Function Invocation (LFI)
+- Remote Function Invocation (RFI)
+
+### Local Function Invocation
+
+A Local Function Invocation (LFI) is the act of invoking a function (the callee) in the same process as the caller.
+
+There are two benefits to using Resonate LFIs over regular function calls:
+
+1. The callee is automatically retried if it returns an error.
+2. The entire local Call Graph can recover and resume in another process if the first process crashes.
+
+### Remote Function Invocation
+
+A Remote Function Invocation (RFI), is the act of invoking a function (the callee) in a different process than the one the caller is in.
+
+The major benefit to using Resonate RFIs over regular RPCs is that Resonate RFIs are asynchronous.
+That is — if either the caller process, callee process, or both processes crash then the Call Graph can recover and resume in new processes.

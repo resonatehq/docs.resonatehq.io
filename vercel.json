@@ -1,73 +1,13 @@
 {
   "redirects": [
     {
-      "source": "/evaluate/system-architecture",
-      "destination": "/evaluate/how-it-works",
+      "source": "/concepts/:path*",
+      "destination": "/",
       "permanent": true
     },
     {
-      "source": "evaluate/features/execution-retries",
-      "destination": "/evaluate/why-resonate#automatic-function-execution-retries",
-      "permanent": true
-    },
-    {
-      "source": "evaluate/features/recovery",
-      "destination": "/evaluate/why-resonate#features",
-      "permanent": true
-    },
-    {
-      "source": "evaluate/features/scheduled-executions",
-      "destination": "/evaluate/why-resonate#features",
-      "permanent": true
-    },
-    {
-      "source": "evaluate/features/transparent-batching",
-      "destination": "/evaluate/why-resonate#features",
-      "permanent": true
-    },
-    {
-      "source": "evaluate/developer-experience/incremental-adoption",
-      "destination": "/evaluate/why-resonate#features",
-      "permanent": true
-    },
-    {
-      "source": "evaluate/developer-experience/sequential-programming-model",
-      "destination": "/evaluate/why-resonate#developer-experience",
-      "permanent": true
-    },
-    {
-      "source": "evaluate/developer-experience/minimal-primitives",
-      "destination": "/evaluate/why-resonate#developer-experience",
-      "permanent": true
-    },
-    {
-      "source": "evaluate/developer-experience/open-specification",
-      "destination": "/evaluate/why-resonate#developer-experience",
-      "permanent": true
-    },
-    {
-      "source": "evaluate/application-architectures/fan-out-fan-in",
-      "destination": "/evaluate/why-resonate#service-level-patterns",
-      "permanent": true
-    },
-    {
-      "source": "evaluate/application-architectures/human-in-the-loop",
-      "destination": "/evaluate/why-resonate#service-level-patterns",
-      "permanent": true
-    },
-    {
-      "source": "get-started/python-quickstart",
-      "destination": "/get-started",
-      "permanent": true
-    },
-    {
-      "source": "get-started/typescript-quickstart",
-      "destination": "/get-started",
-      "permanent": true
-    },
-    {
-      "source": "get-started/server-quickstart",
-      "destination": "/get-started",
+      "source": "/evaluate/faq",
+      "destination": "/evaluate",
       "permanent": true
     }
   ]
