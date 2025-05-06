@@ -183,3 +183,19 @@ pagination-nav__link:hover {
 .navbar__search-input {
   border-radius: 0;
 }
+
+.alert--success {
+  background-color: #ffffff;
+  border-left: 4px solid #88a7f6;
+  border-right: 4px solid #88a7f6;
+  border-radius: 0;
+  box-shadow: none !important;
+}
+
+.alert a {
+  text-decoration-color: #88a7f6 !important;
+}
+
+.alert a:hover {
+  text-decoration-color: #353f58 !important;
+}

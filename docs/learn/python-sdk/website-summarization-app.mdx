@@ -16,7 +16,7 @@ tags:
 ---
 
 In this tutorial, you will build a summarization application using the Resonate Python SDK, Flask, and Ollama.
-By doing so, you will gain experience with the [Distributed Async Await](/concepts/distributed-async-await) programming model and be exposed to the core features of the SDK.
+By doing so, you will gain experience with the [Distributed Async Await](https://www.distributed-async-await.io) programming model and be exposed to the core features of the SDK.
 
 This tutorial follows the philosophy of "progressive disclosure", starting with a simple example and building on it step by step.
 Each part introduces a new concept or feature of Resonate.
@@ -32,7 +32,7 @@ You can find the source code in the [Resonate Python SDK examples repository](ht
 
 :::
 
-In part 1, you will start with a single [Application Node](/concepts/application-node) and observe the SDK's ability to automatically retry application-level failures (failed function executions).
+In part 1, you will start with a single Application Node and observe the SDK's ability to automatically retry application-level failures (failed function executions).
 Then in part 2 you will connect your application to the Resonate Server to enable recovery from platform-level failures and see how a function execution can recover from a process crash (Durable Execution).
 In part 3 you will build on the previous example by separating your HTTP Server from your application code and run multiple Application Nodes to see how Resonate facilitates fan-out/fan-in use cases.
 After, in part 4 you will add a third step to your workflow that blocks the execution on input from a human-in-the-loop and unblock it from another process.
@@ -157,7 +157,7 @@ When they return an error, Resonate automatically retries them until they succee
 :::tip Local Function Invocations
 
 Notice how these functions are invoked using `ctx.lfc`.
-LFC stands for Local Function Call and is syntactic sugar for Resonate's standard [Local Function Invocation](/concepts/distributed-async-await#local-function-invocation).
+LFC stands for Local Function Call and is syntactic sugar for Resonate's standard Local Function Invocation.
 When the application is connected to the Resonate Server, the promise created by `ctx.lfc()` is stored there.
 When the application is not connected to the Resonate Server, the promise is stored in local memory.
 Local memory enables the application to provide automtic retries for application-level failures without connecting to a supervisor service.
@@ -222,7 +222,7 @@ When a request comes in, the HTTP Server extracts the URL from the request, runs
 ![downloadAndSummarize Call Graph diagram](/img/downloadAndSummarize-call-graph.svg)
 
 When calling Resonate's `.run()` method you must provide a unique identifier and the function’s arguments.
-The identifier serves as the [Durable Promise ID](/concepts/durable-promise#identity) that correlates to the function invocation.
+The identifier serves as the Durable Promise ID that correlates to the function invocation.
 Note that the Durable Promise ID does not correlate to a function execution, but instead the invocation of the function.
 The function may be executed as many times as needed to complete and resolve the promise.
 
@@ -534,7 +534,7 @@ if __name__ == "__main__":
 
 In the previous code example, the highlighted lines indicate the changes you will need to make after moving the HTTP service code to `gateway.py`.
 
-The `dispatch()` function uses `ctx.rfi()`, a [Remote Function Invocation](/concepts/distributed-async-await#remote-function-invocation), to invoke the `downloadAndSummarize()` workflow.
+The `dispatch()` function uses `ctx.rfi()`, a Remote Function Invocation, to invoke the `downloadAndSummarize()` workflow.
 **Note** that in future iterations of the SDK, Remote Function Invocations should be possible directly from the `Resonate` instance.
 
 The decision to not await on the result of the workflow in the gateway is purely so that you can start multiple workflows concurrently and see which Application Node picks up the work.
