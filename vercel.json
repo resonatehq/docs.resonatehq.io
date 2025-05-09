@@ -9,6 +9,11 @@
       "source": "/evaluate/faq",
       "destination": "/evaluate",
       "permanent": true
+    },
+    {
+      "source": "/operate/server-errors:path*",
+      "destination": "/operate/error-codes:path*",
+      "permanent": true
     }
   ]
 }
