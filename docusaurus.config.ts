@@ -56,6 +56,11 @@ const config: Config = {
       } satisfies Preset.Options,
     ],
   ],
+
+  plugins: [
+    'docusaurus-plugin-llms',
+  ],
+  
   scripts: [
     {
       src: "/scripts/fullstory.js",
