@@ -58,7 +58,11 @@ const config: Config = {
   ],
 
   plugins: [
-    'docusaurus-plugin-llms',
+    ['docusaurus-plugin-llms', {
+      pathTransformation: {
+        ignorePaths: ['docs'],
+      },
+    }],
   ],
   
   scripts: [
