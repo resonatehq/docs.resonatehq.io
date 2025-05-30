@@ -56,6 +56,15 @@ const config: Config = {
       } satisfies Preset.Options,
     ],
   ],
+
+  plugins: [
+    ['docusaurus-plugin-llms', {
+      pathTransformation: {
+        ignorePaths: ['docs'],
+      },
+    }],
+  ],
+  
   scripts: [
     {
       src: "/scripts/fullstory.js",
