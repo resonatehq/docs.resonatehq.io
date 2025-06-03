@@ -61,35 +61,38 @@ The `details` provide structured diagnostic data such as the originating subsyst
 
 Request errors signify problems with the request. Generally, retrying the request will not resolve the issue.
 
-| Error Code | Description                                                                                     |
-| ---------- | ----------------------------------------------------------------------------------------------- |
-| 4000       | There was a validation error affecting one or more fields.                                      |
-| 4030       | The promise has already been resolved. Once a promise is resolved it can no longer be modified. |
-| 4031       | The promise has already been rejected. Once a promise is rejected it can no longer be modified. |
-| 4032       | The promise has already been canceled. Once a promise is canceled it can no longer be modified. |
-| 4033       | The promise has already timed out. Once a promise is timed out it can no longer be modified.    |
-| 4034       | The lock has already been acquire. Once a lock is acquired it can no longer be acquired.        |
-| 4035       | The Task has already timed out. Once a task is timed out it can no longer be worked on.         |
-| 4036       | The Task has already been acquire. Once a task is acquired it can no longer be acquired.        |
-| 4037       | A task was attempted to be claimed with the wrong counter.                                      |
-| 4040       | A promise with the provided identifier could not be found.                                      |
-| 4041       | A subscription with the provided identifier could not be found.                                 |
-| 4042       | A Schedule with the provided identifier could not be found.                                     |
-| 4043       | A lock with the provided identifier could not be found.                                         |
-| 4043       | A Task with the provided identifier could not be found.                                         |
-| 4090       | A promise with the provided identifier already exists.                                          |
-| 4091       | A Schedule with the provided identifier already exists.                                         |
+| Error Code                          | Description                                                                                       |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------- |
+| <a name="40000"></a>[40000](#40000) | There was a validation error affecting one or more fields.                                        |
+| <a name="40300"></a>[40300](#40300) | The promise has already been resolved. Once a promise is resolved it can no longer be modified.   |
+| <a name="40301"></a>[40301](#40301) | The promise has already been rejected. Once a promise is rejected it can no longer be modified.   |
+| <a name="40302"></a>[40302](#40302) | The promise has already been canceled. Once a promise is canceled it can no longer be modified.   |
+| <a name="40303"></a>[40303](#40303) | The promise has already timed out. Once a promise is timed out it can no longer be modified.      |
+| <a name="40304"></a>[40304](#40304) | The lock has already been acquired. Once a lock is acquired it can no longer be acquired.         |
+| <a name="40305"></a>[40305](#40305) | The task has already been claimed. Once a task has been claimed it can not longer be claimed.     |
+| <a name="40306"></a>[40306](#40306) | The task has already been completed. Once a task has been completed it can not longer be claimed. |
+| <a name="40307"></a>[40307](#40307) | A task was attempted to be claimed with the wrong counter.                                        |
+| <a name="40308"></a>[40308](#40308) | A task was attempted to be claimed or completed, but the task is in an invalid state.             |
+| <a name="40400"></a>[40400](#40400) | A promise with the provided id could not be found.                                                |
+| <a name="40401"></a>[40401](#40401) | A schedule with the provided id could not be found.                                               |
+| <a name="40402"></a>[40402](#40402) | A lock with the provided id could not be found.                                                   |
+| <a name="40403"></a>[40403](#40403) | A task with the provided id could not be found.                                                   |
+| <a name="40404"></a>[40404](#40404) | A promise with the provided id does not specify a required recv.                                  |
+| <a name="40900"></a>[40900](#40900) | A promise with the provided id already exists.                                                    |
+| <a name="40901"></a>[40901](#40901) | A schedule with the provided id already exists.                                                   |
 
 ## Server Errors (5000-5999)
 
 Server errors represent transient or systemic problems that prevent the request from being processed. Retrying the request may resolve the issue.
 
-| Error Code | Description                                                                                                                                            |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 5000       | An unknown internal server error occurred. Please open a [GitHub issue](https://github.com/resonatehq/resonate/issues/new) with corresponding details. |
-| 5001       | There was a failure related the network subsystem.                                                                                                     |
-| 5002       | There was a failure related the store subsystem.                                                                                                       |
-| 5003       | There was a failure serializing or deserializing data from the store.                                                                                  |
-| 5030       | The system is currently shutting down.                                                                                                                 |
-| 5031       | The API submission queue is full. Please try again later.                                                                                              |
-| 5032       | The AIO submission queue is full. Please try again later.                                                                                              |
+| Error Code                          | Description                                                                                                           |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| <a name="50000"></a>[50000](#50000) | An unknown internal server error occurred. Please open an [issue](https://github.com/resonatehq/resonate/issues/new). |
+| <a name="50001"></a>[50001](#50001) | There was a failure related the echo subsystem.                                                                       |
+| <a name="50002"></a>[50002](#50002) | There was a failure related the match subsystem.                                                                      |
+| <a name="50003"></a>[50003](#50003) | There was a failure related the queue subsystem.                                                                      |
+| <a name="50004"></a>[50004](#50004) | There was a failure related the store subsystem.                                                                      |
+| <a name="50300"></a>[50300](#50300) | The system is shutting down.                                                                                          |
+| <a name="50301"></a>[50301](#50301) | The API submission queue is full. Please try again later.                                                             |
+| <a name="50302"></a>[50302](#50302) | The AIO submission queue is full. Please try again later.                                                             |
+| <a name="50303"></a>[50303](#50303) | The scheduler queue is full. Please try again later.                                                                  |
