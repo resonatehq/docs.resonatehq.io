@@ -61,6 +61,10 @@ from resonate import Resonate
 
 # highlight-next-line
 resonate = Resonate()
+
+# or alternatively
+# highlight-next-line
+resonate = Resonate.local()
 ```
 
 **Remote initialization**
@@ -80,12 +84,12 @@ from resonate import Resonate
 from resonate.stores.remote import RemoteStore
 from resonate.task_sources.poller import Poller
 
-# highlight-start
-resonate = Resonate(
-    store=RemoteStore(url="http://localhost:8001"), # Resonate Server address
-    message_source=Poller(url="http://localhost:8002"), # Message source configuration
-)
-# highlight-end
+# highlight-next-line
+resonate = Resonate.remote()
+
+# or alternatively
+# highlight-next-line
+resonate = Resonate.remote(host="https://my-resonate.com")
 ```
 
 Resonate Application Nodes can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
@@ -215,6 +219,25 @@ resonate.set_dependency("dependency-name", dependency)
 The dependency can be accesses from any function in the Call Graph on that Application Node.
 This is useful for things like database connections or other resources that you want to share across functions.
 
+### `.promises.create()`
+
+Resonate's `.promise.create()` method allows you to create a promise.
+
+```python
+resonate.promise.create(
+    id="promise-id",
+    timeout=int(time.time() * 1000) + 30000,  # 30s in the future
+)
+```
+
+### `.promises.get()`
+
+Resonate's `.promise.get()` method allows you to get a promise by ID.
+
+```python
+resonate.promise.get("promise-id")
+```
+
 ### `.promises.resolve()`
 
 Resonate's `.promise.resolve()` method allows you to resolve a promise by ID.
@@ -224,9 +247,19 @@ It works well in conjunction with [Context's `.promise()` method](#promise).
 
 ```python
 resonate.promise.resolve(
-    id="promise-id"
-    # optional
-    result={}
+    id="promise-id",
+    data=json.dumps({}),  # optional
+)
+```
+
+### `.promises.reject()`
+
+Resonate's `.promise.reject()` method allows you to reject a promise by ID.
+
+```python
+resonate.promise.reject(
+    id="promise-id",
+    data=json.dumps({}),  # optional
 )
 ```
 
@@ -350,13 +383,13 @@ def foo(ctx, args):
 
 Context's `.sleep()` method allows you to sleep inside a function.
 There is no limit to how long you can sleep.
-The sleep method accepts an integer value in seconds.
+The sleep method accepts a float value in seconds.
 
 ```python
 @resonate.register
 def foo(ctx, args):
     # ...
-    yield ctx.sleep(5)
+    yield ctx.sleep(5.0)
     # do more stuff
     # ...
 ```
@@ -366,10 +399,9 @@ The previous function will sleep for 5 seconds and then continue execution.
 ### `.promise()`
 
 Context's `.promise()` method allows you to get or create a promise that can be awaited on.
-You can optionally pass an ID using the [options method](#options).
 
 If no ID is provided, one is generated and a new promise is created.
-If an ID is provided and a promise alread exists with that ID, then the existing promise is returned.
+If an ID is provided and a promise already exists with that ID, then the existing promise is returned (if the idempotency keys match).
 
 This is very useful for HITL (Human-In-The-Loop) use cases where you want to block progress until a human has taken an action or provided data.
 It works well in conjunction with [Resonate's `.promise.resolve()` method](#promisesresolve).
@@ -378,7 +410,7 @@ It works well in conjunction with [Resonate's `.promise.resolve()` method](#prom
 @resonate.register
 def foo(ctx, args):
     # ...
-    promise = yield ctx.promise("promise-id")
+    promise = yield ctx.promise(id="promise-id")
     # do more stuff
     result = yield promise
     # ...
@@ -394,9 +426,7 @@ You can also pass custom data into the promise.
 @resonate.register
 def foo(ctx, args):
     # ...
-    promise = yield ctx.promise({"key": "value"}).options(
-        id="promise-id",
-    )
+    promise = yield ctx.promise(data={"key": "value"})
     # do more stuff
     result = yield promise
     # ...
@@ -405,89 +435,3 @@ def foo(ctx, args):
 ### `.options()`
 
 Many of Context's methods support options on the call you are making.
-
-## Batch operations
-
-**How to use batch operations in the Resonate Python SDK.**
-
-:::warning Older version
-
-The following documentation reflects version 0.2.4 of the Resonate Python SDK.
-
-:::
-
-Resonate's transparent batching feature handles the coordination of otherwise concurrent executions to create batches, enabling you to write concurrent, non-coordinated code.
-For a deeper dive into transparent batching, check out the [Transparent batching with the Resonate Python SDK](https://blog.resonatehq.io/transparent-batching-with-the-resonate-python-sdk) blog post.
-To use transparent batching, follow these steps.
-
-First, create a data structure that inherits what Resonate calls a Command interface.
-The data structure must include the data to be inserted into the database.
-The Command data structure stands in for a function execution invocation so that you still get a Durable Promise and await on result.
-
-```py
-from dataclasses import dataclass
-# ...
-from resonate.commands import Command
-# ...
-# Define a data structure for the Resonate SDK to track and create batches of
-@dataclass
-class InsertUser(Command):
-    id: int
-```
-
-Then, create a handler that can process a batch of operations.
-
-```py
-# ...
-from resonate.context import Context
-# ...
-# Define a function that inserts a batch of rows into the database
-# The main difference is that commit() is only called after all the Insert statements are executed
-def _batch_handler(_: Context, users: list[InsertUser]):
-    # error handling ommitted for this example
-    for user in users:
-        conn.execute("INSERT INTO users (value) VALUES (?)", (user.id,))
-    conn.commit()
-    print(f"{len(users)} users have been inserted to database.")
-```
-
-Next, register the data structure and the handler with the Resonate Scheduler.
-
-```py
-# ...
-from resonate.scheduler import Scheduler
-from resonate.storage import LocalPromiseStore
-from resonate.retry_policy import never
-# ...
-# Create a Resonate Scheduler
-resonate = Scheduler(LocalPromiseStore(), processor_threads=1)
-# ...
-# Register the batch handler and data structure with the Resonate Scheduler
-resonate.register_command_handler(InsertUser, _batch_handler, retry_policy=never())
-```
-
-Finally, create a function that can be invoked over and over again and passes the data to Resonate to manage.
-Register it with the Resonate Scheduler, and then call that function with Resonate's `run()` method.
-
-```py
-# ...
-# Definte the top level function that uses batching
-def create_user_batching(ctx: Context, u: int):
-    p = yield ctx.lfi(InsertUser(u))
-    yield p
-# ...
-# Register the top level functions with the Resonate Scheduler
-resonate.register(create_user_batching, retry_policy=never())
-# ...
-def main() -> None:
-# ...
-    # Create an array to hold the promises
-    promises = []
-
-    for u in range(10000):
-        p = resonate.run(f"insert-value-{u}", create_user_batching, u)
-        promises.append(p)
-
-    for p in promises:
-        p.result()
-```
