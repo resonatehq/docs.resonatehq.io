@@ -60,7 +60,11 @@ This is ideal for getting started quickly or for integrating Resonate into an ex
 from resonate import Resonate
 
 # highlight-next-line
-resonate = Resonate() # alternatively: Resonate.local()
+resonate = Resonate()
+
+# or alternatively
+# highlight-next-line
+resonate = Resonate.local()
 ```
 
 **Remote initialization**
@@ -82,6 +86,10 @@ from resonate.task_sources.poller import Poller
 
 # highlight-next-line
 resonate = Resonate.remote()
+
+# or alternatively
+# highlight-next-line
+resonate = Resonate.remote(host="https://my-resonate.com")
 ```
 
 Resonate Application Nodes can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
