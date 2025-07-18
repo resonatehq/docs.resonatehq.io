@@ -48,51 +48,47 @@ There are two ways to initialize Resonate, local and remote.
 
 **Local initialization**
 
-Local initialization means that Resonate uses local memory.
-
-:::tip Quickly integrate into an existing application
+Local initialization means that Resonate uses local memory for promise storage.
 
 This is ideal for getting started quickly or for integrating Resonate into an existing application without relying on dependencies.
 
-:::
+The drawback is that you can't use Resonate's Async RPC or recover executions from process / worker crashes.
 
 ```python
 from resonate import Resonate
 
-# highlight-next-line
 resonate = Resonate()
 
 # or alternatively
-# highlight-next-line
 resonate = Resonate.local()
 ```
 
-**Remote initialization**
+:::differentiator Dead Simple incremental adoption
 
-Remote initialization means that Resonate stores promises remotely in a Resonate Server and can receive messages from other Application Nodes.
+Temporal, Restate, and DBOS require a server or database to get started.
 
-:::tip Add reliability and scalability
-
-This is ideal for building a distributed application that is reliable and can scale across multiple Application Nodes.
+Resonate enables you to get started with a local worker that stores promises in memory, no server or database required.
+This makes it easy to incrementally adopt Resonate into your existing Python application.
 
 :::
 
-The quickest way to get started with Remote initialization is to use Resonate's default Poller to receive messages directly from a Resonate Server.
+**Remote initialization**
+
+Remote initialization means that promises are stored remotely, and that the worker receives messages from a remote source.
+This is how Resonate enables Async RPC for building distributed applications that are reliable and scalable.
+
+The quickest way to get started with Remote initialization is for the worker to use Resonate's default Poller message transport to receive messages directly from a Resonate Server.
 
 ```python
 from resonate import Resonate
-from resonate.stores.remote import RemoteStore
-from resonate.task_sources.poller import Poller
 
-# highlight-next-line
 resonate = Resonate.remote()
 
 # or alternatively
-# highlight-next-line
 resonate = Resonate.remote(host="https://my-resonate.com")
 ```
 
-Resonate Application Nodes can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
+Resonate workers can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
 The Poller is a great starting place as it will long-poll for messages from the Resonate Server without any additional setup.
 
 ## Registration
@@ -106,11 +102,10 @@ There are two ways to register a function with Resonate: using the `register` me
 **Decorator**
 
 ```python
-# highlight-next-line
 @resonate.register
 def foo(ctx, args):
     # ...
-    return
+    return result
 ```
 
 ### `resonate.register()`
@@ -120,9 +115,8 @@ def foo(ctx, args):
 ```python
 def foo(ctx, args):
     # ...
-    return
+    return result
 
-# highlight-next-line
 resonate.register(foo)
 ```
 
@@ -189,6 +183,10 @@ The invocation returns a promise which can be awaited on at any point after.
 
 ```python
 # process a
+resonate = Resonate.remote(
+    group="group-a",
+)
+
 @resonate.register
 def foo(ctx, args):
     # ...
@@ -199,8 +197,11 @@ def foo(ctx, args):
 
 ```python
 # process b
+resonate = Resonate.remote(
+    group="group-b",
+)
 # highlight-next-line
-handle = resonate.rpc("invocation-id", "foo", args)
+handle = resonate.options(target="poll://any@group-b").rpc("invocation-id", "foo", args)
 # do more stuff
 result = handle.result()
 ```

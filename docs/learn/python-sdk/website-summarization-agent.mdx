@@ -1,0 +1,977 @@
+---
+id: website-summarization-agent
+title: Build a durable website summarization AI agent in Python with Resonate, Flask, and Ollama
+description: Get started with the Resonate Python SDK.
+sidebar_label: Summarization agent
+sidebar_position: 1
+last_update:
+  date: "07-01-2025"
+pagination_next: null
+pagination_prev: null
+tags:
+  - python
+  - ai
+  - tutorial
+  - flask
+  - web-scraping
+  - ollama
+---
+
+In this tutorial, you’ll build a website summarization AI agent using the Resonate Python SDK, Flask, and Ollama.
+
+By doing so, you’ll gain experience with Resonate’s implementation of the **Distributed Async Await** programming model and the core features of the Python SDK.
+
+This tutorial follows the philosophy of _progressive disclosure_ and is broken into several parts, starting with a simple example and building on it step by step.
+Each part introduces new concepts.
+You can choose to stop at the end of any part of the tutorial and still have a working application.
+
+:::tip Final example application
+
+Want to jump straight to working with the final example application?
+[example-website-summarization-agent-py](https://github.com/resonatehq-examples/example-website-summarization-agent-py) repository.
+
+:::
+
+In part 1, you will start with a single Worker and observe the SDK's ability to automatically retry application-level failures (failed function executions).
+
+:::tip What is a Worker?
+
+A Worker is a process that runs your application code (i.e. executes functions).
+This is similar to the concept of a "worker" or "worker node" in other Durable Execution platforms like Temporal, Restate, and DBOS.
+
+:::
+
+Then in part 2 you will connect your Worker to a Resonate Server to enable recovery from platform-level failures and see how a function execution can recover from a process crash (Durable Execution).
+
+In part 3 you will convert the invocation of the function on the Worker to an asynchronous Remote Procedure Call (Async RPC).
+After, in part 4 you will add a third step to your workflow that blocks the execution on input from a human-in-the-loop and unblock it from another process.
+Finally, in part 5 you will integrate a webscraper, such as Beautiful Soup, and an LLM, such as Ollama, to bring your application to life.
+
+By the end of this tutorial you'll have a good understanding of the Resonate Python SDK and how to build Distributed Async Await applications with it.
+
+### Prerequisites
+
+This tutorial assumes that you have [Python 3](https://www.python.org/downloads/) and a package manager installed.
+
+This tutorial recommends using [uv](https://docs.astral.sh/uv/) as the package manager.
+
+This tutorial was written and tested with Resonate Server v0.7.9 and Resonate Python SDK v0.5.6.
+
+Part 5 of this tutorial assumes you have [Ollama](https://ollama.com/) installed and model "llama3.1" running locally on your machine.
+
+## Automatic function retries
+
+In this part of the tutorial you'll create a worker that is error prone to see how Resonate automatically retries failed function executions.
+
+Start by scaffolding a new project.
+
+First, install the CLI:
+
+```shell
+brew install resonatehq/tap/resonate
+```
+
+Navigate to the directory you want to scaffold your project in and run the following command:
+
+```shell
+resonate project create --name summarization-agent --template lfi-workflow-py
+```
+
+:::differentiator LFI = Local Function Invocation
+
+The template you are using does not require a Resonate Server to run.
+All function invocations are local, meaning they run in the same process as the worker, and store promises in memory.
+
+Other "Durable Execution" platforms, such as Temporal, Restate, and DBOS, require your worker to connect to a server or database to get started.
+This is not the case with Resonate.
+
+:::
+
+You should now have a directory called “summarization-agent” with the following structure:
+
+```text
+summarization-agent
+    - src/
+        - app.py
+    - pyproject.toml
+```
+
+The app.py file should contain the following code:
+
+```python
+from resonate import Resonate
+
+resonate = Resonate.local()
+
+
+@resonate.register
+def foo(ctx, greeting):
+    print("running foo")
+    greeting = yield ctx.lfc(bar, greeting)
+    greeting = yield ctx.lfc(baz, greeting)
+    return greeting
+
+
+def bar(_, v):
+    print("running bar")
+    return f"{v} world"
+
+
+def baz(_, v):
+    print("running baz")
+    return f"{v}!"
+
+
+def main():
+    try:
+        handle = foo.run("hello-world-greeting", greeting="hello")
+        print(handle.result())
+    except Exception as e:
+        print(e)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+In this template, `foo()` takes a string argument, greeting, and passes it first to `bar()` and then to `baz()`, each step concatenating to the string.
+The greeting is then returned back to the caller and printed.
+
+The `@resonate.register` decorator registers `foo()` with the Resonate instance enabling its invocation with a the `.run()` method.
+
+The handle variable is a promise.
+Calling `handle.result()` blocks progress of `main()` until `foo()` returns a result.
+
+Both `bar()` and `baz()` are invoked using the Resonate Context’s LFC API (Local Function Call API), giving Resonate control over the invocation and execution of those functions.
+
+Next, move into the root of the project and run the following commands to execute the app as-is:
+
+```shell
+uv sync
+uv run app
+```
+
+You should see the following output:
+
+```shell
+running foo
+running bar
+running baz
+hello world!
+```
+
+Let's update the function names to better reflect the purpose of the use case.
+
+Update the `foo()`, `bar()`, and `baz()` function names to `downloadAndSummarize()`, `download()`, and `summarize()` respectively.
+And, instead of passing a greeting, let's pass a URL of a website to download and summarize.
+
+```python
+@resonate.register
+def downloadAndSummarize(ctx, url):
+    print("running downloadAndSummarize")
+    content = yield ctx.lfc(download, url)
+    summary = yield ctx.lfc(summarize, content)
+    return summary
+
+def download(_, url):
+    print("running download")
+    return f"content of {url}"
+
+
+def summarize(_, content):
+    print("running summarize")
+    return f"summary of {content}"
+
+
+def main():
+    try:
+        url = "https://example.com"
+        handle = downloadAndSummarize.run(url, url=url)
+        print(handle.result())
+    except Exception as e:
+        print(e)
+```
+
+Now, lets add some code to steps `download()` and `summarize()` so they fail 50% of the time.
+
+First, import the random package into the app.
+
+```python
+# ...
+import random
+```
+
+Then, in each of the step functions, `download()` and `summarize()`, directly after the print statements, randomly generate a number between 0 and 100 and raise an exception if the number is greater than 50.
+
+```python
+#...
+import random
+
+#...
+
+def download(_, url):
+    print("running download")
+    if random.randint(0, 100) > 50:
+        raise Exception("download encountered an error")
+    return f"content of {url}"
+
+
+def summarize(_, content):
+    print("running summarize")
+    if random.randint(0, 100) > 50:
+        raise Exception("summarize encountered an error")
+    return f"summary of {content}"
+```
+
+Now, each time you run the app, both `download()` and `summarize()` have a 50% chance of raising an exception.
+
+**Without Resonate**, raised exceptions would stop the execution and no more progress would be made.
+
+Consider if the app was written without Resonate, like this:
+
+```python
+def downloadAndSummarize(url):
+    print("running downloadAndSummarize")
+    content = download(url)
+    summary = summarize(content)
+    return summary
+
+
+def download(_, url):
+    print("running download")
+    if random.randint(0, 100) > 50:
+        raise Exception("download encountered an error")
+    return f"content of {url}"
+
+
+def summarize(_, content):
+    print("running summarize")
+    if random.randint(0, 100) > 50:
+        raise Exception("summarize encountered an error")
+    return f"summary of {content}"
+
+
+def main():
+    try:
+        summary = downloadAndSummary("https://example.com")
+        print(summary)
+    except Exception as e:
+        print(e)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+If either `download()` or `summarize()` raise the exception, the execution of `downloadAndSummarize()` stops at the raised exception, `main()` prints the error, and that’s that.
+
+**With Resonate** you will notice that even if there is a raised exception, the function retries until it succeeds, enabling `downloadAndSummarize()` to complete and return the summary.
+
+Run your app several times until you encounter an error, and then wait and watch.
+
+You should eventually see something like this:
+
+```shell
+running downloadAndSummarize
+running download
+[2025-07-18 09:41:54] [WARNING] [https://example.com] [https://example.com.1] Function download('https://example.com') failed with Exception('download encountered an error') (retrying in 2.0s)
+running download
+running summarize
+[2025-07-18 09:41:56] [WARNING] [https://example.com] [https://example.com.2] Function summarize('content of https://example.com') failed with Exception('summarize encountered an error') (retrying in 2.0s)
+running summarize
+summary of content of https://example.com!
+```
+
+You will notice that if an exception is thrown, Resonate automatically retries executing the function.
+
+**Congratulations! You have just witnessed Resonate's automatic function retries in action!**
+
+By default, this will happen forever until the execution succeeds.
+
+We say, “by default”, because this behaviour is configurable.
+You can adjust the backoff interval (time between retries), maximum attempts, and which errors cause retries and which do not.
+For example, here we adjust the Retry Policy of the invocation of bar to be “linear”:
+
+```python
+#...
+
+    content = yield ctx.lfc(download, url).options(
+        retry_policy=linear(delay=1, max_attempts=10)
+    )
+```
+
+The Retry Policy in the previous code example sets the initial delay to 1 second, with a linear increase of the delay up to maximum of 10 attempts.
+
+Later in the tutorial we will customize our Retry Policy to ignore certain application-level errors that we know shouldn’t be retried.
+
+:::tip Application-level vs Platform-level failures
+
+Application-level failures as errors that occur during the execution of a function, such as a raised exception in `download()` or `summarize()`.
+These are errors related to use case logic.
+
+Platform-level failures are errors that occur at the platform level, such as a process crash, a network failure, or issues with Resonate itself.
+
+:::
+
+The previous part of the tutorial showcased Resonate’s ability to automatically Retry function executions when an exception is raised, and runs the top-level function to completion.
+
+But what if the process / worker crashes altogether in the middle of the execution?
+
+In the next part of the tutorial, we will connect the worker to a Resonate Server to enable Recovery!
+
+## Crash recovery
+
+In this part of the tutorial you’ll connect your worker to a Resonate Server to enable recovery process crashes (platform-level failures), effectively providing "Durable Execution".
+The Resonate Server acts as a supervisor and orchestrator for your worker, storing promises and sending messages.
+
+Run the following command in a separate terminal to start the Resonate Server:
+
+```shell
+resonate serve
+```
+
+After the server is running, update your worker code.
+
+There are two code updates you need to make for this part of the tutorial.
+
+1. Change the Local Store to a Remote Store so that the worker can recover from a process crash.
+2. Add a 10 second sleep to between the workflow steps so you have time to simulate a process crash.
+
+First, instantiate Resonate in your worker with a Remote Store instead of a Local Store.
+
+In Part 1, the template you used to scaffold your worker used a Local Store (in-process memory).
+
+```python
+# Create a Resonate instance with a local store
+resonate = Resonate.local()
+```
+
+Update the worker to use a remote store.
+
+```python
+# Create a Resonate instance connected to the Resonate Server
+resonate = Resonate.remote()
+```
+
+:::tip Default Remote Store Configuration
+
+When you instantiate an instance of Resonate that connects to a remote store, the default connection settings will connect to a Resonate Server running on `http://localhost:8001`.
+Additionally, your worker will connect to the Resonate Server with a long poll connection to to receive messages, (messages contain tasks that tell the worker what to do next).
+
+:::
+
+Next, add a 10 second sleep to `downloadAndSummarize()` between the `download()` and `summarize()` steps.
+You don't need to import anything to do this.
+You can use the `sleep()` API provided by Resonate Context.
+
+```python
+@resonate.register
+def downloadAndSummarize(ctx, url):
+    print("running downloadAndSummarize")
+    content = yield ctx.lfc(download, url)
+    # highlight-next-line
+    yield ctx.sleep(10)
+    summary = yield ctx.lfc(summarize, content)
+    return summary
+```
+
+Now try running your worker again.
+
+```shell
+uv run app
+```
+
+You will see the following logs:
+
+```
+running downloadAndSummarize
+running download
+```
+
+After you see the log "running download", kill the process.
+
+It doesn't matter how long you wait, but when you are ready to continue, restart the worker.
+
+```shell
+uv run app
+```
+
+Remember, each step is still going to fail 50% of the time, so you may see errors.
+But besides the errors, you should see the following logs:
+
+```shell
+running downloadAndSummarize
+running summarize
+summary of content of https://example.com!
+```
+
+Notice that you don't see the log "running download" after retarting the worker?
+That's because the Resonate Server stored the result of `download()` in a promise.
+When you restarted the worker after the crash, `downloadAndSummarize()` re-executed and the result of `download()` was retrieved from the promise.
+
+**Congratulations, you have just witnessed Durable Execution in action!**
+
+Don't change anything in the code and run the worker again.
+
+This time the only log you should see is the following:
+
+```shell
+summary of content of https://example.com!
+```
+
+That's because the Resonate Server stored the result of `downloadAndSummarize()` in a promise.
+
+If you look at the code where we invoke `downloadAndSummarize()`, you'll notice that we are using the url as the promise ID.
+
+```python
+
+# ...
+
+    url = "https://example.com"
+    # the first parameter is the promise ID
+    handle = downloadAndSummarize.run(url, url=url)
+
+    # ...
+```
+
+You can inspect the promise ID in the Resonate Server using the Resonate CLI.
+
+```shell
+resonate promise get https://example.com
+```
+
+You should see something like this:
+
+```shell
+Id:       https://example.com
+State:    RESOLVED
+Timeout:  1784400650144
+
+Idempotency Key (create):    https://example.com
+Idempotency Key (complete):  https://example.com
+
+Param:
+  Headers:
+    resonate:format-py:  {"func": "downloadAndSummarize", "args": {"py/tuple": ["https://example.com"]}, "kwargs": {}, "version": 1}
+  Data:
+    {"func": "downloadAndSummarize", "args": ["https://example.com"], "kwargs": {}, "version": 1}
+
+Value:
+  Headers:
+    resonate:format-py:  "summary of content of https://example.com!"
+  Data:
+    "summary of content of https://example.com!"
+
+Tags:
+  resonate:invoke:  poll://any@worker
+  resonate:parent:  https://example.com
+  resonate:root:    https://example.com
+  resonate:scope:   global
+```
+
+Promise IDs are unique identifiers in a Resonate Application, and you must specify the promise ID for top-level invocations.
+The promise IDs of `download()` and `summarize()` are generated automatically by default (you can turn off idempotency, or customize the promise IDs) and Resonate will know not to re-invoke those functions if `downloadAndSummarize()` is invoked again with the same promise ID.
+
+If you are using the local store, the promise ID persists only as long as the process is alive.
+If you are using a remote promise store (Resonate Server), the promise ID persists indefinitely.
+
+Change the promise ID to something else and run the worker again.
+
+```python
+# ...
+    url="https://resonatehq.io"
+    handle = downloadAndSummarize.run(url, url=url)
+
+    # ...
+```
+
+You will see that downloadAndSummarize() executes again from the top.
+
+In the next part of the tutorial, you switch from using `resonate.run()` to using `resonate.rpc()` and asyncronously invoke downloadAndSummarize() via an RPC (Remote Procedure Call).
+
+## Asynchronous RPC
+
+In this part of the tutorial, you will move the code that invokes `downloadAndSummarize()` to a separate process.
+
+Currently the code that invokes `downloadAndSummarize()` lives in the same file and process as `downloadAndSummarize()` and the other steps.
+
+It looks like this:
+
+```python
+def main():
+    try:
+        url = "https://example.com"
+        handle = downloadAndSummarize.run(url, url=url)
+        print(handle.result())
+    except Exception as e:
+        print(e)
+```
+
+The `.run()` method means "run this function right here".
+
+You will move the invocation of `downloadAndSummarize()` to a separate process and use Resonate's `.rpc()` method to invoke it.
+The `.rpc()` method means "invoke this function over there".
+
+Start by creating a new file `invoke.py` in the `src` directory and add the following code:
+
+```python
+from resonate import Resonate
+
+resonate = Resonate.remote(
+    group="invoke",
+)
+
+def main():
+    try:
+        url= "https://example.com"
+        handle = resonate.options(target="poll://any@worker").rpc("downloadAndSummarize", url=url)
+        print(handle.result())
+    except Exception as e:
+        print(e)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+In the previous code example, you are creating a new instance of Resonate that connects to the Resonate Server, identifying itself as a worker in the "invoke" group.
+Additionally, you are invoking `foo()` using the `.rpc()` method instead of the `.run()` method.
+
+A very important aspect of this change to the invocation is the `target` parameter in the `.options()` method.
+This is how we instruct the Resonate Server where to send messages related to this invocation.
+
+The `target` parameter is set to `poll://any@worker`, which means "send messages via the poller transport plugin to any worker that is part of the 'worker' group".
+
+:::tip
+
+If you are familiar with Temporal, then you are familiar with using task queue names to route tasks to specific workers.
+
+With Temporal, the caller has limited control over which worker picks up the task, and how — That is, the caller can only specify a task queue name and workers can only long poll the Temporal Server for tasks.
+
+Resonate's targeting capability supports specifying the message transport as well as unicast vs anycast and anycast with preference: `<transport-plugin>://<any | uni>@<group>/<id>`.
+
+:::
+
+Next you need to apply two updates to `app.py`:
+
+1. Update the instantiation of the Resonate instance to identify it as part of the `worker` group.
+
+```python
+resonate = Resonate.remote(
+    group="worker",
+)
+```
+
+2. Remove the invocation of `downloadAndSummarize()` in `main()` and replace it with `resonate.start()` to explicitly start Resonate worker threads and `Event().wait()` to keep the worker alive and waiting on messages.
+
+```python
+from threading import Event
+
+# ...
+
+def main():
+    resonate.start()
+    Event().wait()
+```
+
+Now you will run the worker and invoke script separately.
+
+In one terminal, run the worker:
+
+```shell
+uv run app
+```
+
+In another terminal, run the invoke script:
+
+```shell
+uv run src/invoke.py
+```
+
+:::tip Pass a unique promise ID
+
+Remember to update the promise ID in the invoke script to something unique (use a different website url), such as `https://distributed-async-await.io`, so that the invocation does not return the value from the already completed promise with same ID.
+
+If you are familiar with Temporal, then you will expect to invoke new function executions with the same ID and adjust a Workflow Reuse Policy to reject duplicate invocations with the same ID.
+
+Resonate correlates IDs with return values.
+So you must provide a unique ID if you want to invoke a new execution that results in a new value.
+
+:::
+
+You should see the logs in the worker terminal and eventually the result printed in the invoke script terminal.
+
+**Congratulations! You have just invoked a function in a different process using Resonate's Async RPC API!**
+
+From here, you can see how Resonate handles leader election and load balancing across multiple workers, by running multiple workers in the same group.
+
+For example, if you generate a random promise ID in the invoke script, you can run multiple instances of the invoke script and see how Resonate distributes the invocations across the workers in the `worker` group.
+
+```python
+import uuid
+# ...
+
+def main():
+    handles = []
+    for _ in range(5):
+        promise_id = f"{str(uuid.uuid4())}"
+        handle = resonate
+            .options(target="poll://any@worker")
+            .rpc(promise_id, "downloadAndSummarize", "https://example.com")
+        handles.append(handle)
+    for handle in handles:
+        print(handle.result())
+```
+
+Next, you will block the execution of the `downloadAndSummarize()` workflow on input from a human-in-the-loop.
+
+## Human-in-the-loop
+
+In this part of the tutorial, you will add a step to the workflow that blocks the execution on input from a human-in-the-loop.
+Resonate enables you to create and wait on a promise, blocking progress until the promise resolves.
+So far, you have created promises attached to function executions.
+But you can also create a promise that is resolved by an external process, such as a human-in-the-loop.
+
+Let's apply two updates to the worker (`app.py`):
+
+1. Block the workflow on input from a human-in-the-loop after the summarization step.
+2. Add a While loop that breaks depending on the input from the human-in-the-loop.
+3. (Optional) Remove the sleep between steps to focus on the human-in-the-loop aspect of the workflow.
+
+```python
+@resonate.register
+def downloadAndSummarize(ctx, url):
+    print("running downloadAndSummarize")
+    content = yield ctx.lfc(download, url)
+    while True:
+        summary = yield ctx.lfc(summarize, content)
+        promise = yield ctx.promise()
+
+        print(promise.id)
+
+        confirmed = yield promise
+        if confirmed:
+            break
+
+    return summary
+```
+
+In the previous code example, we create a promise using `ctx.promise()`, print the ID of the promise (so we can use the ID to resolve it from another process), and then wait for the promise to be resolved using `yield promise`.
+
+We can also pass data to the workflow through the resolution of the promise, in this case it will be a boolean value indicating whether to run the summarization step again or not.
+Confirmed means the summarization was accepted and we can move on to the next step.
+
+Restart your worker.
+
+And, update your invocation script to provide a new URL and run the script again.
+
+You will see the summarization step run and then the ID of the promise printed in the logs.
+Then the workflow will block on the resolution of the promise (you won't get the result back to the invocation script yet).
+
+So, now we can resolve the promise using the Python SDK or with the CLI.
+For now, let's resolve the promise with the CLI.
+
+Copy the promise ID printed in the logs.
+It should be something like `https://example.com.3`.
+
+Open a new terminal and run the following command to resolve the promise:
+
+```shell
+resonate promises resolve <promise_id> --data true
+```
+
+You should see the result of the `downloadAndSummarize()` workflow printed in the invocation script terminal.
+
+**Congratulations you have just created a human-in-the-loop workflow!**
+
+Now that we have the fundamental building blocks in place, let's make it into a real application.
+
+## Business logic
+
+In this part of the tutorial, you will add the rest of pieces that will convert this theoretical workflow into a real working application that downloads a webpage, summarizes it, and waits for confirmation from a human-in-the-loop.
+
+To do this you will:
+
+- Convert the invocation script into a Flask application (HTTP Gateway) that handles two routes:
+  - `/summarize` to start the summarization workflow.
+  - `/confirm` to resolve the promise created in the workflow and pass data to the workflow.
+- Add a new step to the workflow that "sends an email" with the summary (this will just print the summary and links to confirm or reject it).
+- Add Selenium and Beautiful Soup to scrape the webpage content.
+- Add Ollama to summarize the content.
+
+Start by converting the invocation script into a Flask application.
+
+Change the `invoke.py` file to `gateway.py`.
+
+Add `flask` as a dependency to your project:
+
+```shell
+uv add flask
+```
+
+And change the code in `gateway.py` to the following:
+
+```python
+from flask import Flask, request, jsonify
+from resonate import Resonate
+import json
+import re
+
+app = Flask(__name__)
+
+resonate = Resonate.remote(
+    group="gateway",
+)
+
+
+# Invoke the downloadAndSummarize workflow
+@app.route("/summarize", methods=["POST"])
+def summarize_route_handler():
+    try:
+        data = request.get_json()
+        if "url" not in data and "email" not in data:
+            return jsonify({"error": "URL and email required"}), 400
+
+        params = {}
+        params["url"] = data["url"]
+        params["email"] = data["email"]
+        params["usable_id"] = clean(data["url"])
+
+        # Use Resonate's Async RPC to start the workflow
+        _ = resonate.options(target="poll://any@worker").rpc(
+            f"downloadAndSummarize-{params['usable_id']}",
+            "downloadAndSummarize",
+            params,
+        )
+
+        return jsonify({"summary": "workflow started"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# Handle the confirmation of summarization
+@app.route("/confirm", methods=["GET"])
+def confirm_route_handler():
+    try:
+
+        promise_id = request.args.get("promise_id")
+        confirm = request.args.get("confirm")
+
+        if not promise_id or confirm is None:
+            return jsonify({"error": "url and confirmation params are required"}), 400
+
+        confirm = confirm.lower() == "true"
+
+        resonate.promises.resolve(
+            id=promise_id,
+            data=json.dumps(confirm),
+        )
+        if confirm:
+            return jsonify({"message": "Summarization confirmed."}), 200
+        else:
+            return jsonify({"message": "Summarization rejected."}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# Clean the URL to create a usable ID that can be used in file names
+def clean(url):
+    tmp = re.sub(r"^https?://", "", url)
+    return tmp.replace("/", "-")
+
+
+def main():
+    app.run(host="127.0.0.1", port=5000)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+In the previous code example, you have created a Flask application with two routes:
+
+- `/summarize`: This route handles the POST request to start the summarization workflow.
+  It expects a JSON payload with `url` and `email` fields.
+  And all the data has been placed into a dictionary called `params` that is passed to the `downloadAndSummarize()` workflow.
+- `/confirm`: This route handles the GET request to confirm or reject the summarization.
+  It expects `promise_id` and `confirm` query parameters.
+  Previously we used the CLI to resolve the promise, but now we will resolve it via this route handler and the `promises.resolve()` method.
+
+The `clean()` function is used to create a usable ID from the URL that can be reliably used in file names and promise IDs.
+
+Next you will update the worker (`app.py`).
+
+Add the following dependencies to your project:
+
+```shell
+uv add selenium bs4 ollama
+```
+
+Then, update the `download()` and `summarize()` functions to use Selenium and Beautiful Soup to scrape the webpage content and Ollama to summarize it.
+
+```python
+class NetworkResolutionError(Exception):
+    """Permanent DNS resolution failure. Do not retry."""
+
+def download(_, usable_id, url):
+    print(f"Downloading content from {url}")
+    filename = f"{usable_id}.txt"
+    if os.path.exists(filename):
+        print(f"File {filename} already exists. Skipping download.")
+        return filename
+    try:
+        driver = webdriver.Chrome()
+        driver.get(url)
+        soup = BeautifulSoup(driver.page_source, "html.parser")
+        content = soup.get_text()
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(content)
+        driver.quit()
+        return filename
+    except Exception as e:
+        driver.quit()
+        if "net::ERR_NAME_NOT_RESOLVED" in str(e):
+            raise NetworkResolutionError(f"DNS failure: {e}") from e
+        raise Exception(f"Failed to download data: {e}")
+
+
+def summarize(_, filename):
+    print(f"Summarizing content from {filename}")
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            file_content = f.read()
+
+        options: ollama.Options | None = None
+        result = ollama.chat(
+            model="llama3.1",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You review text scraped from a website and summarize it. Ignore text that does not support the narrative and purpose of the website.",
+                },
+                {"role": "user", "content": f"Content to summarize: {file_content}"},
+            ],
+            options=options,
+        )
+        return result.message.content
+    except Exception as e:
+        raise Exception(f"Failed to summarize content: {e}")
+```
+
+In the previous code example, the `download()` function uses the Selenium webdrive and Beautiful Soup to scrape the webpage content and then save it to a file.
+
+:::tip Why save to a file?
+
+We can't assume that the amount of data we scrape from a webpage will fit into promise.
+A promise can hold quite a bit of data, but it is not designed to hold very large amounts and we can't assume that a website scrape will always fit.
+And even if it does, a large amount of data in a promise can lead to performance issues.
+So, we save the content to a file and then pass the filename to the `summarize()` function.
+
+:::
+
+We also handle a specific exception for DNS resolution failures, which we can use to control the retry behavior from the workflow — That is, we won't retry if the DNS resolution fails, as it is a permanent error.
+
+Then the `summarize()` function reads the file and uses Ollama to summarize the content.
+
+Next, add a new step to the `downloadAndSummarize()` that mimics sending an email with the summary and links to confirm or reject the summarization (i.e. resolve the promise that blocks the execution).
+
+```python
+@resonate.register
+def downloadAndSummarize(ctx, params):
+    url = params["url"]
+    usable_id = params["usable_id"]
+    email = params["email"]
+
+    # Download the content from the URL and save it to a file
+    filename = yield ctx.lfc(download, usable_id, url).options(durable=False, non_retryable_exceptions=(NetworkResolutionError,)
+    while True:
+        # Summarize the content of the file
+        summary = yield ctx.lfc(summarize, filename)
+
+        # Create Durable Promise to block on confirmation
+        promise = yield ctx.promise()
+
+        # Send email with summary and confirmation/rejection links
+        yield ctx.lfc(send_email, summary, email, promise.id)
+
+        # Wait for summary to be confirmed or rejected / wait for the promise to be resolved
+        confirmed = yield promise
+        if confirmed:
+            break
+
+        print("Workflow complete")
+    return summary
+
+# ...
+
+def send_email(_, summary, email, promise_id):
+    print(f"Summary: {summary}")
+    print(
+        f"Click to confirm: http://localhost:5000/confirm?confirm=true&promise_id={promise_id}"
+    )
+    print(
+        f"Click to reject: http://localhost:5000/confirm?confirm=false&promise_id={promise_id}"
+    )
+    print(f"Email sent to {email} with summary and confirmation links.")
+    return
+```
+
+In the previous code example, the `downloadAndSummarize()` function now includes a step that sends an email with the summary and links to confirm or reject the summarization.
+Instead of printing the promise ID and using the CLI to resolve the promise, we use the `send_email()` function to print the summary and the links to confirm or reject the summarization.
+The links will point to the `/confirm` endpoint of the Flask application, which will resolve the promise when clicked.
+
+This is more realistic, as it mimics a real-world scenario where a human would receive an email with the summary and links to confirm or reject the summarization.
+
+Additionally you can see that we set a options on the `download()` step:
+
+- `options(durable=False)` means that the result of the `download()` step will not be stored in a promise.
+  This is because, we save the file to disk.
+  If the worker crashes, it is possible that the workflow will recover on a different worker, and the file will not be available.
+  So, in this case we do want to re-download the content if the worker crashes.
+- `non_retryable_exceptions=(NetworkResolutionError,)` means that if the `download()` step raises a `NetworkResolutionError`, it will not be retried.
+  This is because a DNS resolution failure is a permanent error, and we don't want to retry the download in this case.
+
+Now run the worker and the gateway in separate terminals:
+
+```shell
+uv run app
+```
+
+```shell
+uv run src/gateway.py
+```
+
+Now you can start the summarization workflow by sending a POST request to the `/summarize` endpoint with a JSON payload containing the `url` and `email` fields.
+
+For example, you can use cURL to send the request:
+
+```shell
+curl -X POST http://localhost:5000/summarize -H "Content-Type: application/json" -d '{"url": "https://resonatehq.io", "email": "johndoe@example.com"}'
+```
+
+You should see the worker downloading the content from the URL, summarizing it, and then sending an "email" with the summary and links to confirm or reject the summarization.
+
+If you click on the confirm link, you should see the workflow complete and the summary printed in the worker terminal.
+
+If you click on the reject link, the workflow will run the summarization step again, and you will receive a new summary.
+
+**Congratulations, you have just built a website summarization AI agent with Resonate!**
+
+## Conclusion
+
+In this tutorial you've gained hands-on experience with Resonate’s implementation of the Distributed Async Await programming model and explored core features of the SDK, including:
+
+- Automatic application-level retries: Functions that raise exceptions are automatically retried until success (unless configured otherwise).
+- Crash recovery and Durable Execution: By connecting your worker to a Resonate Server, you enabled recovery from process crashes without losing workflow progress.
+- Asynchronous Remote Procedure Calls (Async RPC): You separated function invocation from execution, enabling workers to process tasks in other processes or machines.
+- Human-in-the-loop orchestration: You paused a workflow and resumed it based on human input using durable promises.
+- Fine-grained control over execution behavior: You chose when to enable durability, configured retry policies, and marked specific exceptions as non-retryable for permanent failures.
+
+The final application is:
+
+- Distributed: Workload is load-balanced across workers in the same group.
+- Durable: Intermediate results persist across crashes when connected to a Resonate Server.
+- Scalable: You can run multiple workers and clients with no changes to your code.
+- Composable: All steps (scraping, summarizing, approval flow) are reusable and decoupled.
+
+Join the [Resonate Discord community](https://resonatehq.io/discord) to share ideas, ask questions, or give feedback.

@@ -14,6 +14,11 @@
       "source": "/operate/server-errors",
       "destination": "/operate/errors",
       "permanent": true
+    },
+    {
+      "source": "/learn/python-sdk/website-summarization-app",
+      "destination": "/learn/python-sdk/website-summarization-agent",
+      "permanent": true
     }
   ]
 }

@@ -104,6 +104,10 @@ article a {
   margin-right: 4px;
 }
 
+.tabs__item--active {
+  border-color: #88a7f6 !important;
+}
+
 .navbar {
   border-width: 0px 0 1px 0;
   border-style: solid;
@@ -185,6 +189,14 @@ pagination-nav__link:hover {
 }
 
 .alert--success {
+  background-color: #ffffff;
+  border-left: 4px solid #88a7f6;
+  border-right: 4px solid #88a7f6;
+  border-radius: 0;
+  box-shadow: none !important;
+}
+
+.alert--differentiator {
   background-color: #ffffff;
   border-left: 4px solid #88a7f6;
   border-right: 4px solid #88a7f6;
