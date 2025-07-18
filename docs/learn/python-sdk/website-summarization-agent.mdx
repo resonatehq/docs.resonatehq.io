@@ -162,13 +162,13 @@ hello world!
 
 Let's update the function names to better reflect the purpose of the use case.
 
-Update the `foo()`, `bar()`, and `baz()` function names to `downloadAndSummarize()`, `download()`, and `summarize()` respectively.
+Update the `foo()`, `bar()`, and `baz()` function names to `download_and_summarize()`, `download()`, and `summarize()` respectively.
 And, instead of passing a greeting, let's pass a URL of a website to download and summarize.
 
 ```python
 @resonate.register
-def downloadAndSummarize(ctx, url):
-    print("running downloadAndSummarize")
+def download_and_summarize(ctx, url):
+    print("running download_and_summarize")
     content = yield ctx.lfc(download, url)
     summary = yield ctx.lfc(summarize, content)
     return summary
@@ -186,7 +186,7 @@ def summarize(_, content):
 def main():
     try:
         url = "https://example.com"
-        handle = downloadAndSummarize.run(url, url=url)
+        handle = download_and_summarize.run(url, url=url)
         print(handle.result())
     except Exception as e:
         print(e)
@@ -230,8 +230,8 @@ Now, each time you run the app, both `download()` and `summarize()` have a 50% c
 Consider if the app was written without Resonate, like this:
 
 ```python
-def downloadAndSummarize(url):
-    print("running downloadAndSummarize")
+def download_and_summarize(url):
+    print("running download_and_summarize")
     content = download(url)
     summary = summarize(content)
     return summary
@@ -263,16 +263,16 @@ if __name__ == "__main__":
     main()
 ```
 
-If either `download()` or `summarize()` raise the exception, the execution of `downloadAndSummarize()` stops at the raised exception, `main()` prints the error, and that’s that.
+If either `download()` or `summarize()` raise the exception, the execution of `download_and_summarize()` stops at the raised exception, `main()` prints the error, and that’s that.
 
-**With Resonate** you will notice that even if there is a raised exception, the function retries until it succeeds, enabling `downloadAndSummarize()` to complete and return the summary.
+**With Resonate** you will notice that even if there is a raised exception, the function retries until it succeeds, enabling `download_and_summarize()` to complete and return the summary.
 
 Run your app several times until you encounter an error, and then wait and watch.
 
 You should eventually see something like this:
 
 ```shell
-running downloadAndSummarize
+running download_and_summarize
 running download
 [2025-07-18 09:41:54] [WARNING] [https://example.com] [https://example.com.1] Function download('https://example.com') failed with Exception('download encountered an error') (retrying in 2.0s)
 running download
@@ -360,14 +360,14 @@ Additionally, your worker will connect to the Resonate Server with a long poll c
 
 :::
 
-Next, add a 10 second sleep to `downloadAndSummarize()` between the `download()` and `summarize()` steps.
+Next, add a 10 second sleep to `download_and_summarize()` between the `download()` and `summarize()` steps.
 You don't need to import anything to do this.
 You can use the `sleep()` API provided by Resonate Context.
 
 ```python
 @resonate.register
-def downloadAndSummarize(ctx, url):
-    print("running downloadAndSummarize")
+def download_and_summarize(ctx, url):
+    print("running download_and_summarize")
     content = yield ctx.lfc(download, url)
     # highlight-next-line
     yield ctx.sleep(10)
@@ -384,7 +384,7 @@ uv run app
 You will see the following logs:
 
 ```
-running downloadAndSummarize
+running download_and_summarize
 running download
 ```
 
@@ -400,14 +400,14 @@ Remember, each step is still going to fail 50% of the time, so you may see error
 But besides the errors, you should see the following logs:
 
 ```shell
-running downloadAndSummarize
+running download_and_summarize
 running summarize
 summary of content of https://example.com!
 ```
 
 Notice that you don't see the log "running download" after retarting the worker?
 That's because the Resonate Server stored the result of `download()` in a promise.
-When you restarted the worker after the crash, `downloadAndSummarize()` re-executed and the result of `download()` was retrieved from the promise.
+When you restarted the worker after the crash, `download_and_summarize()` re-executed and the result of `download()` was retrieved from the promise.
 
 **Congratulations, you have just witnessed Durable Execution in action!**
 
@@ -419,9 +419,9 @@ This time the only log you should see is the following:
 summary of content of https://example.com!
 ```
 
-That's because the Resonate Server stored the result of `downloadAndSummarize()` in a promise.
+That's because the Resonate Server stored the result of `download_and_summarize()` in a promise.
 
-If you look at the code where we invoke `downloadAndSummarize()`, you'll notice that we are using the url as the promise ID.
+If you look at the code where we invoke `download_and_summarize()`, you'll notice that we are using the url as the promise ID.
 
 ```python
 
@@ -429,7 +429,7 @@ If you look at the code where we invoke `downloadAndSummarize()`, you'll notice 
 
     url = "https://example.com"
     # the first parameter is the promise ID
-    handle = downloadAndSummarize.run(url, url=url)
+    handle = download_and_summarize.run(url, url=url)
 
     # ...
 ```
@@ -452,9 +452,9 @@ Idempotency Key (complete):  https://example.com
 
 Param:
   Headers:
-    resonate:format-py:  {"func": "downloadAndSummarize", "args": {"py/tuple": ["https://example.com"]}, "kwargs": {}, "version": 1}
+    resonate:format-py:  {"func": "download_and_summarize", "args": {"py/tuple": ["https://example.com"]}, "kwargs": {}, "version": 1}
   Data:
-    {"func": "downloadAndSummarize", "args": ["https://example.com"], "kwargs": {}, "version": 1}
+    {"func": "download_and_summarize", "args": ["https://example.com"], "kwargs": {}, "version": 1}
 
 Value:
   Headers:
@@ -470,7 +470,7 @@ Tags:
 ```
 
 Promise IDs are unique identifiers in a Resonate Application, and you must specify the promise ID for top-level invocations.
-The promise IDs of `download()` and `summarize()` are generated automatically by default (you can turn off idempotency, or customize the promise IDs) and Resonate will know not to re-invoke those functions if `downloadAndSummarize()` is invoked again with the same promise ID.
+The promise IDs of `download()` and `summarize()` are generated automatically by default (you can turn off idempotency, or customize the promise IDs) and Resonate will know not to re-invoke those functions if `download_and_summarize()` is invoked again with the same promise ID.
 
 If you are using the local store, the promise ID persists only as long as the process is alive.
 If you are using a remote promise store (Resonate Server), the promise ID persists indefinitely.
@@ -480,20 +480,20 @@ Change the promise ID to something else and run the worker again.
 ```python
 # ...
     url="https://resonatehq.io"
-    handle = downloadAndSummarize.run(url, url=url)
+    handle = download_and_summarize.run(url, url=url)
 
     # ...
 ```
 
-You will see that downloadAndSummarize() executes again from the top.
+You will see that download_and_summarize() executes again from the top.
 
-In the next part of the tutorial, you switch from using `resonate.run()` to using `resonate.rpc()` and asyncronously invoke downloadAndSummarize() via an RPC (Remote Procedure Call).
+In the next part of the tutorial, you switch from using `resonate.run()` to using `resonate.rpc()` and asyncronously invoke download_and_summarize() via an RPC (Remote Procedure Call).
 
 ## Asynchronous RPC
 
-In this part of the tutorial, you will move the code that invokes `downloadAndSummarize()` to a separate process.
+In this part of the tutorial, you will move the code that invokes `download_and_summarize()` to a separate process.
 
-Currently the code that invokes `downloadAndSummarize()` lives in the same file and process as `downloadAndSummarize()` and the other steps.
+Currently the code that invokes `download_and_summarize()` lives in the same file and process as `download_and_summarize()` and the other steps.
 
 It looks like this:
 
@@ -501,7 +501,7 @@ It looks like this:
 def main():
     try:
         url = "https://example.com"
-        handle = downloadAndSummarize.run(url, url=url)
+        handle = download_and_summarize.run(url, url=url)
         print(handle.result())
     except Exception as e:
         print(e)
@@ -509,7 +509,7 @@ def main():
 
 The `.run()` method means "run this function right here".
 
-You will move the invocation of `downloadAndSummarize()` to a separate process and use Resonate's `.rpc()` method to invoke it.
+You will move the invocation of `download_and_summarize()` to a separate process and use Resonate's `.rpc()` method to invoke it.
 The `.rpc()` method means "invoke this function over there".
 
 Start by creating a new file `invoke.py` in the `src` directory and add the following code:
@@ -524,7 +524,7 @@ resonate = Resonate.remote(
 def main():
     try:
         url= "https://example.com"
-        handle = resonate.options(target="poll://any@worker").rpc("downloadAndSummarize", url=url)
+        handle = resonate.options(target="poll://any@worker").rpc(url, "download_and_summarize", url)
         print(handle.result())
     except Exception as e:
         print(e)
@@ -562,7 +562,7 @@ resonate = Resonate.remote(
 )
 ```
 
-2. Remove the invocation of `downloadAndSummarize()` in `main()` and replace it with `resonate.start()` to explicitly start Resonate worker threads and `Event().wait()` to keep the worker alive and waiting on messages.
+2. Remove the invocation of `download_and_summarize()` in `main()` and replace it with `resonate.start()` to explicitly start Resonate worker threads and `Event().wait()` to keep the worker alive and waiting on messages.
 
 ```python
 from threading import Event
@@ -617,13 +617,13 @@ def main():
         promise_id = f"{str(uuid.uuid4())}"
         handle = resonate
             .options(target="poll://any@worker")
-            .rpc(promise_id, "downloadAndSummarize", "https://example.com")
+            .rpc(promise_id, "download_and_summarize", "https://example.com")
         handles.append(handle)
     for handle in handles:
         print(handle.result())
 ```
 
-Next, you will block the execution of the `downloadAndSummarize()` workflow on input from a human-in-the-loop.
+Next, you will block the execution of the `download_and_summarize()` workflow on input from a human-in-the-loop.
 
 ## Human-in-the-loop
 
@@ -640,8 +640,8 @@ Let's apply two updates to the worker (`app.py`):
 
 ```python
 @resonate.register
-def downloadAndSummarize(ctx, url):
-    print("running downloadAndSummarize")
+def download_and_summarize(ctx, url):
+    print("running download_and_summarize")
     content = yield ctx.lfc(download, url)
     while True:
         summary = yield ctx.lfc(summarize, content)
@@ -680,7 +680,7 @@ Open a new terminal and run the following command to resolve the promise:
 resonate promises resolve <promise_id> --data true
 ```
 
-You should see the result of the `downloadAndSummarize()` workflow printed in the invocation script terminal.
+You should see the result of the `download_and_summarize()` workflow printed in the invocation script terminal.
 
 **Congratulations you have just created a human-in-the-loop workflow!**
 
@@ -724,7 +724,7 @@ resonate = Resonate.remote(
 )
 
 
-# Invoke the downloadAndSummarize workflow
+# Invoke the download_and_summarize workflow
 @app.route("/summarize", methods=["POST"])
 def summarize_route_handler():
     try:
@@ -739,8 +739,8 @@ def summarize_route_handler():
 
         # Use Resonate's Async RPC to start the workflow
         _ = resonate.options(target="poll://any@worker").rpc(
-            f"downloadAndSummarize-{params['usable_id']}",
-            "downloadAndSummarize",
+            f"download_and_summarize-{params['usable_id']}",
+            "download_and_summarize",
             params,
         )
 
@@ -792,7 +792,7 @@ In the previous code example, you have created a Flask application with two rout
 
 - `/summarize`: This route handles the POST request to start the summarization workflow.
   It expects a JSON payload with `url` and `email` fields.
-  And all the data has been placed into a dictionary called `params` that is passed to the `downloadAndSummarize()` workflow.
+  And all the data has been placed into a dictionary called `params` that is passed to the `download_and_summarize()` workflow.
 - `/confirm`: This route handles the GET request to confirm or reject the summarization.
   It expects `promise_id` and `confirm` query parameters.
   Previously we used the CLI to resolve the promise, but now we will resolve it via this route handler and the `promises.resolve()` method.
@@ -873,11 +873,11 @@ We also handle a specific exception for DNS resolution failures, which we can us
 
 Then the `summarize()` function reads the file and uses Ollama to summarize the content.
 
-Next, add a new step to the `downloadAndSummarize()` that mimics sending an email with the summary and links to confirm or reject the summarization (i.e. resolve the promise that blocks the execution).
+Next, add a new step to the `download_and_summarize()` that mimics sending an email with the summary and links to confirm or reject the summarization (i.e. resolve the promise that blocks the execution).
 
 ```python
 @resonate.register
-def downloadAndSummarize(ctx, params):
+def download_and_summarize(ctx, params):
     url = params["url"]
     usable_id = params["usable_id"]
     email = params["email"]
@@ -916,7 +916,7 @@ def send_email(_, summary, email, promise_id):
     return
 ```
 
-In the previous code example, the `downloadAndSummarize()` function now includes a step that sends an email with the summary and links to confirm or reject the summarization.
+In the previous code example, the `download_and_summarize()` function now includes a step that sends an email with the summary and links to confirm or reject the summarization.
 Instead of printing the promise ID and using the CLI to resolve the promise, we use the `send_email()` function to print the summary and the links to confirm or reject the summarization.
 The links will point to the `/confirm` endpoint of the Flask application, which will resolve the promise when clicked.
 
