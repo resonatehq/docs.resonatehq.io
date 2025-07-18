@@ -136,6 +136,10 @@ const config: Config = {
       href: "https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap",
       rel: "stylesheet",
     },
+    {
+      href: "https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css",
+      rel: "stylesheet",
+    },
   ],
 
   themeConfig: {
