@@ -41,6 +41,16 @@ const config: Config = {
           showLastUpdateAuthor: true,
           breadcrumbs: true,
           exclude: ["**/code/**"],
+          admonitions: {
+            keywords: [
+              "note",
+              "tip",
+              "info",
+              "caution",
+              "danger",
+              "differentiator",
+            ],
+          },
         },
         blog: false,
         theme: {

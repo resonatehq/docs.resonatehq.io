@@ -3,13 +3,24 @@ id: get-started
 title: Get started with Resonate
 sidebar_label: Get started
 sidebar_position: 2
+toc_max_heading_level: 4
 last_update:
   date: "03-13-2025"
 tags:
   - get-started
 ---
 
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
 **How to get started using Resonate?**
+
+<Tabs>
+  <TabItem value="new" label="New project" default>
+
+## Scaffold a new project
+
+Follow these steps to get started with a new project using Resonate.
 
 ### 1. Install the CLI
 
@@ -19,9 +30,11 @@ You can install the CLI using brew or download a binary from the [releases page]
 brew install resonatehq/tap/resonate
 ```
 
-### 2. Scaffold a project
+### 2. Use a template
 
-You can list the available templates and their descriptions using:
+Scaffold a new project using a template from the CLI.
+
+You can list the available templates and their descriptions using the following command:
 
 ```shell
 resonate projects list
@@ -35,14 +48,208 @@ Scaffold a project from one of the listed templates.
 resonate projects create --template <template_name> --name <your_project_name>
 ```
 
-### 3. Optional - Run the Resonate Server
+### 3. Run the Resonate Server
 
-Depending on the template you choose and the features you want to use, you will want to run the Resonate Server:
+Run the Resonate Server as a remote promise store and message source.
+
+Depending on the template you choose and the features you want to use, you will want to run the Resonate Server.
 
 ```shell
 resonate serve
 ```
 
-### 4. Start customizing the template!
+### 4. Customize the template!
 
-From here, if you are familiar with Resonate you can make your way using the [feature development guides](/develop), [tutorials](/learn), and [example apps](https://github.com/resonatehq-examples).
+Customize the template to your use case.
+Use the [feature development guides](/develop), [tutorials](/learn), and [example apps](https://github.com/resonatehq-examples) as reference.
+
+  </TabItem>
+  <TabItem value="existing" label="Existing project">
+    
+## Existing project
+
+Select the programming language of your existing project and follow the steps to integrate Resonate.
+
+      <Tabs>
+        <TabItem value="python" label="Python" default>
+
+## Python SDK
+
+Integrate the Resonate Python SDK into your existing Python project.
+
+### 1. Add the Python SDK as dependency
+
+Add the Resonate Python SDK to your project as a dependency.
+
+Add with uv:
+
+```shell
+uv add resonate-sdk
+```
+
+Add with pip:
+
+```shell
+pip install resonate-sdk
+```
+
+### 2. Initialize Resonate
+
+Initialize Resonate in your Worker or Application Node.
+
+Initialize using local memory as a promise store.
+Using local memory does not require any additional dependencies (such as a Resonate Server).
+
+```python
+from resonate import Resonate
+
+resonate = Resonate().local()
+```
+
+Initialize using a remote promise store and message source.
+The default configuration connects to a locally running Resonate Server.
+
+```python
+from resonate import Resonate
+
+resonate = Resonate.remote()
+```
+
+### 3. Register a function
+
+Register a function with Resonate using the `register` decorator or the `register` method.
+
+All functions registered with Resonate or called from a Resonate function must define Context as the first argument.
+
+```python
+@resonate.register
+def foo(ctx, arg1, arg2):
+    # Your function logic here
+    return result
+```
+
+You can also register a function with the register method.
+
+```python
+def foo(ctx, arg1, arg2):
+    # Your function logic here
+    return result
+
+resonate.register(foo)
+```
+
+### 4. Invoke a function
+
+Invoke a function registered with Resonate using the `run` method or the `rpc` method.
+
+If the function is in the same Worker or Application Node, you can invoke it directly with the run method.
+
+```python
+handle = foo.run(promise_id, arg1, arg2)
+
+# or using the Resonate instance
+handle = resonate.run(promise_id, "foo", arg1, arg2)
+```
+
+If the function is in a different Worker or Application Node, you can invoke it with the rpc method on the Resonate instance.
+To do this, your worker must be connected to a remote store and message source (Resonate Server).
+
+```python
+handle = resonate
+  .options(target="<transport_plugin>://<unique_id>@<group>/<id>")
+  .rpc("foo", promise_id, arg1, arg2)
+```
+
+### 5. Get the result
+
+Getting the result of a function is a blocking operation.
+
+Use the `.result()` method on the handle to get the result of the function.
+
+```python
+result = handle.result()
+```
+
+        </TabItem>
+
+        <TabItem value="typescript" label="TypeScript" default>
+
+## TypeScript SDK
+
+Integrate the Resonate TypeScript SDK into your existing TypeScript project.
+
+:::caution New Release in development
+
+A new release of the The TypeScript SDK is currently in development.
+The following instructions are for the current version, which will not be compatible with the new version.
+We recommend waiting for the new release to be available before integrating the TypeScript SDK into your project.
+
+:::
+
+### 1. Add TypeScript SDK as a dependency
+
+Add the Resonate TypeScript SDK to your project as a dependency.
+
+Add with npm:
+
+```shell
+npm install @resonatehq/sdk
+```
+
+Add with yarn:
+
+```shell
+yarn add @resonatehq/sdk
+```
+
+### 2. Initialize Resonate
+
+Initialize Resonate in your Worker or Application Node.
+
+```typescript
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = new Resonate();
+```
+
+### 3. Register a function
+
+You can register a function with Resonate using the `register` method.
+All functions registered with Resonate or called from a Resonate function must define `Context` as the first argument.
+
+```typescript
+resonate.register("custom-function-name", foo);
+
+function foo(ctx: Context, arg1: any, arg2: any): any {
+  // Your function logic here
+  return result;
+}
+```
+
+### 4. Invoke a function
+
+The current version of the TypeScript SDK only supports calling functions locally.
+And you must use the `start` method to initialize the Resonate instance before calling any functions.
+
+```typescript
+resonate.start();
+
+const handle = resonate.run("custom-function-name", promiseId, arg1, arg2);
+```
+
+### 5. Get the result
+
+Getting the result of a function is a blocking operation.
+
+Await on the handle to get the result of the function.
+
+```typescript
+const result = await handle;
+```
+
+        </TabItem>
+      </Tabs>
+
+  </TabItem>
+
+</Tabs>
