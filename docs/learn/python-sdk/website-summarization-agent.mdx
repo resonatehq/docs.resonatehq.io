@@ -812,6 +812,12 @@ uv add selenium bs4 ollama
 Then, update the `download()` and `summarize()` functions to use Selenium and Beautiful Soup to scrape the webpage content and Ollama to summarize it.
 
 ```python
+import ollama
+import os
+from selenium import webdriver
+from bs4 import BeautifulSoup
+# ...
+
 class NetworkResolutionError(Exception):
     """Permanent DNS resolution failure. Do not retry."""
 
@@ -821,8 +827,9 @@ def download(_, usable_id, url):
     if os.path.exists(filename):
         print(f"File {filename} already exists. Skipping download.")
         return filename
+
+    driver = webdriver.Chrome()
     try:
-        driver = webdriver.Chrome()
         driver.get(url)
         soup = BeautifulSoup(driver.page_source, "html.parser")
         content = soup.get_text()
