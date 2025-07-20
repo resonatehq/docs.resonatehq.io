@@ -296,7 +296,7 @@ For example, here we adjust the Retry Policy of the invocation of bar to be “l
 #...
 
     content = yield ctx.lfc(download, url).options(
-        retry_policy=linear(delay=1, max_attempts=10)
+        retry_policy=Linear(delay=1, max_attempts=10)
     )
 ```
 
