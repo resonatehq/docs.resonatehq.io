@@ -253,7 +253,7 @@ def summarize(_, content):
 
 def main():
     try:
-        summary = downloadAndSummary("https://example.com")
+        summary = download_and_summarize("https://example.com")
         print(summary)
     except Exception as e:
         print(e)
