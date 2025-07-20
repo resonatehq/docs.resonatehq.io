@@ -294,6 +294,8 @@ For example, here we adjust the Retry Policy of the invocation of bar to be “l
 
 ```python
 #...
+from resonate.retry_policies import Linear
+# ...
 
     content = yield ctx.lfc(download, url).options(
         retry_policy=Linear(delay=1, max_attempts=10)
@@ -883,7 +885,7 @@ def download_and_summarize(ctx, params):
     email = params["email"]
 
     # Download the content from the URL and save it to a file
-    filename = yield ctx.lfc(download, usable_id, url).options(durable=False, non_retryable_exceptions=(NetworkResolutionError,)
+    filename = yield ctx.lfc(download, usable_id, url).options(durable=False, non_retryable_exceptions=(NetworkResolutionError,))
     while True:
         # Summarize the content of the file
         summary = yield ctx.lfc(summarize, filename)
