@@ -1,0 +1,235 @@
+---
+id: horizontal-scaling
+title: Horizontal Scaling Pattern
+description: Learn how to use Resonate Python SDK to easily scale horizontally to reduce application bottlenecks
+sidebar_label: Horizontal Scaling
+sidebar_position: 1
+last_update:
+  date: "20-07-2025"
+pagination_next: null
+pagination_prev: null
+tags:
+  - python
+  - tutorial
+  - patterns
+---
+
+In this tutorial, you’ll build a workflow that distributes an intensive computation from your current process to a fleet of worker processes that can scale horizontally using the Resonate Python SDK.
+
+As your application’s usage grows, traffic can easily outpace a single machine’s capacity. It’s common for certain endpoint handlers to perform compute‑intensive operations—yet by running those expensive tasks on the same server as your lightweight endpoints, overall responsiveness will begin to suffer.
+
+When this occurs, you can offload compute‑intensive work to a dedicated fleet of worker processes—keeping your API gateway lean and responsive while your workers handle the heavy lifting.
+
+In the first version of this application, we'll do everythin local and expose two handlers: `expensive` and `cheap`. Of course, the goal is too trigger a number of expensive operations at a point that we make cheap take much time than normal.
+
+```shell
+resonate project create --name horizontal-scaling --template lfi-workflow-py
+```
+
+You should now have a directory called "horizontal-scaling" with the following structure
+
+```text
+horizontal-scaling
+    - src/
+        - app.py
+    - pyproject.toml
+```
+
+Replace the content of the file `src/app.py` with the following code:
+
+
+```python
+from collections.abc import Generator
+from typing import Any
+from uuid import uuid4
+from resonate import Resonate, Context, Yieldable
+import time
+import argparse
+
+
+from resonate.models.handle import Handle
+
+# Initialize Resonate with a local store (in memory)
+resonate = Resonate().local()
+
+
+# Register the top-level function with Resonate
+@resonate.register
+def expensive(ctx: Context) -> Generator[Yieldable, Any, str]:
+    yield ctx.lfc(time_consuming_calculation, 3)
+    return "that took some time..."
+
+
+def time_consuming_calculation(ctx: Context, seconds: float) -> None:
+    time.sleep(seconds)
+
+
+@resonate.register
+def cheap(ctx: Context) -> Generator[Yieldable, Any, str]:
+    start = time.perf_counter()
+    v = yield ctx.lfc(lambda ctx, a, b: a + b, 1, 2)
+    assert v == 3
+    stop = time.perf_counter()
+    return f"cheap function took: {stop - start:.6f} seconds"
+
+
+# Define a main function
+def main():
+    parser = argparse.ArgumentParser(
+        description="Run a number of expensive Resonate tasks followed by one cheap task"
+    )
+    parser.add_argument(
+        "-n",
+        "--num",
+        type=int,
+        required=True,
+        help="Number of concurrent expensive tasks to execute",
+    )
+    args = parser.parse_args()
+
+    handles: list[Handle[str]] = []
+    for _ in range(args.num):
+        handles.append(expensive.run(uuid4().hex))
+
+    handles.append(cheap.run(uuid4().hex))
+
+    # 1) Wait on all but don’t print:
+    for h in handles[:-1]:
+        _ = h.result()
+
+    # 2) Wait on (and print) the last one:
+    print(handles[-1].result())
+```
+
+Note that the cheap function has a timer that tell use how much time elapses between the invocation of it, till the completion.
+
+Let's call the function with a number of concurrent expensive invocations.
+
+```bash
+uv run app -n 5 # cheap function took: 0.000458 seconds
+uv run app -n 10 # cheap function took: 5.008571 seconds
+uv run app -n 20 # cheap function took: 10.017939 seconds
+uv run app -n 40 # cheap function took: 25.018352 seconds
+```
+
+Now, as noted. As the process is business with more and more expensive computations the cheap function, which is lean will be more and more slow because of concurrent operations happening on the same machine.
+
+Also, this example is super simple, the expensive operation are doing nothing more than sleeping. But you can imagine other kind of operations that consume CPU/GPU resources, etc...
+
+As traffic in your application grows you'll find yourself needing to move the expensive computation to a fleet of workers that can scale horizontally while maintaining the current app lean and always fast!
+
+At this point we enter the world of distributed systems, usually queue systems will enter the conversation here. But with Resonate it's optional to use them. We can handle all the distribution needs you need.
+
+Let's first create a new file `src/worker.py` with this code.
+
+```python
+from resonate import Resonate, Context
+import time
+from threading import Event
+
+
+# Initialize Resonate with a remote store under group worker
+resonate = Resonate().remote(group="worker")
+
+
+@resonate.register
+def computation(ctx: Context, seconds: float) -> None:
+    time.sleep(seconds)
+
+
+def main() -> None:
+    resonate.start()
+    Event().wait()
+
+
+if __name__ == "__main__":
+    main()
+
+```
+
+You can start as many as you want of these with (this part scales horizontally and indefentely)
+
+```shell
+uv run python src/worker.py
+```
+
+Then, let's modify the `src/app.py` file to take advantage of the worker fleet.
+
+```python
+from collections.abc import Generator
+from typing import Any
+from uuid import uuid4
+from resonate import Resonate, Context, Yieldable
+import time
+import argparse
+
+
+from resonate.models.handle import Handle
+
+# Initialize Resonate with a local store (in memory)
+resonate = Resonate().remote(group="gateway")
+
+
+# Register the top-level function with Resonate
+@resonate.register
+def expensive(ctx: Context) -> Generator[Yieldable, Any, str]:
+    yield ctx.rfc("computation", 5).options(target="poll://any@worker")
+    return "that took some time..."
+
+
+@resonate.register
+def cheap(ctx: Context) -> Generator[Yieldable, Any, str]:
+    start = time.perf_counter()
+    v = yield ctx.lfc(lambda ctx, a, b: a + b, 1, 2)
+    assert v == 3
+    stop = time.perf_counter()
+    return f"cheap function took: {stop - start:.6f} seconds"
+
+
+# Define a main function
+def main():
+    parser = argparse.ArgumentParser(
+        description="Run a number of expensive Resonate tasks followed by one cheap task"
+    )
+    parser.add_argument(
+        "-n",
+        "--num",
+        type=int,
+        required=True,
+        help="Number of concurrent expensive tasks to execute",
+    )
+    args = parser.parse_args()
+
+    handles: list[Handle[str]] = []
+    for _ in range(args.num):
+        handles.append(expensive.run(uuid4().hex))
+
+    handles.append(cheap.run(uuid4().hex))
+
+    # 1) Wait on all but don’t print:
+    for h in handles[:-1]:
+        _ = h.result()
+
+    # 2) Wait on (and print) the last one:
+    print(handles[-1].result())
+
+```
+
+The only change here is that the function **computation** no longer resides in this process but in the worker fleet of processes. Also, we are instantiating resonate with a Remote configuration under group `gateway`
+
+Let's start the Resonate server, which acts as the global eventloop to coordinate everything behind scenes
+
+```bash
+resonate serve --aio-store-sqlite-path :memory:
+```
+
+Now the time of the cheap function look like this:
+
+```bash
+uv run app -n 5 # cheap function took: 0.010518 seconds
+uv run app -n 10 # cheap function took: 0.015333 seconds
+uv run app -n 20 # cheap function took: 0.027229 seconds
+uv run app -n 40 # cheap function took: 0.044756 seconds
+```
+
+Lean and fast!
