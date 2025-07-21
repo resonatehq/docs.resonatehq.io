@@ -253,7 +253,7 @@ def summarize(_, content):
 
 def main():
     try:
-        summary = downloadAndSummary("https://example.com")
+        summary = download_and_summarize("https://example.com")
         print(summary)
     except Exception as e:
         print(e)
@@ -294,9 +294,11 @@ For example, here we adjust the Retry Policy of the invocation of bar to be “l
 
 ```python
 #...
+from resonate.retry_policies import Linear
+# ...
 
     content = yield ctx.lfc(download, url).options(
-        retry_policy=linear(delay=1, max_attempts=10)
+        retry_policy=Linear(delay=1, max_attempts=10)
     )
 ```
 
@@ -810,6 +812,12 @@ uv add selenium bs4 ollama
 Then, update the `download()` and `summarize()` functions to use Selenium and Beautiful Soup to scrape the webpage content and Ollama to summarize it.
 
 ```python
+import ollama
+import os
+from selenium import webdriver
+from bs4 import BeautifulSoup
+# ...
+
 class NetworkResolutionError(Exception):
     """Permanent DNS resolution failure. Do not retry."""
 
@@ -819,8 +827,9 @@ def download(_, usable_id, url):
     if os.path.exists(filename):
         print(f"File {filename} already exists. Skipping download.")
         return filename
+
+    driver = webdriver.Chrome()
     try:
-        driver = webdriver.Chrome()
         driver.get(url)
         soup = BeautifulSoup(driver.page_source, "html.parser")
         content = soup.get_text()
@@ -883,7 +892,7 @@ def download_and_summarize(ctx, params):
     email = params["email"]
 
     # Download the content from the URL and save it to a file
-    filename = yield ctx.lfc(download, usable_id, url).options(durable=False, non_retryable_exceptions=(NetworkResolutionError,)
+    filename = yield ctx.lfc(download, usable_id, url).options(durable=False, non_retryable_exceptions=(NetworkResolutionError,))
     while True:
         # Summarize the content of the file
         summary = yield ctx.lfc(summarize, filename)
@@ -899,7 +908,7 @@ def download_and_summarize(ctx, params):
         if confirmed:
             break
 
-        print("Workflow complete")
+    print("Workflow completed")
     return summary
 
 # ...
@@ -907,10 +916,10 @@ def download_and_summarize(ctx, params):
 def send_email(_, summary, email, promise_id):
     print(f"Summary: {summary}")
     print(
-        f"Click to confirm: http://localhost:5000/confirm?confirm=true&promise_id={promise_id}"
+        f"Click to confirm: http://127.0.0.1:5000/confirm?confirm=true&promise_id={promise_id}"
     )
     print(
-        f"Click to reject: http://localhost:5000/confirm?confirm=false&promise_id={promise_id}"
+        f"Click to reject: http://127.0.0.1:5000/confirm?confirm=false&promise_id={promise_id}"
     )
     print(f"Email sent to {email} with summary and confirmation links.")
     return
@@ -946,7 +955,7 @@ Now you can start the summarization workflow by sending a POST request to the `/
 For example, you can use cURL to send the request:
 
 ```shell
-curl -X POST http://localhost:5000/summarize -H "Content-Type: application/json" -d '{"url": "https://resonatehq.io", "email": "johndoe@example.com"}'
+curl -X POST http://127.0.0.1:5000/summarize -H "Content-Type: application/json" -d '{"url": "https://resonatehq.io", "email": "johndoe@example.com"}'
 ```
 
 You should see the worker downloading the content from the URL, summarizing it, and then sending an "email" with the summary and links to confirm or reject the summarization.
