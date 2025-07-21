@@ -916,10 +916,10 @@ def download_and_summarize(ctx, params):
 def send_email(_, summary, email, promise_id):
     print(f"Summary: {summary}")
     print(
-        f"Click to confirm: http://localhost:5000/confirm?confirm=true&promise_id={promise_id}"
+        f"Click to confirm: http://127.0.0.1:5000/confirm?confirm=true&promise_id={promise_id}"
     )
     print(
-        f"Click to reject: http://localhost:5000/confirm?confirm=false&promise_id={promise_id}"
+        f"Click to reject: http://127.0.0.1:5000/confirm?confirm=false&promise_id={promise_id}"
     )
     print(f"Email sent to {email} with summary and confirmation links.")
     return
@@ -955,7 +955,7 @@ Now you can start the summarization workflow by sending a POST request to the `/
 For example, you can use cURL to send the request:
 
 ```shell
-curl -X POST http://localhost:5000/summarize -H "Content-Type: application/json" -d '{"url": "https://resonatehq.io", "email": "johndoe@example.com"}'
+curl -X POST http://127.0.0.1:5000/summarize -H "Content-Type: application/json" -d '{"url": "https://resonatehq.io", "email": "johndoe@example.com"}'
 ```
 
 You should see the worker downloading the content from the URL, summarizing it, and then sending an "email" with the summary and links to confirm or reject the summarization.
