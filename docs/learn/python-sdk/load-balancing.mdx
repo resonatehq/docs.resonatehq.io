@@ -1,8 +1,8 @@
 ---
-id: horizontal-scaling
-title: Horizontal Scaling Pattern
-description: Learn how to use Resonate Python SDK to easily scale horizontally to reduce application bottlenecks
-sidebar_label: Horizontal Scaling
+id: load-balancing
+title: Load Balancing Pattern
+description: Learn how to use Resonate Python SDK to easily load balance computation cross a fleet of horizontal scalable workers
+sidebar_label: Load Balancing
 sidebar_position: 1
 last_update:
   date: "20-07-2025"
@@ -23,13 +23,13 @@ When this occurs, you can offload compute‑intensive work to a dedicated fleet 
 In the first version of this application, we'll do everythin local and expose two handlers: `expensive` and `cheap`. Of course, the goal is too trigger a number of expensive operations at a point that we make cheap take much time than normal.
 
 ```shell
-resonate project create --name horizontal-scaling --template lfi-workflow-py
+resonate project create --name load-balancing --template lfi-workflow-py
 ```
 
-You should now have a directory called "horizontal-scaling" with the following structure
+You should now have a directory called "load-balancing" with the following structure
 
 ```text
-horizontal-scaling
+load-balancing
     - src/
         - app.py
     - pyproject.toml
