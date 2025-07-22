@@ -1,0 +1,10 @@
+{
+  "label": "Get started",
+  "position": 3,
+  "collapsed": true,
+  "collapsible": true,
+  "link": {
+    "type": "doc",
+    "id": "get-started/index"
+  }
+}
