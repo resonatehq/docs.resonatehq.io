@@ -1,0 +1,214 @@
+---
+id: new-project
+title: Start a new project with Resonate
+sidebar_label: New project
+sidebar_position: 1
+toc_max_heading_level: 4
+last_update:
+  date: "03-13-2025"
+tags:
+  - get-started
+---
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+**How to start a new project using Resonate.**
+
+Resonate provides a CLI to scaffold new projects using templates.
+There are several templates available depending on your use case and the programming language.
+
+## Install the Resonate CLI
+
+The CLI and the Resonate Server are bundled together.
+But, you can use the CLI independently of the server — That is, don't need to run the server to get started.
+Choose a template that only uses local invocations (Runs), to get started without the server (do not choose an RPC template).
+
+Install the CLI using brew or download a binary from the [releases page](https://github.com/resonatehq/resonate/releases)
+
+```shell
+brew install resonatehq/tap/resonate
+```
+
+## Choose a template
+
+After the CLI is installed, list the available templates and their descriptions using the following command:
+
+```shell
+resonate projects list
+```
+
+The language of the template is indicated in the name and description.
+And the description will tell you if it uses the Resonate Server or not.
+
+Scaffold a project from one of the listed templates.
+
+```shell
+resonate projects create --template <template_name> --name <your_project_name>
+```
+
+The CLI will create a new directory with the name you provided and scaffold the project files in that directory.
+
+## Resonate usage pattern
+
+Regardless of the template you choose, the pattern of the project will be similar.
+
+Any Worker or script that uses Resonate will need to import the Resonate SDK and initialize it.
+
+<Tabs
+    groupId="language"
+	defaultValue="python"
+	values={[
+		{ label: "Python", value: "python" },
+		{ label: "TypeScript", value: "typescript" },
+	]}
+>
+    
+    <TabItem value="python">
+
+```python
+from resonate import Resonate
+
+# Initialize Resonate with a local promise store
+# Great for local development.
+resonate = Resonate.local()
+
+# Initialize Resonate with a remote promise store
+# Great for building production grade distributed applications.
+resonate = Resonate.remote()
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+Coming soon...
+
+    </TabItem>
+
+</Tabs>
+
+:::tip Run the Resonate Server
+
+If you are using a template that requires the Resonate Server (anything that performs remote operations), you will need to run it in a separate terminal.
+
+```shell
+resonate serve
+```
+
+The Resonate Server acts as a remote promise store and message source, enabling you to durably invoke functions across different Workers or Application Nodes.
+
+:::
+
+To give Resonate control over the execution of your functions, you will need to register the top-level function with Resonate.
+
+:::tip Top-level function
+
+A top-level function is the first function in the Durable Call Graph, invoked by `resonate.run()`, or `resonate.rpc()`.
+
+We call this the Ephemeral to Durable transition.
+
+This is different from invoking a function from within a Durable function, which is a Durable to Durable transition, and is done using the Context object.
+
+:::
+
+<Tabs
+    groupId="language"
+	defaultValue="python"
+	values={[
+		{ label: "Python", value: "python" },
+		{ label: "TypeScript", value: "typescript" },
+	]}
+>
+
+    <TabItem value="python">
+
+```python
+# using a decorator
+@resonate.register
+def foo(ctx, params):
+    # ...
+    return result
+
+# or using the register method
+def foo(ctx, params):
+	# ...
+	return result
+
+resonate.register(foo)
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+  </TabItem>
+
+</Tabs>
+
+Registered functions can then be invoked using the `run` or `rpc` methods.
+
+<Tabs
+	groupId="language"
+	defaultValue="python"
+	values={[
+		{ label: "Python", value: "python" },
+		{ label: "TypeScript", value: "typescript" },
+	]}
+>
+	<TabItem value="python">
+
+```python
+# If the function is defined locally in the same Worker or Application Node
+handle = foo.run("promise-id", params)
+result = handle.result()
+
+# If the function is defined remotely in a different Worker or Application Node
+handle = resonate.options(target="<transport_plugin>://<unique_id>@<group>/<id>").rpc("foo", "promise-id", params)
+result = handle.result()
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+    </TabItem>
+
+</Tabs>
+
+If you need to ensure functions in a Worker / Application Node have access to a dependency, you can initialize the dependency and register it with Resonate.
+
+<Tabs
+	groupId="language"
+	defaultValue="python"
+	values={[
+		{ label: "Python", value: "python" },
+		{ label: "TypeScript", value: "typescript" },
+	]}
+>
+
+    <TabItem value="python">
+
+```python
+db_connection = DatabaseConnection()
+resonate.set_dependency("db_connection", db_connection)
+
+def foo(ctx, params):
+	db = ctx.get_dependency("db_connection")
+	# ...
+	return result
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+    </TabItem>
+
+</Tabs>
+
+From here, we recommend checking out our catalog of [example applications](https://github.com/resonatehq-examples) to find something that matches your use case.
+
+For details on specific features, refer to the [feature development guides](/develop).
+
+To learn more about Resonate concepts and functionality, check out the [tutorials](/learn).
