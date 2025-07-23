@@ -11,77 +11,80 @@ tags:
   - how-it-works
 ---
 
-Resonate facilitates the development and operation of distributed applications.
+There are a few key concepts that are important to understand how Resonate works.
+
+## Checkpointing
+
+Resonate works by checkpointing steps in your application code.
+At each checkpoint, a bit of data is saved that enables Resonate to replay the execution of your application code in the event of a failure.
+
+As the developer, you decide where the checkpoints exist.
+
+Your code can checkpoint on things that are happening locally in the same process, or on things that are happening remotely in a different process.
+That is — any call to a local function or a remote function can be a checkpoint.
+
+You can also create checkpoints that are not function calls, such as input from a human.
+
+In Resonate, we call the checkpoints **Durable Promises**.
+
+## Async RPC
+
+One of the underlying protocols that Resonate uses to communicate between processes is an [asynchronous Remote Procedure Call (RPC)](https://www.async-rpc.io/).
+
+Durable Promises make Async RPC possible, by enabling the caller to invoke a remote function without blocking the caller process.
+
+This is just like async/await in JavaScript or Python, where you can invoke a function and get a promise back — a promise which resolves when the function finishes executing.
+
+Except in Resonate, this also works across processes.
+
+When you invoke a function in a different process, you get a Durable Promise back.
+You can continue executing code in the caller process while the callee process is executing the function.
+When the callee process finishes executing the function, it resolves the promise and stores the result inside of it.
+This causes a message to be sent back to the caller process letting it know that the promise has been resolved and the result is available.
+
+This is how Resonate enables a sequential programming model in a distributed system.
+
+See an example:
+
+- [Python SDK](https://github.com/resonatehq-examples/example-async-rpc-py)
 
 ## System architecture
 
-There are two core components involved that enable Resonate to provide its unique benefits and it's important to understand the architecture of the system to understand how it works.
+There are two core components involved that enable Resonate to provide its unique benefits:
 
-The following diagram illustrates the system architecture of Resonate:
+- Resonate SDK
+- Resonate Server
+
+Developers write workers, microservices, and applications using an SDK.
+The SDK provides simple APIs to connect to a Resonate Server, manage dependencies, invoke functions, and manage Durable Promises.
+Additionally, the SDK promotes a procedural programming model that produces code that is easy to understand and reason about.
+
+The Resonate Server manages the storage of Durable Promises and coordinates the execution of functions across multiple processes.
+
+Resonate is designed to be decentralized, meaning that multiple Resonate Servers can be used in a single system.
+Though, a single Resonate Server is sufficient for most use cases.
+
+Additionally, it is designed to allow for a wide range of message transports.
+For example, by default a worker will connect to a Resonate Server using a long poll HTTP connection to poll for messages.
+However, the two components can be configured to pass messages over queues and streams such as RabbitMQ, RedPanda, Kafka, etc.
+Or, the Resonate Server can be configured to post messages to an HTTP endpoint on the worker or microservice.
+
+The following diagram illustrates a singe Resonate Server system architecture:
 
 ![Resonate system architecture](/img/resonate-architecture.svg)
 
-### Resonate SDK
+There is no limit to the number of workers or microservices that can connect to a Resonate Server.
 
-Developers use the Resonate SDK to build distributed applications with a simple, sequential programming model.
-With it, they write functions that execute asynchronously across multiple processes or machines.
+## Service discovery and load balancing
 
-Each process that runs the Resonate SDK acts as a Worker, also called an Application Node.
-A Resonate application can consist of as many Application Nodes as needed.
-These nodes actively execute the application’s functions and coordinate their execution across the system.
+Resonate takes advantage of the possibilities provided by the Async RPC protocol by enabling built-in service discovery and load balancing.
 
-Resonate offers SDKs for the following langauges:
+When a worker or microservice connects to a Resonate Server, it registers itself both uniquely and as part of a group.
+This enables the Resonate Server to keep track of which workers or microservices are available to handle requests for a given function, and to load balance requests across them.
 
-- [Python](/develop/python)
-- [TypeScript](/develop/typescript)
+As a developer, you do not have to worry about tuning the load balancing algorithm.
+The Resonate Server automatically balances the load in a performant manner.
 
-### Resonate Server
+See an example:
 
-Each Application Node connects to a Resonate Server.
-The Resonate Server acts as a supervisor and orchestrator by storing Durable Promises and sending messages to Application Nodes.
-
-Resonate Servers can communication with each other, enabling a system to contain multiple Resonate Servers.
-This prevents a star-like topology and enables a fully decentralized system.
-
-## Durable Promises
-
-The core developer facing primitive that developers need to work with, other than a function is the Durable Promise.
-
-A Durable Promise represents a function invocation.
-It is durable because it is stored in a database outside of the process that created it.
-
-The Durable Promise contains the function invocation information and after the function returns, contains the result of the function.
-By using unique identifiers for Durable Promises, Resonate can replay function executions using the results stored in Durable Promises, enabling recovery of a function execution should the process crash.
-
-## Global Event Loop
-
-The core underlying mechanism that all of the components play a role in is the Global Event Loop.
-The Global Event Loop is responsible for passing messages between the processes and ensuring the recovery and the coordination of function executions across the system.
-
-## Invocation locality
-
-A Resonate SDK enables developers to invoke functions locally or remotely in an asynchronous manner.
-That is — a developer can choose to invoke a function in the same process as the caller or in a different process without blocking the caller and await on the results when it suits them.
-
-This enables developers to write sequential, procedure oriented code that is easy to understand and reason about.
-
-The two core invocation types are:
-
-- Local Function Invocation (LFI)
-- Remote Function Invocation (RFI)
-
-### Local Function Invocation
-
-A Local Function Invocation (LFI) is the act of invoking a function (the callee) in the same process as the caller.
-
-There are two benefits to using Resonate LFIs over regular function calls:
-
-1. The callee is automatically retried if it returns an error.
-2. The entire local Call Graph can recover and resume in another process if the first process crashes.
-
-### Remote Function Invocation
-
-A Remote Function Invocation (RFI), is the act of invoking a function (the callee) in a different process than the one the caller is in.
-
-The major benefit to using Resonate RFIs over regular RPCs is that Resonate RFIs are asynchronous.
-That is — if either the caller process, callee process, or both processes crash then the Call Graph can recover and resume in new processes.
+- [Python SDK](https://github.com/resonatehq-examples/example-load-balancing-py).

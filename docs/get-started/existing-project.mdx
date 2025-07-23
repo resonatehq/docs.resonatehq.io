@@ -63,50 +63,141 @@ yarn add @resonatehq/sdk
 
 Then, initialize Resonate in your script, worker, or application.
 
-Initialize using local memory as a promise store.
-Using local memory does not require any additional dependencies (such as a Resonate Server).
+You can intialize Resonate in local memory, which does not require any additional dependencies (such as a Resonate Server).
+This is a great way to get started and test the integration.
+
+When you are ready to add long term durability and remote invocations, you can switch to a remote store and message source (Resonate Server).
+
+<Tabs
+    groupId="language"
+    defaultValue="python"
+    values={[
+        { label: "Python", value: "python" },
+        { label: "TypeScript", value: "typescript" },
+    ]}
+>
+
+    <TabItem value="python">
 
 ```python
 from resonate import Resonate
 
-resonate = Resonate().local()
-```
+# Initialize Resonate with a local promise store
+# Great for local development.
+resonate = Resonate.local()
 
-Initialize using a remote promise store and message source.
-The default configuration connects to a locally running Resonate Server.
-
-```python
-from resonate import Resonate
-
+# Initialize Resonate with a remote promise store
+# Great for building production grade distributed applications.
 resonate = Resonate.remote()
 ```
 
-### 3. Register a function
+    </TabItem>
+
+    <TabItem value="typescript">
+
+:::caution New Release in development
+
+A new release of the The TypeScript SDK is currently in development.
+The following instructions are for the current version, which will not be compatible with the new version.
+We recommend waiting for the new release to be available before integrating the TypeScript SDK into your project.
+
+:::
+
+```typescript
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = new Resonate();
+```
+
+    </TabItem>
+
+</Tabs>
+
+## Register a function
+
+Next, register a function with Resonate.
+Functions registered and invoked with Resonate gain durable qualities and can be awaited on remotely.
+
+<Tabs
+    groupId="language"
+    defaultValue="python"
+    values={[
+        { label: "Python", value: "python" },
+        { label: "TypeScript", value: "typescript" },
+    ]}
+>
+
+    <TabItem value="python">
 
 Register a function with Resonate using the `register` decorator or the `register` method.
 
 All functions registered with Resonate or called from a Resonate function must define Context as the first argument.
 
 ```python
+# Register a function with the decorator
 @resonate.register
 def foo(ctx, arg1, arg2):
     # Your function logic here
     return result
-```
 
-You can also register a function with the register method.
-
-```python
+# Register a function with the register method
 def foo(ctx, arg1, arg2):
     # Your function logic here
     return result
 
 resonate.register(foo)
+
+# ...
+
+resonate.start()
 ```
 
-### 4. Invoke a function
+Calling `resonate.start()` explicitly starts Resonate instance threads.
+It is not needed in scripts, workers, or application nodes that call `resonate.run()`, but we recommend doing so with all instances of Resonate.
 
-Invoke a function registered with Resonate using the `run` method or the `rpc` method.
+    </TabItem>
+
+    <TabItem value="typescript">
+
+:::caution New Release in development
+
+A new release of the The TypeScript SDK is currently in development.
+The following instructions are for the current version, which will not be compatible with the new version.
+We recommend waiting for the new release to be available before integrating the TypeScript SDK into your project.
+
+:::
+
+You can register a function with Resonate using the `register` method.
+All functions registered with Resonate or called from a Resonate function must define `Context` as the first argument.
+
+```typescript
+resonate.register("custom-function-name", foo);
+
+function foo(ctx: Context, arg1: any, arg2: any): any {
+  // Your function logic here
+  return result;
+}
+```
+
+    </TabItem>
+
+</Tabs>
+
+## Invoke a function
+
+You can invoke a function that is defined locally in the script, worker, or application node, or you can invoke a function that is defined remotely in a different worker or application .
+Invoking a function locally does not require the Resonate Server, but invoking one remotely does.
+
+<Tabs
+    groupId="language"
+    defaultValue="python"
+    values={[
+        { label: "Python", value: "python" },
+        { label: "TypeScript", value: "typescript" },
+    ]}
+>
+
+    <TabItem value="python">
 
 If the function is in the same Worker or Application Node, you can invoke it directly with the run method.
 
@@ -126,19 +217,9 @@ handle = resonate
   .rpc("foo", promise_id, arg1, arg2)
 ```
 
-### 5. Get the result
+    </TabItem>
 
-Getting the result of a function is a blocking operation.
-
-Use the `.result()` method on the handle to get the result of the function.
-
-```python
-result = handle.result()
-```
-
-## TypeScript SDK
-
-Integrate the Resonate TypeScript SDK into your existing TypeScript project.
+    <TabItem value="typescript">
 
 :::caution New Release in development
 
@@ -147,32 +228,6 @@ The following instructions are for the current version, which will not be compat
 We recommend waiting for the new release to be available before integrating the TypeScript SDK into your project.
 
 :::
-
-### 2. Initialize Resonate
-
-Initialize Resonate in your Worker or Application Node.
-
-```typescript
-import { Resonate } from "@resonatehq/sdk";
-
-const resonate = new Resonate();
-```
-
-### 3. Register a function
-
-You can register a function with Resonate using the `register` method.
-All functions registered with Resonate or called from a Resonate function must define `Context` as the first argument.
-
-```typescript
-resonate.register("custom-function-name", foo);
-
-function foo(ctx: Context, arg1: any, arg2: any): any {
-  // Your function logic here
-  return result;
-}
-```
-
-### 4. Invoke a function
 
 The current version of the TypeScript SDK only supports calling functions locally.
 And you must use the `start` method to initialize the Resonate instance before calling any functions.
@@ -183,7 +238,42 @@ resonate.start();
 const handle = resonate.run("custom-function-name", promiseId, arg1, arg2);
 ```
 
-### 5. Get the result
+    </TabItem>
+
+</Tabs>
+
+## Get the result
+
+Getting the result of a function is a blocking operation.
+
+<Tabs
+    groupId="language"
+    defaultValue="python"
+    values={[
+        { label: "Python", value: "python" },
+        { label: "TypeScript", value: "typescript" },
+    ]} 
+>
+
+    <TabItem value="python">
+
+Use the `.result()` method on the handle to get the result of the function.
+
+```python
+result = handle.result()
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+:::caution New Release in development
+
+A new release of the The TypeScript SDK is currently in development.
+The following instructions are for the current version, which will not be compatible with the new version.
+We recommend waiting for the new release to be available before integrating the TypeScript SDK into your project.
+
+:::
 
 Getting the result of a function is a blocking operation.
 
@@ -192,3 +282,59 @@ Await on the handle to get the result of the function.
 ```typescript
 const result = await handle;
 ```
+
+    </TabItem>
+
+</Tabs>
+
+## Extend the Call Graph
+
+You can extend your Call Graph by invoking other functions from within a function.
+
+All functions invoked from the instance of Resonate or the Context object return a Durable Promise, which can be awaited on.
+
+<Tabs
+    groupId="language"
+    defaultValue="python"
+    values={[
+        { label: "Python", value: "python" },
+        { label: "TypeScript", value: "typescript" },
+    ]}
+>
+
+    <TabItem value="python">
+
+```python
+@resonate.register
+def foo(ctx, params):
+    # ...
+    p1 = yield ctx.lfi("bar", params)
+    r1 = yield p1
+    p2 = yield ctx.lfi("baz", r1)
+    r2 = yield p2
+    return r2
+
+def bar(ctx, params):
+    # ...
+    return result
+
+def baz(ctx, params):
+    # ...
+    return result
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+:::caution New Release in development
+
+A new release of the The TypeScript SDK is currently in development.
+The following instructions are for the current version, which will not be compatible with the new version.
+We recommend waiting for the new release to be available before integrating the TypeScript SDK into your project.
+
+:::
+
+    </TabItem>
+
+</Tabs>

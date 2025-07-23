@@ -11,32 +11,27 @@ tags:
   - comparison
 ---
 
-import Tabs from "@theme/Tabs";
-import TabItem from "@theme/TabItem";
+**Are you coming from experience with Temporal?**
 
-**Are you coming from Temporal?**
-
-If so, this page will help you understand the differences and similarities between Temporal and Resonate.
+If so, this page will help you understand the differences and similarities between Resonate and Temporal.
 
 ## Building blocks
 
 If you’ve used Temporal before, you know about Workflows and Activities.
 
-In Temporal, a Workflow is the main function that controls the order of work.
-Workflows tell Activities when to run.
-Each Activity does a small piece of work.
-Activities can run at the same time or one after another.
+In Temporal, a Workflow is the main function that orchestrates the execution of Activities, the steps in the process.
+Activities can execute sequentially or concurrently.
 
-In Resonate, you just write functions.
-These functions can also run at the same time or one after another.
+In Resonate, there are no explicit Workflows or Activities — you just write functions.
+Resonate functions can also run sequentially or concurrently.
+But, they can also compose indefinitely and recursively.
+However, if it helps, you can think of the top-level function that you register with Resonate as your "Workflow".
 
-Resonate also gives you something called a Durable Promise.
-You register any function you want to call as a top-level function.
-This is like the “Workflow” in Temporal.
-You can then call this function directly or remotely.
+Then, similar to Temporal, when you invoke a function in Resonate you get a "Future" or "Promise" that you can await on to get the result when it’s ready.
+In Resonate, we call these **Durable Promises**.
 
-When you call a function, Resonate gives you a Durable Promise right away.
-You can await this promise to get the result when it’s ready.
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
 
 <Tabs
     groupId="language"
@@ -394,8 +389,6 @@ result = await client.execute_workflow(
 
 </Tabs>
 
-## Durable Async RPC
-
 ## Data in / data out
 
 In Temporal, you can use Signals and Queries to send data into a Workflow and get data out of a Workflow respectively.
@@ -428,6 +421,7 @@ Then, you can resolve it from anywhere, sending data into the function while doi
     </TabItem>
 
 </Tabs>
+
 ## System architecture
 
 Temporal forces a star-like topology where all Workers in an application connect to a single Temporal Server.
@@ -437,174 +431,24 @@ And though you can now make cross-Namespace calls in Temporal using Nexus, getti
 
 Resonate, on the other hand, is designed to for an application to use multiple Resonate Servers that can communicate with each other.
 
-### Local Function Invocations (`lfi`|`lfc`)
+<Tabs
+    defaultValue="resonate"
+    values={[
+        {label: 'Resonate', value: 'resonate'},
+        {label: 'Temporal', value: 'temporal'},
+    ]}
+>
 
-If you have a function or coroutine, at this point I’ll just say function referring to both primitives, that you want to call locally you can do so using these methods. By default, the result of each of these invocations will be durably stored. Meaning that, in the event of a failure and a retry, the function won’t be called again but rather the previously computed result will be used and the execution will be resumed wherever it failed before (A durable execution).
+    <TabItem value="resonate">
 
-Now, what exactly is the difference between the `lfi` and the `lfc`. That the first one creates the promise and then you can await later and the latter is basically syntax sugar for invoke and await immediately. Let’s forget for a second about the distribution capabilities, up to this point Resonate is a durable and local async/await framework. Similar to DBOS.
+![Resonate architecture](/img/resonate-system-arch.svg)
 
-### Remote Function Invocations (`rfi`|`rfc`)
+    </TabItem>
 
-```python
-from collections.abc import Generator
-from typing import Any
+    <TabItem value="temporal">
 
-from resonate import Context, Resonate, Yieldable
+![Temporal architecture](/img/temporal-system-arch.svg)
 
-resonate = Resonate()
+    </TabItem>
 
-@resonate.register
-def foo(ctx: Context) -> Generator[Yieldable, Any, str]:
-    v = yield ctx.rfc(bar)
-    return v
-
-@resonate.register
-def bar(ctx: Context) -> Generator[Yieldable, Any, str]:
-    p = yield ctx.rfi(baz)
-    v = yield p
-    return v
-
-@resonate.register
-def baz(ctx: Context) -> str:
-    return "hello, world"
-
-```
-
-This code is very similar to the one previously showed, but there are a few distinctions. We replaced `lfi` → `rfi` and `lfc` → `rfc` (I think you have an idea what this means). And also, we added a bunch of `@resonate.register` decorators. This is important.
-
-Resonate makes distribution of computation a first class citizen, minimal changes enable decouple of micro services with production required guarantees. Previously you would think that if you want to invoke a function in a different node you’d need to change the code from a procedural simple looking code to a code where the logic resides in different handlers, which communicate via a TCP connection or, hopefully, queues. With resonate, the only think you need to do to go from a single node monolithic application to a distributed application is… well replace `lfi` and `lfc` for `rfi` and `rfc` and add a bunch of `@resonate.register` here and then.
-
-Why resonate register? Because when we have to distribute an invocation from one node to the other, we need a way to know which function pointer we want to run with which parameters. `@resonate.register` is how you tell use the entry points of your system.
-
-Ok… So let’s make some distribution.
-
-```python
-# app_one.py
-from collections.abc import Generator
-from typing import Any
-
-from resonate import Context, Resonate, Yieldable
-
-resonate = Resonate.remote()
-
-@resonate.register
-def foo(ctx: Context) -> Generator[Yieldable, Any, str]:
-    v = yield ctx.rfc(bar)
-    return v
-
-@resonate.register
-def bar(ctx: Context) -> Generator[Yieldable, Any, str]:
-    p = yield ctx.rfi("baz").options(target="poll://any@custom")
-    v = yield p
-    return v
-
-if __name__ == "__main__":
-    h = resonate.run("foo", foo)
-    print(h.result())
-```
-
-```python
-# app_two.py
-from collections.abc import Generator
-from threading import Event
-from typing import Any
-
-from resonate import Context, Resonate, Yieldable
-
-resonate = Resonate.remote(group="custom")
-
-@resonate.register
-def baz(ctx: Context) -> str:
-    return "hello, world"
-
-if __name__ == "__main__":
-    resonate.start()
-    Event().wait()
-```
-
-What we did where? `app_two.py` will hold the code for the function `baz`, which will be called from `app_one.py` . So instead of calling `baz` from `bar` using the function pointer, we will use a string and then setup the `target` where the code for `baz` lives. The format is as follows `<protocol>://<any or uni>/<group>/<pid>` , the protocol for this distribution will be `poll` , with `any` cast meaning any worker registered for the group `custom` and the pid is optional so we won’t set it.
-
-If you don’t configure the target, we’ll just route the computation to workers under the same group the one that is calling the function. Overwriting the target it meant to only be used if you have computation that needs to be done in machines with specific hardware, location, any logical distinction you as a business might need.
-
-Now, distribution doesn’t come for free. It introduces partial failure and the need of decoupling your function calls. If all we do were http calls between services, the moment one connection fails the whole system fails, because TCP connections need both services to be alive since the request is sent to when the response is sent back, if either one of those services fails… you are done. We take care of these, no communication is coupled if you can kill the execution of `app_two.py` and this won’t cause `app_one.py` to fail, or viceversa. So no need for queues if you use us. Optionally, we still support queues as distribution protocol, but it’s up to you whether you prefer that or not, you still get decoupling out of the box.
-
-Let’s talk about partial failure, that’s a big problem with distributed systems and a much bigger problem for engineers on call trying to debug stuff. On a distributed system, business logic is fragmented: a little bit happens here, a little bit happens there… maybe we have records in a database, but the images are stored in S3, vectors in Qdrant, data processing happens in Databricks, financial information goes to a ledger… it’s all a distributed mess. An execution that fails for any reason mid flight will most likely leave your application in an inconsistent state, much worse than that! the inconsistent state is observable. In the monolithic world we have transactions which save us of the evil of partial failure, no transaction commit nothing inconsistent state to observe. So, in a distributed execution, at any given point between the execution starting and execution finishing will be in an inconsistent state… we must ensure execution until completion to ensure eventual consistency in the application.
-
-We also take care of these. Internally, every execution in Resonate is monitored by a task, the resonate server distributes the tasks to the workers so they are claim (indicating processing) and hearbeating (indicating liveness of the worker)… finally the task is completed (indicating execution completeness) the moment a heartbeat is missed, the resonate server will try to enqueue the task somewhere else. We asume that if a task in not heartbeat is because the worker is dead, so retry is the only mechanism we can use to ensure eventual completion of the execution. As operator, you must ensure there are workers for tasks to be distributed the moment we find one available we send the task there and the execution resumes.
-
-If you were to crash `app_one.py` after invoking `baz` but before receiving it’s value, you would see logs in the resonate server like these.
-
-```bash
-time=2025-07-18T12:32:01.441-05:00 level=WARN msg="failed to enqueue task" err="no any connection found for group default and id e2483647471b42f6913b1055faefb56a"
-time=2025-07-18T12:32:01.546-05:00 level=WARN msg="failed to enqueue task" err="no any connection found for group default and id e2483647471b42f6913b1055faefb56a"
-# app_one is registered under group default and pid, randomly generated, e2483647471b42f6913b1055faefb56a
-```
-
-The moment you bring `app_one.py` back alive you get the task back and the execution is resumed starting were it failed previously (again, durable execution). All this is true, if you kill `app_two.py` instead.
-
-So, again, you get to still write procedural looking code, while we guarantee that you will have recoverability, decoupling, easy distribution, durability.
-
-## Enabled patterns
-
-### Run once a year
-
-```python
-@resonate.register
-def foo(ctx: Context) -> Generator[Yieldable, Any, None]:
-    while True:
-        # ...
-        yield ctx.sleep(31556926) # one year in seconds
-```
-
-## Human in the loop
-
-```python
-@resonate.register
-def foo(ctx: Context) -> Generator[Yieldable, Any, None]:
-    p: Promise[Any] = yield ctx.promise(id="promise-to-be-resolved-by-a-human")
-    _ = yield ctx.lfc(send_email, p.id)
-    yield p # await for promise to be resolved, this can take seconds, days, weeks, months... doesn't matter
-    # ...
-```
-
-### Add information into running workflow using fencing tokens to prevent race conditions (TODO)
-
-### Recursive research AI agents
-
-```python
-@resonate.register
-def research(ctx: Context, topic: str, depth: int):
-
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Research {topic}"}
-    ]
-
-    while True:
-        # Prompt the LLM
-        message = yield ctx.lfc(prompt, messages)
-
-        messages.append(message)
-
-        # Handle parallel tool calls by recursively starting the deep research agent
-        # and subsequently awaiting the results
-        if message.tool_calls:
-            handles = []
-            for tool_call in message.tool_calls:
-                tool_name = tool_call.function.name
-                tool_args = json.loads(tool_call.function.arguments)
-                if tool_name == "research":
-                    if depth == 0:
-                        result = "you have exceeded the maximum depth. please respond from your knowledge only"
-                        messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
-                    else:
-		                    # if we have a fleet with multiple workers, research will be
-		                    # scale horizontally
-                        handle = yield ctx.rfi(research, tool_args["topic"], depth - 1)
-                        handles.append((tool_call, handle))
-            for (tool_call, handle) in handles:
-                result = yield handle
-                messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
-        else:
-            return message.content
-```
+</Tabs>
