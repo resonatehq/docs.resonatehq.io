@@ -107,8 +107,8 @@ resonate = Resonate.local()
 @resonate.register
 def foo(ctx, greeting):
     print("running foo")
-    greeting = yield ctx.lfc(bar, greeting)
-    greeting = yield ctx.lfc(baz, greeting)
+    greeting = yield ctx.run(bar, greeting)
+    greeting = yield ctx.run(baz, greeting)
     return greeting
 
 
@@ -124,7 +124,7 @@ def baz(_, v):
 
 def main():
     try:
-        handle = foo.run("hello-world-greeting", greeting="hello")
+        handle = foo.begin_run("hello-world-greeting", greeting="hello")
         print(handle.result())
     except Exception as e:
         print(e)
@@ -137,12 +137,12 @@ if __name__ == "__main__":
 In this template, `foo()` takes a string argument, greeting, and passes it first to `bar()` and then to `baz()`, each step concatenating to the string.
 The greeting is then returned back to the caller and printed.
 
-The `@resonate.register` decorator registers `foo()` with the Resonate instance enabling its invocation with a the `.run()` method.
+The `@resonate.register` decorator registers `foo()` with the Resonate instance enabling its invocation with a the `.begin_run()` method.
 
 The handle variable is a promise.
 Calling `handle.result()` blocks progress of `main()` until `foo()` returns a result.
 
-Both `bar()` and `baz()` are invoked using the Resonate Context’s LFC API (Local Function Call API), giving Resonate control over the invocation and execution of those functions.
+Both `bar()` and `baz()` are invoked using the Resonate Context’s Run API (Local Function Call API), giving Resonate control over the invocation and execution of those functions.
 
 Next, move into the root of the project and run the following commands to execute the app as-is:
 
@@ -169,8 +169,8 @@ And, instead of passing a greeting, let's pass a URL of a website to download an
 @resonate.register
 def download_and_summarize(ctx, url):
     print("running download_and_summarize")
-    content = yield ctx.lfc(download, url)
-    summary = yield ctx.lfc(summarize, content)
+    content = yield ctx.run(download, url)
+    summary = yield ctx.run(summarize, content)
     return summary
 
 def download(_, url):
@@ -186,7 +186,7 @@ def summarize(_, content):
 def main():
     try:
         url = "https://example.com"
-        handle = download_and_summarize.run(url, url=url)
+        handle = download_and_summarize.begin_run(url, url=url)
         print(handle.result())
     except Exception as e:
         print(e)
@@ -297,7 +297,7 @@ For example, here we adjust the Retry Policy of the invocation of bar to be “l
 from resonate.retry_policies import Linear
 # ...
 
-    content = yield ctx.lfc(download, url).options(
+    content = yield ctx.run(download, url).options(
         retry_policy=Linear(delay=1, max_attempts=10)
     )
 ```
@@ -370,10 +370,10 @@ You can use the `sleep()` API provided by Resonate Context.
 @resonate.register
 def download_and_summarize(ctx, url):
     print("running download_and_summarize")
-    content = yield ctx.lfc(download, url)
+    content = yield ctx.run(download, url)
     # highlight-next-line
     yield ctx.sleep(10)
-    summary = yield ctx.lfc(summarize, content)
+    summary = yield ctx.run(summarize, content)
     return summary
 ```
 
@@ -431,7 +431,7 @@ If you look at the code where we invoke `download_and_summarize()`, you'll notic
 
     url = "https://example.com"
     # the first parameter is the promise ID
-    handle = download_and_summarize.run(url, url=url)
+    handle = download_and_summarize.begin_run(url, url=url)
 
     # ...
 ```
@@ -482,14 +482,14 @@ Change the promise ID to something else and run the worker again.
 ```python
 # ...
     url="https://resonatehq.io"
-    handle = download_and_summarize.run(url, url=url)
+    handle = download_and_summarize.begin_run(url, url=url)
 
     # ...
 ```
 
 You will see that download_and_summarize() executes again from the top.
 
-In the next part of the tutorial, you switch from using `resonate.run()` to using `resonate.rpc()` and asyncronously invoke download_and_summarize() via an RPC (Remote Procedure Call).
+In the next part of the tutorial, you switch from using `resonate.begin_run()` to using `resonate.begin_rpc()` and asyncronously invoke download_and_summarize() via an RPC (Remote Procedure Call).
 
 ## Asynchronous RPC
 
@@ -503,16 +503,16 @@ It looks like this:
 def main():
     try:
         url = "https://example.com"
-        handle = download_and_summarize.run(url, url=url)
+        handle = download_and_summarize.begin_run(url, url=url)
         print(handle.result())
     except Exception as e:
         print(e)
 ```
 
-The `.run()` method means "run this function right here".
+The `.begin_run()` method means "run this function right here".
 
-You will move the invocation of `download_and_summarize()` to a separate process and use Resonate's `.rpc()` method to invoke it.
-The `.rpc()` method means "invoke this function over there".
+You will move the invocation of `download_and_summarize()` to a separate process and use Resonate's `.begin_rpc()` method to invoke it.
+The `.begin_rpc()` method means "invoke this function over there".
 
 Start by creating a new file `invoke.py` in the `src` directory and add the following code:
 
@@ -526,7 +526,7 @@ resonate = Resonate.remote(
 def main():
     try:
         url= "https://example.com"
-        handle = resonate.options(target="poll://any@worker").rpc(url, "download_and_summarize", url)
+        handle = resonate.options(target="poll://any@worker").begin_rpc(url, "download_and_summarize", url)
         print(handle.result())
     except Exception as e:
         print(e)
@@ -537,7 +537,7 @@ if __name__ == "__main__":
 ```
 
 In the previous code example, you are creating a new instance of Resonate that connects to the Resonate Server, identifying itself as a worker in the "invoke" group.
-Additionally, you are invoking `foo()` using the `.rpc()` method instead of the `.run()` method.
+Additionally, you are invoking `foo()` using the `.begin_rpc()` method instead of the `.begin_run()` method.
 
 A very important aspect of this change to the invocation is the `target` parameter in the `.options()` method.
 This is how we instruct the Resonate Server where to send messages related to this invocation.
@@ -619,7 +619,7 @@ def main():
         promise_id = f"{str(uuid.uuid4())}"
         handle = resonate
             .options(target="poll://any@worker")
-            .rpc(promise_id, "download_and_summarize", "https://example.com")
+            .begin_rpc(promise_id, "download_and_summarize", "https://example.com")
         handles.append(handle)
     for handle in handles:
         print(handle.result())
@@ -644,9 +644,9 @@ Let's apply two updates to the worker (`app.py`):
 @resonate.register
 def download_and_summarize(ctx, url):
     print("running download_and_summarize")
-    content = yield ctx.lfc(download, url)
+    content = yield ctx.run(download, url)
     while True:
-        summary = yield ctx.lfc(summarize, content)
+        summary = yield ctx.run(summarize, content)
         promise = yield ctx.promise()
 
         print(promise.id)
@@ -740,7 +740,7 @@ def summarize_route_handler():
         params["usable_id"] = clean(data["url"])
 
         # Use Resonate's Async RPC to start the workflow
-        _ = resonate.options(target="poll://any@worker").rpc(
+        _ = resonate.options(target="poll://any@worker").begin_rpc(
             f"download_and_summarize-{params['usable_id']}",
             "download_and_summarize",
             params,
@@ -892,16 +892,16 @@ def download_and_summarize(ctx, params):
     email = params["email"]
 
     # Download the content from the URL and save it to a file
-    filename = yield ctx.lfc(download, usable_id, url).options(durable=False, non_retryable_exceptions=(NetworkResolutionError,))
+    filename = yield ctx.run(download, usable_id, url).options(durable=False, non_retryable_exceptions=(NetworkResolutionError,))
     while True:
         # Summarize the content of the file
-        summary = yield ctx.lfc(summarize, filename)
+        summary = yield ctx.run(summarize, filename)
 
         # Create Durable Promise to block on confirmation
         promise = yield ctx.promise()
 
         # Send email with summary and confirmation/rejection links
-        yield ctx.lfc(send_email, summary, email, promise.id)
+        yield ctx.run(send_email, summary, email, promise.id)
 
         # Wait for summary to be confirmed or rejected / wait for the promise to be resolved
         confirmed = yield promise

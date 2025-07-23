@@ -143,9 +143,7 @@ def foo(ctx, args):
     return
 
 # highlight-next-line
-handle = foo.run("invocation-id", args)
-# do more stuff
-result = handle.result()
+result = foo.run("invocation-id", args)
 ```
 
 **Method registered invocation**
@@ -157,9 +155,7 @@ def foo(ctx, args):
 
 resonate.register(foo)
 # highlight-next-line
-handle = resonate.run("invocation-id", foo, args)
-# do more stuff
-result = handle.result()
+result = resonate.run("invocation-id", foo, args)
 ```
 
 ### `.rpc()`
@@ -201,9 +197,7 @@ resonate = Resonate.remote(
     group="group-b",
 )
 # highlight-next-line
-handle = resonate.options(target="poll://any@group-b").rpc("invocation-id", "foo", args)
-# do more stuff
-result = handle.result()
+result = resonate.options(target="poll://any@group-b").rpc("invocation-id", "foo", args)
 ```
 
 ### `.set_dependency()`
@@ -272,7 +266,7 @@ Resonate's Context object enables you to invoke functions from inside a Durable 
 This is how you extend the Call Graph and create a world of Durable Functions.
 Inside a Durable Function you use the `yield` keyword to interact with the Context object.
 
-### `.lfi()`
+### `.lfi()` or alias `.begin_run()`
 
 Context's `.lfi()` method (Local Function Invocation) invokes a function in the **same process** in an **asynchronous manner**.
 That is — the invocation returns a promise which can be awaited on at any point after.
@@ -292,7 +286,7 @@ def bar(ctx, args):
     return
 ```
 
-### `.lfc()`
+### `.lfc()` or alias `.run()`
 
 Context's `.lfc()` method (Local Function Call) invokes a function in the **same process** in a **synchronous manner**.
 That is — the calling function blocks until the invoked function returns.
@@ -311,7 +305,7 @@ def bar(ctx, args):
     return
 ```
 
-### `.rfi()`
+### `.rfi()` or alias `.begin_rpc()`
 
 Context's `.rfi()` method (Remote Function Invocation) invokes a function in a **remote process** in an **asynchronous manner**.
 That is — the invocation returns a promise which can be awaited on at any point after.
@@ -339,7 +333,7 @@ def bar(ctx, args):
     return
 ```
 
-### `.rfc()`
+### `.rfc()` or alias `.rpc()`
 
 Context's `.rfc()` method (Remote Function Call) invokes a function in a **remote process** in a **synchronous manner**.
 That is — the calling function blocks until the invoked function returns.
