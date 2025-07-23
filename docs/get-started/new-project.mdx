@@ -160,12 +160,10 @@ Registered functions can then be invoked using the `run` or `rpc` methods.
 
 ```python
 # If the function is defined locally in the same Worker or Application Node
-handle = foo.run("promise-id", params)
-result = handle.result()
+result = foo.run("promise-id", params)
 
 # If the function is defined remotely in a different Worker or Application Node
-handle = resonate.options(target="<transport_plugin>://<unique_id>@<group>/<id>").rpc("foo", "promise-id", params)
-result = handle.result()
+result = resonate.options(target="<transport_plugin>://<unique_id>@<group>/<id>").rpc("foo", "promise-id", params)
 ```
 
     </TabItem>

@@ -202,17 +202,17 @@ Invoking a function locally does not require the Resonate Server, but invoking o
 If the function is in the same Worker or Application Node, you can invoke it directly with the run method.
 
 ```python
-handle = foo.run(promise_id, arg1, arg2)
+result = foo.run(promise_id, arg1, arg2)
 
 # or using the Resonate instance
-handle = resonate.run(promise_id, "foo", arg1, arg2)
+result = resonate.run(promise_id, "foo", arg1, arg2)
 ```
 
 If the function is in a different Worker or Application Node, you can invoke it with the rpc method on the Resonate instance.
 To do this, your worker must be connected to a remote store and message source (Resonate Server).
 
 ```python
-handle = resonate
+result = resonate
   .options(target="<transport_plugin>://<unique_id>@<group>/<id>")
   .rpc("foo", promise_id, arg1, arg2)
 ```
@@ -235,7 +235,7 @@ And you must use the `start` method to initialize the Resonate instance before c
 ```typescript
 resonate.start();
 
-const handle = resonate.run("custom-function-name", promiseId, arg1, arg2);
+const result = resonate.run("custom-function-name", promiseId, arg1, arg2);
 ```
 
     </TabItem>
@@ -308,9 +308,9 @@ All functions invoked from the instance of Resonate or the Context object return
 @resonate.register
 def foo(ctx, params):
     # ...
-    p1 = yield ctx.lfi("bar", params)
+    p1 = yield ctx.begin_run("bar", params)
     r1 = yield p1
-    p2 = yield ctx.lfi("baz", r1)
+    p2 = yield ctx.begin_run("baz", r1)
     r2 = yield p2
     return r2
 
