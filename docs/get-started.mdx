@@ -65,7 +65,7 @@ Use the [feature development guides](/develop), [tutorials](/learn), and [exampl
 
   </TabItem>
   <TabItem value="existing" label="Existing project">
-    
+
 ## Existing project
 
 Select the programming language of your existing project and follow the steps to integrate Resonate.
@@ -145,10 +145,10 @@ Invoke a function registered with Resonate using the `run` method or the `rpc` m
 If the function is in the same Worker or Application Node, you can invoke it directly with the run method.
 
 ```python
-handle = foo.run(promise_id, arg1, arg2)
+handle = foo.begin_run(promise_id, arg1, arg2)
 
 # or using the Resonate instance
-handle = resonate.run(promise_id, "foo", arg1, arg2)
+handle = resonate.begin_run(promise_id, "foo", arg1, arg2)
 ```
 
 If the function is in a different Worker or Application Node, you can invoke it with the rpc method on the Resonate instance.
@@ -157,7 +157,7 @@ To do this, your worker must be connected to a remote store and message source (
 ```python
 handle = resonate
   .options(target="<transport_plugin>://<unique_id>@<group>/<id>")
-  .rpc("foo", promise_id, arg1, arg2)
+  .begin_rpc("foo", promise_id, arg1, arg2)
 ```
 
 ### 5. Get the result
