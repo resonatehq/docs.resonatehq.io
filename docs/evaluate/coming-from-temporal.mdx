@@ -19,22 +19,17 @@ If so, this page will help you understand the differences and similarities betwe
 
 If you’ve used Temporal before, you know about Workflows and Activities.
 
-In Temporal, a Workflow is the main function that orchestrates the execution of Activities, the steps in the process.
+In Temporal, a Workflow is the main function that orchestrates the execution of Activities — the steps in the process.
 Activities can execute sequentially or concurrently.
 
 In Resonate, there are no explicit Workflows or Activities — you just write functions.
-Resonate functions can also run sequentially or concurrently.
-But, they can also compose indefinitely and recursively.
-However, if it helps, you can think of the top-level function that you register with Resonate as your "Workflow".
-
-Then, similar to Temporal, when you invoke a function in Resonate you get a "Future" or "Promise" that you can await on to get the result when it’s ready.
-In Resonate, we call these **Durable Promises**.
+Resonate functions can also run sequentially or concurrently, but they can also compose indefinitely and recursively.
+However, if it helps, you can think of the top-level function that you register with Resonate as your Workflow.
 
 import Tabs from "@theme/Tabs";
 import TabItem from "@theme/TabItem";
 
 <Tabs
-    groupId="language"
     defaultValue="python"
     values={[
         {label: 'Python', value: 'python'},
@@ -44,129 +39,452 @@ import TabItem from "@theme/TabItem";
 
     <TabItem value="python">
 
-Comparison of Python SDKs between Resonate and Temporal.
-
         <Tabs
-        defaultValue="resonate"
+        defaultValue="temporal"
         values={[
-            {label: 'Resonate', value: 'resonate'},
             {label: 'Temporal', value: 'temporal'},
+            {label: 'Resonate', value: 'resonate'},
+
         ]}
         >
 
-            <TabItem value="resonate">
+            <TabItem value="temporal">
 
 ```python
-from resonate import Resonate
+# activity
+async def bar():
+    print("bar completed!")
 
-resonate = Resonate()
+# activity
+async def baz():
+    print("baz completed!")
 
+# workflow
+@workflow.defn()
+class Workflow:
+
+    @workflow.foo
+    async def foo(self):
+        # synchronous call to bar
+        await workflow.execute_activity(
+            bar,
+            start_to_close_timeout=timedelta(seconds=10),
+        )
+        # synchronous call to baz
+        await workflow.execute_activity(
+            baz,
+            start_to_close_timeout=timedelta(seconds=10),
+        )
+```
+
+                </TabItem>
+
+                <TabItem value="resonate">
+
+```python
+# function
+def bar(ctx):
+    print("bar completed!")
+
+# function
+def baz(ctx):
+    print("baz completed!")
+
+# coroutine
 @resonate.register
-def foo(ctx, params):
-    p1 = yield ctx.lfi(bar, params)
-    result = yield p1
-    p2 = yield ctx.lfi(baz, result)
-    result = yield p2
-    return result
+def foo(ctx):
+    # synchronous call to bar
+    yield ctx.run(bar)
+    # synchronous call to baz
+    yield ctx.run(baz)
+```
 
-def bar(ctx, params):
-    return result
+                </TabItem>
 
 
-def baz(ctx, params):
-    return result
+            </Tabs>
+
+        </TabItem>
+
+         <TabItem value="typescript">
+
+            <Tabs
+                defaultValue="temporal"
+                values={[
+                    {label: 'Temporal', value: 'temporal'},
+                    {label: 'Resonate', value: 'resonate'},
+
+                ]}
+            >
+
+                <TabItem value="temporal">
+
+```typescript
+// activities.ts
+// In the Temporal TypeScript SDK
+// Activities can't be in the same file as the Workflow
+
+// activity
+async function bar(): Promise<void> {
+  console.log("bar completed!");
+}
+
+// activity
+async function baz(): Promise<void> {
+  console.log("baz completed!");
+}
+```
+
+```typescript
+// workflow.ts
+import { proxyActivities } from "@temporalio/workflow";
+import type * as activities from "./activities";
+
+const { bar, baz } = proxyActivities<typeof activities>({
+  startToCloseTimeout: "10 seconds",
+});
+
+// workflow
+export async function foo(): Promise<void> {
+  await bar();
+  await baz();
+}
+```
+
+                </TabItem>
+
+                <TabItem value="resonate">
+
+```typescript
+// function
+function bar(ctx: Context): void {
+  console.log("bar completed!");
+}
+
+// function
+function baz(ctx: Context): void {
+  console.log("baz completed!");
+}
+
+// coroutine
+function foo(ctx: Context): void {
+  // synchronous call to bar
+  yield * ctx.run(bar);
+  // synchronous call to baz
+  yield * ctx.run(baz);
+}
+```
+
+                </TabItem>
+
+
+            </Tabs>
+
+        </TabItem>
+
+</Tabs>
+
+A few things to note about the code examples above.
+
+1. Although we often say that Resonate "just uses functions", the Resonate SDKs supports both coroutines and regular functions.
+   Any function that uses `yield` is a coroutine, and any function that does not use `yield` is a regular function.
+   The coroutines enable Resonate to pause and resume execution, which is how Resonate maintains control.
+   In a way, you can draw a parallel to Temporal's Workflows and Activities, where Workflows are coroutines and Activities are regular functions.
+2. Unlike Temporal, Resonate does not support registering or calling methods on a class or object.
+   Resonate promotes a procedural programming model.
+   Using Class methods opens up a whole set of problems around state management that Resonate seeks to avoid.
+3. You'll notice that Temporal requires that you set at _least one Activity timeout_, so that the Temporal Server can detect failures.
+   For long-running Activities, for example, Temporal recommends heartbeating and manually setting heartbeat timeouts.
+   Resonate has heartbeating built into it, and automatically detects whether a process has crashed and when to recover function executions.
+   You do not have to set timeouts to detect platform-level issues.
+
+## Asynchrounous calls
+
+Just like in Temporal, depending on the API, you can either make a blocking call or an ansynchronous call to another function.
+By default, in both systems, durable calls are asynchronous, however sometimes you use an API with syntactical sugar that blocks on the result of the call.
+
+In Temporal, when you use a "deferred" or "asynchronous" API, the thing you get back is sometimes called a "Future" and sometimes called a "Promise" depending on the SDK.
+In Resonate, we call it a **Durable Promise**.
+
+<Tabs
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}
+>
+
+    <TabItem value="python">
+
+        <Tabs
+        defaultValue="temporal"
+        values={[
+            {label: 'Temporal', value: 'temporal'},
+            {label: 'Resonate', value: 'resonate'},
+
+        ]}
+        >
+
+            <TabItem value="temporal">
+
+```python
+# activity
+async def bar():
+    print("bar completed!")
+
+
+# activity
+async def baz():
+    print("baz completed!")
+
+
+# workflow
+@workflow.defn()
+class Workflow:
+
+    @workflow.foo
+    async def foo(self):
+        # asynchronous call to bar
+        f1 = await workflow.start_activity(
+            bar,
+            start_to_close_timeout=timedelta(seconds=10),
+        )
+        # asynchronous call to baz
+        f2 = await workflow.start_activity(
+            baz,
+            start_to_close_timeout=timedelta(seconds=10),
+        )
+        # wait for both futures to complete
+        r1 = await f1.result()
+        r2 = await f2.result()
+```
+
+                </TabItem>
+
+                <TabItem value="resonate">
+
+```python
+# function
+def bar(ctx):
+    print("bar completed!")
+
+
+# function
+def baz(ctx):
+    print("baz completed!")
+
+
+# coroutine
+@resonate.register
+def foo(ctx):
+    # asynchronous call to bar
+    p1 = yield ctx.begin_run(bar)
+    # asynchronous call to baz
+    p2 = yield ctx.begin_run(baz)
+    # wait for both promises to complete
+    r1 = yield p1
+    r2 = yield p2
+```
+
+                </TabItem>
+
+
+            </Tabs>
+
+        </TabItem>
+
+         <TabItem value="typescript">
+
+            <Tabs
+                defaultValue="temporal"
+                values={[
+                    {label: 'Temporal', value: 'temporal'},
+                    {label: 'Resonate', value: 'resonate'},
+
+                ]}
+            >
+
+                <TabItem value="temporal">
+
+```typescript
+// activities.ts
+// In the Temporal TypeScript SDK
+// Activities can't be in the same file as the Workflow
+
+// activity
+async function bar(): Promise<void> {
+  console.log("bar completed!");
+}
+
+// activity
+async function baz(): Promise<void> {
+  console.log("baz completed!");
+}
+```
+
+```typescript
+// workflow.ts
+import { proxyActivities } from "@temporalio/workflow";
+import type * as activities from "./activities";
+
+const { bar, baz } = proxyActivities<typeof activities>({
+  startToCloseTimeout: "10 seconds",
+});
+
+// workflow
+export async function foo(): Promise<void> {
+  f1 = bar.start();
+  f2 = baz.start();
+
+  // wait for both futures to complete
+  r1 = await f1.result();
+  r2 = await f2.result();
+}
+```
+
+                </TabItem>
+
+                <TabItem value="resonate">
+
+```typescript
+function bar(ctx: Context): void {
+  console.log("bar completed!");
+}
+
+function baz(ctx: Context): void {
+  console.log("baz completed!");
+}
+
+function foo(ctx: Context): void {
+  // synchronous call to bar
+  p1 = yield * ctx.begin_run(bar);
+  // synchronous call to baz
+  p2 = yield * ctx.begin_run(baz);
+  // wait for both promises to complete
+  r1 = yield * p1;
+  r2 = yield * p2;
+}
+```
+
+                </TabItem>
+
+
+            </Tabs>
+
+        </TabItem>
+
+</Tabs>
+
+In Temporal, there are often several Events associate with invoking a function.
+For example, when you invoke an Activity there are at least three Events, each one storing a different state of the Activity:
+
+- Scheduled
+- Started
+- Completed
+
+In Resonate there is only one "Event" associated with invoking a function, which is the Durable Promise.
+The Promise is created when you invoke the function, storing the function name, parameters, and other metadata.
+When the function completes, the Promise is resolved with the result of the function execution.
+
+Temporal stores the Event History in the Temporal Server, Resonate stores the Durable Promises in the Resonate Server.
+
+## Composability
+
+In Temporal, the Durable Call Graph, so to speak, is only ever one level deep.
+That is, the thing that makes the code "durable" is the Event History.
+The Event History is tied specifically to the Workflow Execution.
+Therefore, all durability revolves around the APIs used inside the designated Workflow.
+
+In Resonate, the Durable Call Graph can extend indefinitely, many levels deep, and you can call functions recursively.
+That's because the thing that makes the code "durable" is the Durable Promise.
+Each function invoked by Resonate receives a Context object as the first argument.
+This Context object has API methods to invoke other functions, sleep, create Durable Promises, and more.
+Each function invocation is tied to a Durable Promise, enabling a durability to extend down the Call Graph indefinitely.
+
+<Tabs
+    defaultValue="temporal"
+    values={[
+        {label: 'Temporal', value: 'temporal'},
+        {label: 'Resonate', value: 'resonate'},
+
+    ]}
+
+>
+
+    <TabItem value="temporal">
+
+![Temporal call levels](/img/temporal-call-levels.svg)
+
+    </TabItem>
+
+    <TabItem value="resonate">
+
+![Resonate call levels](/img/resonate-call-levels.svg)
+
+    </TabItem>
+
+</Tabs>
+
+Resonate functions can also call themselves recursively.
+
+Consider this factorial example.
+How might you implement it in Temporal?
+
+<Tabs
+    groupId="language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+
+    ]}
+
+>
+
+    <TabItem value="python">
+
+```python
+@resonate.register
+def factorial(ctx, n):
+    if n <= 1:
+        return 1
+    r = yield ctx.run(factorial, n - 1).options(id=f"factorial-{n-1}")
+    return n * r
+
+
+def main():
+    result = factorial.run("factorial-5", n=5)
+    print(result)
 ```
 
     </TabItem>
 
-    <TabItem value="temporal">
+    <TabItem value="typescript">
 
-```python
-from temporalio import workflow
+    </TabItem>
 
-@workflow.defn()
-class YourWorkflow:
+</Tabs>
 
-    @workflow.foo
-    async def foo(self, params):
-        result = await workflow.execute_activity(
-            bar,
-            params,
-            start_to_close_timeout=timedelta(seconds=10),
-        )
-
-        result = await workflow.execute_activity(
-            baz,
-            result,
-            start_to_close_timeout=timedelta(seconds=10),
-        )
-        return result
-
-
-async def bar(params):
-    return result
-
-
-async def baz(params):
-    return result
-```
-
-            </TabItem>
-
-        </Tabs>
-
-Although we often say that Resonate "just uses functions", the Resonate Python SDK actually supports both coroutines and regular functions.
-
-Any function that uses `yield` is a coroutine, and any function that does not use `yield` is a regular function.
-The coroutines enable Resonate to pause and resume execution which is how Resonate maintains control.
-
-Temporal uses Python's `async/await` syntax, running Workflows and Activities inside a sandbox environment that gives Temporal control over execution.
-
-In a way, you can draw a parallel to Temporal's Workflows and Activities, where Workflows are coroutines and Activities are regular functions.
-
-However, Resonate enables any function to call any other function (or coroutine) without any restrictions.
-You are not limited to a Workflow calling a set of Activities, typically resulting is a call graph that only goes one level deep.
-In Resonate, your Durable Call Graph can extend indefinitely, many levels deep, and you can call functions recursively.
-In Temporal you can not call functions recursively (if you want Durability).
-
-        <Tabs
-        defaultValue="resonate"
-        values={[
-            {label: 'Resonate', value: 'resonate'},
-            {label: 'Temporal', value: 'temporal'},
-            ]}
-        >
-            <TabItem value="resonate">
-
-![Resonate call levels](/img/resonate-call-levels.svg)
-
-            </TabItem>
-
-            <TabItem value="temporal">
-
-![Temporal call levels](/img/temporal-call-levels.svg)
-
-            </TabItem>
-
-        </Tabs>
-
+In essence, Resonate enables any function to call any other function (or coroutine) without any restrictions.
 With Resonate, all functions and coroutines registered with Resonate (or called by a coroutine) have a Context object passed to it as the first argument.
 This Context object has API methods which you use to Durably invoke other functions, sleep, create Durable Promises, and more.
 
-Unlike Temporal, Resonate does not support registering Class methods.
-Resonate promotes a procedural programming model that aims to enable developers to reason about their code more easily.
-Using Class methods opens up a whole set of problems around state management that Resonate seeks to avoid.
-In Temporal, you can use a Class to share dependencies among Activities.
-In Resonate, you can achieve the same thing by registering dependencies using a Context object.
+## Dependency injection
 
-        <Tabs
-        defaultValue="resonate"
-        values={[
-            {label: 'Resonate', value: 'resonate'},
-            {label: 'Temporal', value: 'temporal'},
-        ]}
-        >
-            <TabItem value="resonate">
+In Temporal, you can use a Class to share dependencies among Activities.
+
+Resonate does not support registering and calling methods on a class or object.
+So, Resonate enables you to register dependencies on the Context object.
+
+<Tabs
+    defaultValue="resonate"
+    values={[
+        {label: 'Resonate', value: 'resonate'},
+        {label: 'Temporal', value: 'temporal'},
+    ]}
+>
+    
+    <TabItem value="resonate">
 
 ```python
 from resonate import Resonate
@@ -182,9 +500,9 @@ def insert_to_database(ctx, data):
     return "Data inserted!"
 ```
 
-            </TabItem>
+    </TabItem>
 
-            <TabItem value="temporal">
+    <TabItem value="temporal">
 
 ```python
 from temporalio import activity
@@ -198,43 +516,6 @@ class Activities:
         self.database_connection.insert(data)
         return "Data inserted!"
 ```
-
-            </TabItem>
-
-        </Tabs>
-
-
-
-        </TabItem>
-
-        <TabItem value="typescript">
-
-Comparison of TypeScript SDKs between Resonate and Temporal.
-
-        <Tabs
-        groupId="coming-from-temporal"
-        defaultValue="resonate"
-        values={[
-            {label: 'Resonate', value: 'resonate'},
-            {label: 'Temporal', value: 'temporal'},
-        ]}
-        >
-
-            <TabItem value="resonate">
-
-:::caution
-
-A new release of the TypeScript SDK is currently in development.
-
-:::
-
-            </TabItem>
-
-            <TabItem value="temporal">
-
-            </TabItem>
-
-        </Tabs>
 
     </TabItem>
 
@@ -269,7 +550,7 @@ Noticing that a transport_plugin is part of the routing schema?
 
 This is because Resonate supports multiple transports, not just long polling.
 
-Jump to the [Durable Async RPC section](#durable-async-rpc) to learn more.
+{/* Jump to the [Durable Async RPC section](#durable-async-rpc) to learn more. */}
 
 :::
 
@@ -281,8 +562,6 @@ Jump to the [Durable Async RPC section](#durable-async-rpc) to learn more.
     ]}
 >
     <TabItem value="python">
-
-Comparison of Python SDKs between Resonate and Temporal.
 
         <Tabs
         defaultValue="resonate"
@@ -391,14 +670,21 @@ result = await client.execute_workflow(
 
 ## Data in / data out
 
-In Temporal, you can use Signals and Queries to send data into a Workflow and get data out of a Workflow respectively.
+In Temporal to get data in and out of a Workflow you can use Signal and Queries respectively.
+
+This is an area that Resonate differs from Temporal.
+In short, Resonate promotes a procedural programming model.
+It does not recommend or support the Actor model.
+
+With Temporal, Signals and Queries enable you to construct Actor-like entities, abstracting away some of the complexity around managing state while introducing new complexities around message ordering and Event History size.
+This is because
+
 This enables a sort of Actor model where the Workflow Execution can act as a stateful entity that can receive and respond to messages.
 However, the main problem with Temporal Signals specifically, is that there is no way to guarantee ordering.
 And, you have to handle the eventual issue of large Event Histories.
 
-Resonate does not promote the use of the Actor model.
-As said previously, Resonate promotes a procedural programming model.
-And therefore, Resonate does not have Signals and Queries.
+Resonate does not promote the use of the Actor model and instead promotes a procedural programming model.
+Therefore, Resonate does not have Signals and Queries.
 
 However, when it comes to getting data into a running function, you can achieve similar functionality, with rock-solid ordering guarantees, using Durable Promises.
 In Resonate you create a Durable Promise that is not attached to any function execution.
@@ -432,22 +718,23 @@ And though you can now make cross-Namespace calls in Temporal using Nexus, getti
 Resonate, on the other hand, is designed to for an application to use multiple Resonate Servers that can communicate with each other.
 
 <Tabs
-    defaultValue="resonate"
+    defaultValue="temporal"
     values={[
-        {label: 'Resonate', value: 'resonate'},
         {label: 'Temporal', value: 'temporal'},
+        {label: 'Resonate', value: 'resonate'},
+    
     ]}
 >
-
-    <TabItem value="resonate">
-
-![Resonate architecture](/img/resonate-system-arch.svg)
-
-    </TabItem>
 
     <TabItem value="temporal">
 
 ![Temporal architecture](/img/temporal-system-arch.svg)
+
+    </TabItem>
+
+    <TabItem value="resonate">
+
+![Resonate architecture](/img/resonate-system-arch.svg)
 
     </TabItem>
 

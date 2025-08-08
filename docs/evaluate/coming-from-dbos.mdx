@@ -5,8 +5,111 @@ sidebar_label: Coming from DBOS
 sidebar_position: 5
 ---
 
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
 **Are you coming from experience from DBOS?**
 
 If so, this page will help you understand the differences and similarities between Resonate and DBOS.
 
-Coming soon...
+## Building blocks
+
+If you are familiar with DBOS, then you are used to Workflow functions and Step functions.
+The Workflow functions orchestrate the execution of Step functions, which are the actual tasks that do the work.
+The steps of the Workflow can execute sequentially or concurrently.
+
+In Resonate, there are no explicit Workflows or Steps – you just write functions.
+Resonate functions can also run sequentially or concurrently.
+But they can also compose indefinitely and recursively.
+However, if it helps, you can think of the top-level function that you register with Resonate as a Workflow.
+
+Then, similar to DBOS, depending on the API you use, when you invoke a function you get a "Future" or "Promise" back that you can await on to get the result when it's ready.
+In Resonate we call these **Durable Promises**.
+
+<Tabs
+  defaultValue="python"
+  values={[
+    { label: 'Python', value: 'python' },
+    { label: 'TypeScript', value: 'typescript' },
+  ]}
+>
+    <TabItem value="python">
+
+Below, is an example of what Resonate code looks like compared to DBOS's introductory sequential step example.
+You'll notice that DBOS uses decorators to define Workflows and Steps, tracking which functions to provide durability for.
+
+In Resonate you can register a top-level function with a decorator and then you use a Resonate's Context object to invoke other functions.
+Any function invoked with the Context object will be added to the Call Graph becoming durable.
+
+        <Tabs
+            defaultValue="dbos"
+            values={[
+                { label: 'DBOS', value: 'dbos' },
+                { label: 'Resonate', value: 'resonate' },
+            ]}
+        >
+
+            <TabItem value="dbos">
+
+```python
+@DBOS.step()
+def step_one():
+    print("Step one completed!")
+
+@DBOS.step()
+def step_two():
+    print("Step two completed!")
+
+@DBOS.workflow()
+def workflow():
+    step_one()
+    step_two()
+```
+
+            </TabItem>
+
+            <TabItem value="resonate">
+
+```python
+def step_one(ctx, params):
+    print("Step one completed!")
+
+
+def step_two(ctx, params):
+    print("Step two completed!")
+
+
+@resonate.register
+def workflow(ctx, params):
+    yield ctx.run(step_one)
+    yield ctx.run(step_two)
+```
+
+            </TabItem>
+
+
+        </Tabs>
+
+In DBOS, to execute steps concurrently, you
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+
+    </TabItem>
+
+</Tabs>
+
+## Scalability and recovery
+
+A major difference between Resonate and DBOS is scalability and thus recovery.
+
+DBOS ensures durability for a single instance of an application.
+That is — when the application process crashes, an operator must restart the application for any in-progress functions/workflows to recover and resume.
+
+In Resonate, you can do that too.
+But you can also run multiple instances of your application at the same time, and if one of them crashes another one will automatically recover and resume the executions that were in progress.
+This is because one of the underlying protocols that Resonate is built on, [Async RPC](https://async-rpc.io), enables Resonate to provide automatic service discovery, load balancing, and recovery out of the box.
+
+In essence, DBOS focuses on single-instance durability, not addressing scalability at all, while Resonate aims to holistically address the needs of a modern distributed system.
