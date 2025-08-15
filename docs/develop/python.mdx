@@ -26,13 +26,13 @@ This guide covers installation and features that the SDK offers.
 
 To install the Resonate Python SDK, you can use any of your favorite package managers.
 
-### `uv add resonate-sdk`
+### `uv`
 
 ```shell
 uv add resonate-sdk
 ```
 
-### `pip install resonate-sdk`
+### `pip`
 
 ```shell
 pip install resonate-sdk
@@ -43,8 +43,6 @@ pip install resonate-sdk
 **How to initialize Resonate in your Worker / Application Node.**
 
 There are two ways to initialize Resonate, local and remote.
-
-### `resonate = Resonate()`
 
 **Local initialization**
 
@@ -197,7 +195,7 @@ resonate = Resonate.remote(
     group="group-b",
 )
 # highlight-next-line
-result = resonate.options(target="poll://any@group-b").rpc("invocation-id", "foo", args)
+result = resonate.options(target="poll://any@group-a").rpc("invocation-id", "foo", args)
 ```
 
 ### `.set_dependency()`
