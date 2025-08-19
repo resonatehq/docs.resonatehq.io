@@ -1,587 +1,335 @@
 ---
 id: typescript
 title: Resonate TypeScript SDK
-sidebar_label: TypeScript SDK
-description: Get started with the Resonate TypeScript SDK.
+description: Get started with the Resonate Typescript SDK.
+sidebar_label: Typescript SDK
 last_update:
-  date: "10-03-2024"
+  date: "08-18-2025"
 pagination_next: null
 pagination_prev: null
 tags:
-  - get-started
   - typescript
   - sdk-guidance
 ---
 
-import fan from "/img/fan.png";
-
-Welcome to the Resonate TypeScript SDK guide!
-This SDK makes it possible to write distributed async/await applications with TypeScript.
+Welcome to the Resonate Typescript SDK guide!
+This SDK makes it possible to write Distributed Async Await applications with Typescript.
 This guide covers installation and features that the SDK offers.
 
-:::tip [API reference](https://resonatehq.github.io/resonate-sdk-ts/index.html)
+:::tip [API reference](https://resonatehq.github.io/resonate-sdk-ts/)
 
 :::
 
 ## Installation
 
-**How to install and use the TypeScript SDK in your project.**
+**How to install the Resonate Typescript SDK into your project.**
 
-To install the SDK in your project you can use npm or yarn.
+To install the Resonate Typescript SDK, you can use any of your favorite package managers.
 
-**npm**
+### `npm`
 
 ```shell
 npm install @resonatehq/sdk
 ```
 
-**yarn**
+### `yarn`
 
 ```shell
 yarn add @resonatehq/sdk
 ```
 
-Then, create a top-level Resonate object in your project file.
+## Initialization
 
-```ts
-import { Resonate } from "@resonatehq/sdk";
+**How to initialize Resonate in your Worker / Application Node.**
 
-const resonate = new Resonate();
+There are two ways to initialize Resonate, local and remote.
+
+**Local initialization**
+
+Local initialization means that Resonate uses local memory for promise storage.
+
+This is ideal for getting started quickly or for integrating Resonate into an existing application without relying on dependencies.
+
+The drawback is that you can't use Resonate's Async RPC or recover executions from process / worker crashes.
+
+```typescript
+import { Resonate } from "@resonate/sdk";
+
+const resonate = Resonate.local()
 ```
 
-After that, register your top-level function with the Resonate object using `resonate.register()`, provide a function unique identifier (UID) and a function pointer and then call `resonate.start()`.
-You can then invoke the registered function using `resonate.run()` by passing the function's UID, a UID for corresponding promise, and any required arguments.
+:::differentiator Dead Simple incremental adoption
 
-```ts
-import { Resonate, Context } from "@resonatehq/sdk";
+Temporal, Restate, and DBOS require a server or database to get started.
 
-const resonate = new Resonate();
-
-resonate.register("your-function-name", yourFunctionPointer);
-
-resonate.start();
-
-resonate.run("your-function-name", "unique-promise-id", args);
-```
-
-With `resonate.run()`, your code execution will complete even in the presence of hardware or software failures.
-Any part of your application that calls `resonate.run()` is considered a Resonate Application Node, and maintans its own call graph.
-
-## Promise storage modes
-
-Resonate offers two promise storage modes: Local and Remote.
-
-### Local storage
-
-**How to use local storage for Durable Promises.**
-
-When using local storage (Local mode), which is the default, Resonate utilizes a volatile in-memory promise store.
-
-```ts
-import { Resonate } from "@resonatehq/sdk";
-
-const resonate = new Resonate();
-```
-
-Promises are stored in memory and are not durable to hard crashes.
-This mode provides out-of-the-box features like automatic retries, tracing, and logging without requiring any additional infrastructure.
-
-### Remote storage
-
-**How to enable remote storage for Durable Promises.**
-
-Remote storage ensures promises get stored in the Resonate Server.
-To enable Remote storage, pass the Resonate Server's address when initializing Resonate:
-
-```ts
-import { Resonate } from "@resonatehq/sdk";
-
-const resonate = new Resonate({
-  url: "http://localhost:8001",
-});
-```
-
-## Durable Promise Timeout
-
-Set timeouts for Durable Promises to detect failures.
-
-### Application Node default
-
-You can configure a default Durable Promise Timeout for all function executions in the Application Node via top-level Resonate object:
-
-```ts
-import { Resonate, Retry } from "@resonatehq/sdk";
-
-const resonate = new Resonate({
-  // ...
-  // The new default Durable Promise Timeout for this Application Node
-  timeout: 5000, // Set in ms. If not set, defaults to 1000 ms.
-  // ...
-});
-```
-
-### Per registered function
-
-You can override the Application Node default when you register a function with `resonate.register()`:
-
-```ts
-resonate.register(
-  "your-function-name",
-  yourFunc,
-  resonate.options({
-    timeout: 3000, // Set in ms. If not set, defaults to the Application Node default.
-    // ...
-  })
-);
-```
-
-### Per function invocation
-
-Additionally, you can set the timeout for specific functions using `ctx.run()`:
-
-```ts
-ctx.run(yourFunc, arg1, arg2, resonate.options({ timeout: 2000 }));
-```
-
-:::note Do not exceed the parent timeout
-
-A specific Durable Promise Timeout cannot be longer than the Timeout of the parent promise.
-If it is longer, the minimum will take precedence.
+Resonate enables you to get started with a local worker that stores promises in memory, no server or database required.
+This makes it easy to incrementally adopt Resonate into your existing Typescript application.
 
 :::
 
-## Trigger a retry
+**Remote initialization**
 
-If you want a function to retry in response to an error, you need to either throw the error, or return a rejected promise.
-You cannot return a custom object that contains error information.
+Remote initialization means that promises are stored remotely, and that the worker receives messages from a remote source.
+This is how Resonate enables Async RPC for building distributed applications that are reliable and scalable.
 
-**✅ Throw an error:**
-
-```ts
-try {
-  return "success";
-} catch (e) {
-  let errorMessage = "An unknown error occurred";
-  if (e instanceof Error) {
-    errorMessage = e.message;
-  }
-  // highlight-next-line
-  throw errorMessage;
-}
-```
-
-**✅ Reject a promise:**
-
-```ts
-return new Promise((resolve, reject) => {
-  try {
-    resolve("success");
-  } catch (e) {
-    let errorMessage = "An unknown error occurred";
-    if (e instanceof Error) {
-      errorMessage = e.message;
-    }
-    // highlight-next-line
-    reject(errorMessage);
-  }
-});
-```
-
-**❌ Don't return a custom object:**
-
-```ts
-try {
-    return { success: true };
-  } catch (e) {
-    let errorMessage = "An unknown error occurred";
-    if (e instanceof Error) {
-      errorMessage = e.message;
-    }
-    // highlight-next-line
-    return { success: false, error: errorMessage };
-  }
-}
-```
-
-## Set a Retry Policy
-
-Set Retry Policies to automatically retry function executions.
-
-### Application Node default
-
-You can configure a default Retry Policy for all function executions in the Application Node via the top-level Resonate object:
-
-```ts
-import { Resonate, Retry } from "@resonatehq/sdk";
-
-const resonate = new Resonate({
-  // ...
-  retry: Retry.exponential(
-    100, // initial delay (in ms)
-    2, // backoff factor
-    Infinity, // max attempts
-    60000 // max delay (in ms, 1 minute)
-  ),
-  // ...
-});
-```
-
-### Function-specific Configuration
-
-When registering functions with `resonate.register()`, provide function-specific options:
-
-```ts
-resonate.register(
-  "your-function-name",
-  yourFunc,
-  resonate.options({
-    // ...
-    retry: Retry.linear(), // Overrides the default retry policy.
-    // ...
-  })
-);
-```
-
-### Per function invocation
-
-You can override the default Retry Policy for specific function invocations using `ctx.run()`:
-
-```ts
-ctx.run(yourFunc, args, resonate.options({ retry: Retry.linear() }));
-```
-
-## Durable Promise metadata
-
-You can add metadata to Durable Promises using the tags field in the options object.
-
-### Application Node default
-
-```ts
-resonate.register(
-  "downloadAndSummarize",
-  downloadAndSummarize,
-  resonate.options({
-    // ...
-    tags: { bar: "baz" }, // Additional tags to add to the Durable Promise.
-  })
-);
-```
-
-### Function-specific Configuration
-
-### Per function invocation
-
-## Schedules
-
-The Resonate TypeScript SDK enables you to schedule function executions.
-Instead of calling `resonate.run()`, use `resonate.schedule()` to schedule the function execution on a repeating basis.
-
-You can create a Schedule that is stored in [local memory](#local-storage), or you can create a Schedule that is [stored in the Resonate Server](#remote-storage).
-
-If the application node connects to a Resonate Server, then the Schedule will automatically be stored there.
-Otherwise, the Schedule will persist in local memory and disappear when the process does.
-
-### Create a Schedule
-
-**How to schedule function executions with the Resonate TypeScript SDK.**
-
-You can execute your function periodically with a cron expression.
-
-<!--SNIPSTART examples-ts-schedule-flow-function-example-->
-
-[schedules/index.ts](https://github.com/resonatehq/examples-ts/blob/main/schedules/index.ts)
-
-```ts
-import { Resonate, Context } from "@resonatehq/sdk";
-
-// flow is the top-level function that awaits on step1 and step 2
-export async function flow(ctx: Context) {
-  console.log("Starting the flow");
-  // Call function 2
-  await ctx.run(step1);
-  // Call function 3
-  await ctx.run(step2);
-  return;
-}
-// step1 function
-async function step1() {
-  console.log("Executing step 1");
-  // ...
-  return;
-}
-// step2 function
-async function step2() {
-  console.log("Executing step 2");
-  // ...
-  return;
-}
-
-// Initialize a Resonate application.
-const resonate = new Resonate({
-  url: "http://localhost:8001",
-});
-
-// Schedule the execution of "flow" for every minute
-// highlight-next-line
-const sched = await resonate.schedule("flow-schedule", "* * * * *", flow);
-console.log(sched);
-
-// Start the Resonate application
-resonate.start();
-console.log("Running");
-```
-
-<!--SNIPEND-->
-
-If the above process crashes, you can restart it and the interval of the function executions will pick back up.
-
-Another acceptable syntax is to register the function first and then refer to the function by its name:
+The quickest way to get started with Remote initialization is for the worker to use Resonate's default Poller message transport to receive messages directly from a Resonate Server.
 
 ```typescript
-resonate.register("flow", flow);
-// ...
-const sched = await resonate.schedule("flow-schedule", "* * * * *", "flow");
+import { Resonate } from "@resonate/sdk";
+
+const resonate = Resonate.remote()
+
+// or alternatively
+const resonate = Resonate.remote({host:"https://my-resonate.com"})
+
 ```
 
-Consider this pattern for creating schedules on one Application Node, and having the functions execute on another.
+Resonate workers can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
+The Poller is a great starting place as it will long-poll for messages from the Resonate Server without any additional setup.
 
-:::note Unique Schedule IDs
+## Registration
 
-In the example above, an idempotency key is generated from the schedule ID and the function name.
-This enables you to run this Application Node in multiple places without creating a new Schedule each time.
-It also enables you to restart a process that crashes.
+**How to register a function with Resonate in the Typescript SDK.**
 
-However, if you try to create a Schedule with an ID that already exists with a different function you will get an error.
+Using the `register` method.
 
-```shell
-message: 'A schedule with this identifier already exists'
+### `resonate.register()`
+
+**Method**
+
+```typescript
+function foo(ctx: Context, ...args: any): any {
+  // ...
+  return result;
+}
+
+resonate.register('foo', foo);
 ```
+
+## Ephemeral-to-Durable
+
+**How to invoke a function in the ephemeral world with the Resonate Class.**
+
+To move from the ephemeral world to the durable world you use the Resonate Class to invoke functions.
+
+There are two methods that you can use `.run()` and `.rpc()`.
+
+### `.run()`
+
+Resonate's `.run()` method will invoke the function in the same process.
+You can think of it as a "run right here" invocation.
+After invocation, the function is considered durable and can recover in another process if desired.
+
+**Decorated function invocation**
+
+```typescript
+function foo(ctx: Context, ...args: any): any {
+  // ...
+  return result;
+}
+
+const rfoo = resonate.register('foo', foo);
+
+rfoo.run("foo")
+```
+
+**Method registered invocation**
+
+```typescript
+function foo(ctx: Context, ...args: any): any {
+  // ...
+  return result;
+}g
+
+resonate.register('foo', foo);
+
+resonate.run("foo", foo)
+```
+
+### `.rpc()`
+
+Resonate's `.rpc()` method (Remote Procedure Call) invokes the function in a remote process.
+
+:::tip Remote initialization required
+
+The RPC method requires that the Worker / Application Node is connected with a Resonate Server.
+It also assumes that the Worker / Application Node where the invoked function is running is also connected to a Resonate Server and can receive messages.
 
 :::
 
-### Get a Schedule
+You can think of this API as a "run somewhere else" invocation (Asynchronous Remote Procedure Call).
+However, if the function is registered locally, it is still possible for the function to execute in the same process.
+After invocation, the function is considered durable and can recover in another process if desired.
 
-**How to get Schedule details using the TypeScript SDK.**
+The invocation returns a promise which can be awaited on at any point after.
 
-You can get the details for a Schedule with the Schedule ID used to create the schedule.
-
-```typescript
-const sched = await resonate.schedules.get("flow-schedule");
-```
-
-You can also use the CLI to get a Schedule.
-See the CLI reference for
-[getting a Schedule](/operate/cli-reference/commands/schedule#get) for details.
-
-### Search for Schedules
-
-**How to search for Schedules.**
-
-You can search for Schedules using a combination of tags and ID wildcards.
-
-Using the CLI:
-
-```
-resonate schedules search "flow-*"
-```
-
-See the CLI reference for [searching for Schedules](/operate/cli-reference/commands/schedule#search) for details.
-
-### Delete a Schedule
-
-**How to delete a Schedule stored in the Resonate Server.**
-
-Currently there isn't an API exposed in the TypeScript SDK to delete a Schedule.
-
-Instead you can use the Server CLI.
-
-```
-resonate schedules delete <schedule-id>
-```
-
-See the CLI reference for [deleting a Schedule](/operate/cli-reference/commands/schedule#delete) for details.
-
-## Resolving promises
-
-**How to manually resolve a Durable Promise from another process.**
-
-Promises and executions always come in pairs.
-However an execution could be any "step".
-Often the "step" is a function execution but it could be a human completing a task for example.
-
-Let's say you have a multi step flow defined in a function like this:
+**process a**
 
 ```typescript
-import { Resonate, Context } from "@resonatehq/sdk";
+// process b
+const resonate = Resonate.remote({group: "group-a"})
 
-// flow blocks on the resolution of "step2"
-export async function flow(ctx: Context) {
-  // Await on step 1
-  // step 1 resolves when the function completes
-  await ctx.run(step1);
-  // highlight-start
-  // Await on step2
-  // step2 gets resolved from another process
-  console.log("awaiting on step 2 completion");
-  await ctx.run("step2");
-  // highlight-end
-  // Await on step 3
-  // step 3 resolves when the function completes
-  await ctx.run(step3);
-  return;
-}
-
-async function step1() {
-  console.log("executing step 1");
+function foo(ctx: Context, ...args: any): any {
   // ...
-  return;
-}
-async function step3() {
-  console.log("executing step 3");
-  // ...
-  return;
+  return result;
 }
 
-// Initialize a Resonate application.
-// Connect to a Resonate Server for coordination
-const resonate = new Resonate({ url: "http://localhost:8001" });
-
-// Register a function as a Resonate function
-resonate.register(
-  "flow", // function name
-  flow, // function pointer
-  resonate.options({ timeout: 1200000 }) // Timeout of 60 seconds
-);
-
-// Start the Resonate application
-resonate.start();
-
-// Call the function1
-await resonate.run("flow", `flow-promise-2`);
-console.log("Complete");
+resonate.register('foo', foo);
 ```
 
-In the previous code example, the line `await ctx.run("step2");` blocks the rest of the function execution on promise id "step2".
-This is because we are passing the string "step2" which creates a promise with an Id of "step2" that is not directly attached to a function execution.
-
-In the other await steps a function is called instead, i.e. `await ctx.run(step1);` and `await ctx.run(step2);`, and promises are created that are directly paired with those function exeuctions.
-In the case of `await ctx.run("step2");` a promise is created that is not directly associated with an execution.
-
-Now we must resolve that promise "manually" and we can do this from any process that is connected to the Resonate Server.
-For example:
+**process b**
 
 ```typescript
-import { Resonate, Context, ResonatePromises } from "@resonatehq/sdk";
+// process b
+const resonate = Resonate.remote({group: "group-b"})
 
-// Initialize a Resonate application.
-const resonate = new Resonate({ url: "http://localhost:8001" });
-
-// ...
-// Unblock flow by resolving step 2
-console.log("executing step 2");
-// highlight-next-line
-resonate.promises.resolve("step2", "description of resolution");
-// ...
+// invoke function foo from process b on process a
+resonate.rpc("invocation-id", "foo", args, resonate.options({target:"poll://any@group-a"}))
 ```
 
-**What's happening under the hood?**
+### `.setDependency()`
 
-Here is a sequence diagram that attempts to show how the code above plays out.
-The diagram assumes that the flow function starts first and blocks on "step2", then while the flow function awaits on the "step2" promise the unblocking process runs and "completes" whatever happened in step2 using `resonate.promises.resolve()`.
+Resonate's `.setDependency()` method is not implement set for the Typescript SDK
 
-![Unblocking sequence diagram](/img/unblocking-sequence.svg)
+### `.promises.create()`
 
-## Resonate Context
+Resonate's `.promise.create()` method is not exposed yet
 
-Interactions with the runtime occur through the `Resonate Context`, which provides methods like `ctx.run()` and `ctx.sleep()`. These methods offer automatic retries, recoverability, task distribution, and more. All top-level functions (invoked by `resonate.run()`) and intermediary functions (invoked by `ctx.run()`) must accept a Resonate context as their first argument.
+### `.promises.get()`
 
-```ts
-async function purchase(ctx: Context, user: User, song: Song): Promise<Status> {
-  const charged = await ctx.run(charge, user, song);
-  const granted = await ctx.run(access, user, song);
-  return { charged, granted };
+Resonate's `.promise.get()` method is not exposed yet
+
+### `.promises.resolve()`
+
+Resonate's `.promise.resolve()` method is not exposed yet
+
+### `.promises.reject()`
+
+Resonate's `.promise.reject()` method is not exposed yet
+
+
+## Durable
+
+**How to use the Resonate Context object in the Typescript SDK.**
+
+Resonate's Context object enables you to invoke functions from inside a Durable Function.
+This is how you extend the Call Graph and create a world of Durable Functions.
+Inside a Durable Function you use the `yield` keyword to interact with the Context object.
+
+### `.lfi()` or alias `.beginRun()`
+
+Context's `.lfi()` method (Local Function Invocation) invokes a function in the **same process** in an **asynchronous manner**.
+That is — the invocation returns a promise which can be awaited on at any point after.
+
+```typescript
+function* foo(ctx: Context, ...args: any): any{
+  const promise = yield ctx.beginRun(bar, args)
+  const value = yield promise
+  return value
 }
 
-async function charge(ctx: Context, user: User, song: Song): Promise<boolean> {
-  console.log(`Charged user:${user.id} $${song.price}.`);
-  return true;
+
+function bar(ctx: Context, ...args: any): any{
+  return
 }
 
-async function access(ctx: Context, user: User, song: Song): Promise<boolean> {
-  console.log(`Granted user:${user.id} access to song:${song.id}.`);
-  return true;
+```
+
+### `.lfc()` or alias `.run()`
+
+Context's `.lfc()` method (Local Function Call) invokes a function in the **same process** in a **synchronous manner**.
+That is — the calling function blocks until the invoked function returns.
+
+```typescript
+function* foo(ctx: Context, ...args: any): any{
+  const value = yield ctx.run(bar, args)
+  return value
+}
+
+
+function bar(ctx: Context, ...args: any): any{
+  return
 }
 ```
 
-### In-Process
+### `.rfi()` or alias `.beginRpc()`
 
-In-process execution enables durable execution of functions within the same process by passing a function pointer to a local function followed by its arguments.
+Context's `.rfi()` method (Remote Function Invocation) invokes a function in a **remote process** in an **asynchronous manner**.
+That is — the invocation returns a promise which can be awaited on at any point after.
 
-```ts
-const result = ctx.run(download, arg1, arg2, ...);
-```
+**process a**
 
-<!--
-### Out-Process
-
-:::note
-Out-process execution requires the Resonate Server and proper configuration to route tasks to workers.
-Refer to the [Operate docs](/operate) for more information.
-:::
-
-Out-of-process execution allows you to dispatch the execution of multiple tasks and collect the results of those executions.
-Offloading tasks to dedicated workers occurs by passing a URL to an available worker along with its arguments.
-This approach enables you to perform the fan-out/fan-in pattern.
-
-<center>
-  <img src={fan} alt="fan" width="500" />
-</center>
-
-```ts
-const result = await ctx.run(`/gpu/summarize/${url}`, arg);
-```
--->
-
-## Sleeping
-
-Resonate keeps track of timers and executes them, even across failures and restarts. To sleep in a Resonate application for a whole day, do the following:
-
-```ts
-await ctx.sleep(86_400_000);
-```
-
-## Versioning
-
-You can register multiple versions of a function with `resonate.register()`:
-
-```ts
-// Register `downloadAndSummarize` function with a version number of 2,
-// a function pointer to a local function,
-// and optionals configurations.
-resonate.register(
-  "downloadAndSummarize",
-  downloadAndSummarize,
-  resonate.options({
-    version: 2,
-  })
-);
-```
-
-You can specify which version to run as an option on run. By default the function registered with the greatest (latest) version will be chosen.
-
-```ts
-resonate.run("downloadAndSummarize", "uid", resonate.options({ version: 2 }));
-```
-
-Additionally, your function has access to `context.version`, telling it the version this execution was started with.
-
-```ts
-async function charge(ctx: Context, user: User, song: Song): Promise<boolean> {
-  if (ctx.version == 1) {
-    console.log(`Charged user:${user.id} $${song.price} with version 1`);
-  } else {
-    console.log(`Charged user:${user.id} $${song.price} with version 2`);
-  }
-  return true;
+```typescript
+// process a
+function* foo(ctx: Context, ...args: any): any{
+  const promise = yield ctx.beginRpc(bar, args, ctx.options({target:"poll://any@group-b"}))
+  const value = yield promise
+  return value
 }
+
+resonate.register("foo", foo)
 ```
+
+**process b**
+
+```typescript
+// process b
+function bar(ctx: Context, ...args: any): any{
+  return
+}
+
+resonate.register("bar", bar)
+```
+
+### `.rfc()` or alias `.rpc()`
+
+Context's `.rfc()` method (Remote Function Call) invokes a function in a **remote process** in a **synchronous manner**.
+That is — the calling function blocks until the invoked function returns.
+
+**process a**
+
+```typescript
+// process a
+function* foo(ctx: Context, ...args: any): any{
+  const value = yield ctx.rpc(bar, args, ctx.options({target:"poll://any@group-b"}))
+  return value
+}
+resonate.register("foo", foo)
+```
+
+**process b**
+
+```typescript
+function bar(ctx: Context, ...args: any): any{
+  return
+}
+
+resonate.register("bar", bar)
+```
+
+### `.getDependency()`
+
+Context's `.getDependency()` method is not implemented yet
+
+### `.sleep()`
+
+Context's `.sleep()` method is not implemented yet.
+
+### `.promise()`
+
+Context's `.promise()` method is not implemented yet.
+
+### `.options()`
+
+Many of Context's methods support options on the call you are making. But you pass them as the final argument when doing the call
+
+```typescript
+
+function* foo(ctx: Context, ...args: any): any{
+  const promise = yield ctx.beginRpc(bar, args, ctx.options(...))
+  const value = promise
+  return value
+}
+
+resonate.run("foo", foo, args, resonate.options(...))
+````
