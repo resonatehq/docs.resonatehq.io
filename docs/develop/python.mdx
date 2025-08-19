@@ -16,7 +16,11 @@ Welcome to the Resonate Python SDK guide!
 This SDK makes it possible to write Distributed Async Await applications with Python.
 This guide covers installation and features that the SDK offers.
 
-:::tip [API reference](https://resonatehq.github.io/resonate-sdk-py/)
+:::tip API Reference
+
+Looking for the API reference?
+
+The Resonate Python SDK API reference is available [here](https://resonatehq.github.io/resonate-sdk-py/).
 
 :::
 
@@ -142,7 +146,6 @@ def foo(ctx, args):
     # ...
     return
 
-# highlight-next-line
 result = foo.run("invocation-id", args)
 ```
 
@@ -154,7 +157,6 @@ def foo(ctx, args):
     return
 
 resonate.register(foo)
-# highlight-next-line
 result = resonate.run("invocation-id", foo, args)
 ```
 
@@ -196,8 +198,9 @@ def foo(ctx, args):
 resonate = Resonate.remote(
     group="group-b",
 )
-# highlight-next-line
-result = resonate.options(target="poll://any@group-b").rpc("invocation-id", "foo", args)
+result = resonate.options(target="poll://any@group-b").rpc(
+        "invocation-id", "foo", args
+    )
 ```
 
 ### `.set_dependency()`
@@ -266,27 +269,7 @@ Resonate's Context object enables you to invoke functions from inside a Durable 
 This is how you extend the Call Graph and create a world of Durable Functions.
 Inside a Durable Function you use the `yield` keyword to interact with the Context object.
 
-### `.lfi()` or alias `.begin_run()`
-
-Context's `.lfi()` method (Local Function Invocation) invokes a function in the **same process** in an **asynchronous manner**.
-That is — the invocation returns a promise which can be awaited on at any point after.
-
-```python
-@resonate.register
-def foo(ctx, args):
-    # ...
-    promise = yield ctx.lfi(bar, args)
-    # do more sture
-    result = yield promise
-    # ...
-
-
-def bar(ctx, args):
-    # ...
-    return
-```
-
-### `.lfc()` or alias `.run()`
+### `.run()`
 
 Context's `.lfc()` method (Local Function Call) invokes a function in the **same process** in a **synchronous manner**.
 That is — the calling function blocks until the invoked function returns.
@@ -305,7 +288,55 @@ def bar(ctx, args):
     return
 ```
 
-### `.rfi()` or alias `.begin_rpc()`
+### `.begin_run()`
+
+Context's `.lfi()` method (Local Function Invocation) invokes a function in the **same process** in an **asynchronous manner**.
+That is — the invocation returns a promise which can be awaited on at any point after.
+
+```py
+@resonate.register
+def foo(ctx, args):
+    # ...
+    promise = yield ctx.lfi(bar, args)
+    # do more sture
+    result = yield promise
+    # ...
+
+
+def bar(ctx, args):
+    # ...
+    return
+```
+
+### `.rpc()`
+
+Context's `.rfc()` method (Remote Function Call) invokes a function in a **remote process** in a **synchronous manner**.
+That is — the calling function blocks until the invoked function returns.
+
+**process a**
+
+```py
+# process a
+@resonate.register
+def foo(ctx, args):
+    # ...
+    # highlight-next-line
+    result = yield ctx.rfc("bar", args)
+    # do more stuff
+    # ...
+```
+
+**process b**
+
+```python
+# process b
+@resonate.register
+def bar(ctx, args):
+    # ...
+    return
+```
+
+### `.begin_rpc()`
 
 Context's `.rfi()` method (Remote Function Invocation) invokes a function in a **remote process** in an **asynchronous manner**.
 That is — the invocation returns a promise which can be awaited on at any point after.
@@ -320,34 +351,6 @@ def foo(ctx, args):
     promise = yield ctx.rfi("bar", args)
     # do more stuff
     result = yield promise
-    # ...
-```
-
-**process b**
-
-```python
-# process b
-@resonate.register
-def bar(ctx, args):
-    # ...
-    return
-```
-
-### `.rfc()` or alias `.rpc()`
-
-Context's `.rfc()` method (Remote Function Call) invokes a function in a **remote process** in a **synchronous manner**.
-That is — the calling function blocks until the invoked function returns.
-
-**process a**
-
-```python
-# process a
-@resonate.register
-def foo(ctx, args):
-    # ...
-    # highlight-next-line
-    result = yield ctx.rfc("bar", args)
-    # do more stuff
     # ...
 ```
 

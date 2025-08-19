@@ -1,7 +1,7 @@
 ---
-id: new-project
+id: scaffold-from-template
 title: Start a new project with Resonate
-sidebar_label: New project
+sidebar_label: Scaffold from template
 sidebar_position: 1
 toc_max_heading_level: 4
 last_update:
@@ -91,8 +91,6 @@ Coming soon...
 
 </Tabs>
 
-:::tip Run the Resonate Server
-
 If you are using a template that requires the Resonate Server (anything that performs remote operations), you will need to run it in a separate terminal.
 
 ```shell
@@ -100,8 +98,6 @@ resonate serve
 ```
 
 The Resonate Server acts as a remote promise store and message source, enabling you to durably invoke functions across different Workers or Application Nodes.
-
-:::
 
 To give Resonate control over the execution of your functions, you will need to register the top-level function with Resonate.
 

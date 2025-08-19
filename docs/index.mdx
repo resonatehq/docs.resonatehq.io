@@ -9,20 +9,49 @@ last_update:
   date: "03-13-2025"
 ---
 
+Welcome to Resonate's documentation!
+
+Know what you're looking for?
+Use the search bar at the top of the page to find it quickly.
+Or, browse through the sidebar to the left.
+
+If aren't sure where to start, you can ask Echo, our AI assistant, to help you navigate and get answers.
+
 import InputField from "@site/src/components/InputField/InputField";
-
-**Ask Echo to explore Resonate's documentation!**
-
-<center>
-  <img src="/img/echo-logo.svg" alt="echo" width="250" />
-</center>
 
 <InputField />
 
-Still evaluating and exploring? Ask Echo what the technology does.
-
-Just getting started? Ask Echo how to set up your first project.
-
-Want to know which configuration options are available for function executions? Ask Echo!
-
 If Echo doesn't know, you're highly encouraged to [join the Discord Community](https://resonatehq.io/discord) and ask your question there!
+
+Browse by category:
+
+import HomePageGrid from "@site/src/components/HomePageGrid/HomePageGrid";
+import HomePageCategory from "@site/src/components/HomePageCategory/HomePageCategory";
+
+<HomePageGrid>
+  <HomePageCategory
+    title="Evaluate Resonate"
+    description="If you are considering using Resonate, this section may help you better understand its capabilities and how you can benefit, especially if you are coming from another Durable Execution platform."
+    link="/evaluate"
+  />
+  <HomePageCategory
+    title="Get started"
+    description="If you are ready to start using Resonate, this section will guide you through the initial steps, whether you are starting from scratch or migrating from another platform."
+    link="/get-started"
+  />
+  <HomePageCategory
+    title="Learn Resonate"
+    description="If you want to deepen your understanding of Resonate, this section is full of tutorials that aim to teach you concepts, best practices, and how things work."
+    link="/learn"
+  />
+  <HomePageCategory
+    title="Developer reference"
+    description="If you are building applications with Resonate, this section provides quickly referenceable information on the most commonly used features and APIs."
+    link="/docs/community-resources"
+  />
+  <HomePageCategory
+    title="Operational guidance"
+    description="If you are ready to deploy a Resonate application to production, this section will help you understand how to operate your system, including monitoring, scaling, and troubleshooting."
+    link="/docs/community-resources"
+  />
+</HomePageGrid>

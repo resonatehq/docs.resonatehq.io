@@ -1,0 +1,40 @@
+---
+id: load-balancing-use-case
+title: Load balancing use case
+sidebar_label: Load balancing
+---
+
+Start a new project using a load balancing use case example.
+
+import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
+import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Load balancing use case project example"
+    link="https://github.com/resonatehq-examples/example-load-balancing-py"
+  />
+</CloneRepoGrid>
+
+## Problem
+
+A single worker or microservice instance will eventually become overwhelmed if there is too much work sent its way in a short amount of time.
+
+There are generally two ways to solve for this:
+
+Increase the compute capability for the single worker / microservice.
+Increase the number of worker / microservice instances.
+There is an upper limit to the first option, and it is a single point of failure if there is only ever one instance running.
+
+Therefore, the second option tends to be the desired approach, because in theory you can scale the number of instances indefinitely. However, this introduces another problem: service discovery and load balancing — that is, knowing which worker / application node has the capacity to take more work.
+
+But not just that, what happens if a worker / microservice instance crashes after starting claiming work and starting to make progress it.
+
+How does the system know it needs to recover that work somewhere else, and where to recover it?
+
+These are distributed system engineering issues that developers are commonly forced to solve again and again. And often they are forced to mix messy service discovery, load balancing, and recovery logic in with their application/business level logic, which makes for a very poor developer experience.
+
+## Solution
+
+Resonate has built-in service discovery, load balancing, and recovery. And it provides the developer with a simple RPC API and target schema to make use of these features.

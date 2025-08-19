@@ -5,7 +5,7 @@ sidebar_label: Coming from Temporal
 sidebar_position: 3
 description: If you are coming from Temporal, this guide will help you understand the differences and similarities between Temporal and Resonate.
 last_update:
-  date: "07-21-2025"
+  date: "08-13-2025"
 tags:
   - evaluate
   - comparison
@@ -15,38 +15,41 @@ tags:
 
 This guide is meant to help you understand the differences and similarities between Temporal and Resonate.
 
-If you have experience with Temporal, then you are familiar with thinking in terms of Workflows and Activities.
+## Durability
 
-As a recap, in Temporal, the Workflow function orchestrates the execution of Activities.
-A Temporal Service maintains an Event History, a log of checkpoints, per Workflow Execution.
-The Event History is what makes the Workflow Execution durable.
-That's because, if there is a process crash, the Event History is used to replay the Workflow Execution and resume from where it left off.
-
-Temporal calls this Durable Execution.
+A core value proposition of Temporal is Durable Execution.
+Essentially, Durable Execution is the ability for a function to recover in another process after a hard failure and resume from where it left off.
 
 Resonate also provides Durable Execution.
 
-Resonate functions also replay to recover from process crashes and resume from where they left off.
-However, instead of Event Histories, Resonate uses Durable Promises.
-That is — Temporal durability is log based, while Resonate durability is object based.
+In Resonate, if your process crashes, your function can recover and resume from where it left off in another process.
 
-This difference, in how durability is achieved, implies several distinctions between Temporal and Resonate.
+## Programming model
 
-## Function composability
+If you have experience with Temporal, then you are familiar with thinking in terms of Workflows and Activities.
 
-First, is function composability.
+Resonate does not have proprietary function types such as Workflows and Activities, it just has functions.
 
-In Temporal, because an Event History is tied to a specific Workflow Execution, this means that only the top-level Workflow function is "durable" (replayable).
+Resonate promotes a procedural programming model that enables you to compose functions indefinitely and recursively.
 
-In Resonate, any function can call any other function, locally or remotely, and still be replayable, and thus durable.
-This is because there is a Durable Promise for each function invocation.
-This means that Resonate does not have explicit Workflows or Activities — just functions.
-
-Effectively, Resonate enables you to compose functions indefinitely and recursively, unlike Temporal which constrains durability to the top-level Workflow function.
-Resonate uses the term **Durable Call Graph** to describe the relationships between functions and how the call chain composes.
-
-Consider this real, working, [factorial example](https://github.com/resonatehq-examples/example-recursive-factorial-py).
+Consider this factorial example.
 How might you implement it in Temporal?
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}
+>
+
+    <TabItem value="python">
+
+See it in action: [example-recursive-factorial-py](https://github.com/resonatehq-examples/example-recursive-factorial-py)
 
 ```python
 @resonate.register
@@ -62,48 +65,156 @@ def main():
     print(result)
 ```
 
-In the example above, each invocation of the `factorial()` function creates a Durable Promise.
-Thus, each invocation is replayable and durable.
+    </TabItem>
 
-## Data in / data out
+    <TabItem value="typescript">
 
-Another implication of using object-based durability vs log-based durability is how you get data in and out of a function, after it has started executing.
+    </TabItem>
 
-In Temporal, you can use Signals to get data into a Workflow Execution and Queries to get data out of it.
-A Signal actually adds an Event to the Event History that contains the data you want to send into the Workflow.
-Upon replay, the Signal Event is processed and the data is made available to the Workflow function.
-Effectively, this means that Workflow Executions can act as stateful entities that can receive and respond to messages.
-This pattern is often referred to as the Actor model.
+</Tabs>
 
-Resonate, and its underlying object-based durability does not support the Actor model and does not have Signals or Queries.
-Resonate promotes a procedural programming model only.
+## Zero-dependency development
 
-With Resonate, you can easily get data into a function by creating a Durable Promise that is not attached to any function execution, and then await on it.
-Then, you can resolve it from anywhere, sending data into the function while doing so.
-But, this is not the same as Signals, because the function's procedure always depends on promise resolution. Whereas, Signal data can be completely optional.
+In Temporal, you always need a Temporal Service for your Worker to connect to, whether that is a local development instance or a production instance.
 
-To get data out of a function, Resonate believes the best practice is to have the function write data to a database or a message queue.
+Resonate offers a zero-dependency development experience, where a Worker (single node application) can run without connecting to a Resonate Server.
 
-While this may seem like a limitation at first, Resonate's approach is far simpler and procedurally sound.
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}
+>
 
-In Temporal, Signals and Queries can lead to complex message ordering issues.
-And, it can be hard to understand and reason about Signal and Query handler code and when it will execute in relation to the rest of the Workflow code.
-Additionally, Signals increase the size of the Event History much faster forcing developers to work with complicated Continue-As-New APIs and duplicated Workflow IDs.
+    <TabItem value="python">
+
+```python
+from resonate import Resonate
+
+resonate = Resonate.local()
+
+#...
+
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+    </TabItem>
+
+</Tabs>
+
+## Human-in-the-loop
+
+In Temporal, you can use Signals to unblock a Workflow Execution with input from a human.
+
+With Resonate, you can achieve the same effect by creating a Durable Promise that is not attached to any function execution, and then await on it.
+Then, you can resolve it from anywhere, optionally sending data into the function while doing so.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}
+>
+
+    <TabItem value="python">
+
+See it in action: [example-human-in-the-loop-py](https://github.com/resonatehq-examples/example-human-in-the-loop-py)
+
+```python
+# worker.py
+@resonate.register()
+def foo(ctx: Context) -> None:
+    blocking_promise = yield ctx.promise()
+    # ...
+    # wait for the promise to be resolved
+    data = yield blocking_promise
+    # ...
+```
+
+```python
+# client.py
+def main():
+    # ...
+    resonate.promises.resolve(
+        id=promise_id,
+        data=json.dumps(data)
+    )
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+    </TabItem>
+
+</Tabs>
+
+## Distributed executions
+
+In Temporal, you can run multiple Workers to handle the load of your application.
+You use Task Queue Names to identify which Workers should handle which Workflows and Activities.
+
+In Resonate, you can register workers in groups and send invocations to the groups.
+Resonate will automatically load balance the invocations across the Workers in the group.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}
+>
+
+    <TabItem value="python">
+
+See it in action: [example-load-balancing-py](https://github.com/resonatehq-examples/example-load-balancing-py)
+
+```python
+# worker.py
+from resonate import Resonate
+
+resonate = Resonate.remote(
+    group="worker-group"
+    # ...
+)
+```
+
+```python
+# client.py
+resonate = Resonate.remote(
+    group="client-group"
+)
+
+def main():
+    # ...
+    result = resonate.options(target="poll://any@worker-group").rpc(promise_id, "function_name", params)
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+    </TabItem>
+
+</Tabs>
 
 ## Decentralized architecture
 
-Temporal's Workflow Execution Event History is a fully ordered log, and in itself an object.
-This means that a given Workflow is tied to a specific Temporal Service.
+In Temporal any given Workflow Execution is tied to a specific Temporal Service.
 This forces a star-like topology (centralized system) where all Workers in an application connect to a single Temporal Service.
 
 Additionally, Temporal requires you to size your Temporal Service ahead of time to handle the load of all Workers in your application.
 If you size it incorrectly, you have to migrate to a new setup, which is a complex process.
 
-Durable Promises, on the other hand, are individual objects that can be stored in different Resonate Servers.
-This means a Resonate application can use multiple Resonate Servers (Durable Promise stores), which can be added dynamically as the application scales.
-
-import Tabs from "@theme/Tabs";
-import TabItem from "@theme/TabItem";
+Resonate applications, on the other hand, can use multiple Resonate Servers to durably store data (Durable Promises), which can be added dynamically as the application scales.
 
 <Tabs
     defaultValue="temporal"
@@ -128,29 +239,27 @@ import TabItem from "@theme/TabItem";
 
 </Tabs>
 
-Effectively, Durable Promises enable a decentralized architecture from the start, enabling you to build distributed systems that can grow organically.
-
 ## System complexity
 
-The level of system complexity is perhaps the biggest difference between Temporal and Resonate.
+The level of system complexity is perhaps the biggest difference between Resonate and Temporal.
 
-While object-based durability is inherently different from log-based durability, Resonate at its core believes in simplicity.
+Resonate at its core believes in simplicity.
 
-This belief drives many of the design decisions in Resonate, and has resulted in a smaller API surface than Temporal.
+This belief drives many of the design decisions in Resonate, and has resulted in a much smaller API surface than Temporal.
 
 This smaller API surface, and a desire for simplicity has also resulted in a much smaller set of components.
 
-For example, Temporal SDKs have tens of thousands of lines of code needed to manage the log-based complexity.
+For example, Temporal SDKs have tens of thousands of lines of code needed to manage the complexity of their implementation.
 Resonate SDKs, on the other hand, have but a few hundred lines of code.
 
 A Temporal Service is a complex system consisting of multiple individual components, each consisting of tens of thousands of lines of code, that need to be configured, deployed, and scaled independently.
-A Resonate Server, on the other hand, is a single binary that is easy to deploy. And the Resonate system can scale by just adding more Resonate Servers each with an underlying database.
+A Resonate Server, on the other hand, is a single binary that is easy to deploy. And the Resonate system can scale by just adding more Resonate Servers, each with an underlying database.
 
 Additionally, Temporal exposes many complex APIs to the developer which they are required to use for failure detection, load balancing, and more.
 Resonate's belief in simplicity means that much of this complexity is pushed into the platform and automatically handled for you.
 
-For example, Temporal requires the developer to work with at least 4 different timeouts for each Activity Execution to detect failure.
-It also requires the developer to manually develop heartbeats, and tune the performance of Workers.
+For example, Temporal requires the developer to work with at least 4 different timeouts to detect and handle Activity Execution failures.
+It also requires the developer to manually develop heartbeats in the Activity, and tune the performance of Workers.
 Whereas, Resonate exposes a single timeout to developer for the resolution of the Durable Promise, and automatically handles failure detection, heartbeating, and load balancing across Workers.
 
 Ultimately, as a developer, you will find many areas where Resonate has chosen to promote a specific model for the sake of simplicity, and to avoid indulging in what we believe to be unnecessary complexity.

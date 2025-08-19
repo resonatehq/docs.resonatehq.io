@@ -27,7 +27,7 @@
   display: inline-block;
   height: 1.6em;
   width: 1.6em;
-  fill: var(--ifm-alert-foreground-color);
+  fill: var(--ifm-color-primary);
 }
 
 .admonitionContent > :last-child {
