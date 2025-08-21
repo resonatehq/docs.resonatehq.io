@@ -30,17 +30,43 @@ The Resonate Python SDK API reference is available [here](https://resonatehq.git
 
 To install the Resonate Python SDK, you can use any of your favorite package managers.
 
-### `uv`
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+<Tabs
+    groupId="preferred-package-manager-py"
+    defaultValue="uv"
+    values={[
+        {label: 'uv', value: 'uv'},
+        {label: 'pip', value: 'pip'},
+        {label: 'poetry', value: 'poetry'},
+    ]}>
+
+    <TabItem value="uv">
 
 ```shell
 uv add resonate-sdk
 ```
 
-### `pip`
+    </TabItem>
+
+    <TabItem value="pip">
 
 ```shell
 pip install resonate-sdk
 ```
+
+    </TabItem>
+
+    <TabItem value="poetry">
+
+```shell
+poetry add resonate-sdk
+```
+
+    </TabItem>
+
+</Tabs>
 
 ## Initialization
 
