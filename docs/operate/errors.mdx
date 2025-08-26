@@ -57,7 +57,7 @@ The message and details provide a human readable description of what went wrong.
 
 The `details` provide structured diagnostic data such as the originating subsystem and links to documentation which can assist in debugging and troubleshooting.
 
-## Request errors (4000-4999)
+## Request errors (40000-49999)
 
 Request errors signify problems with the request. Generally, retrying the request will not resolve the issue.
 
@@ -129,7 +129,7 @@ A promise with the provided id already exists.
 
 A schedule with the provided id already exists. |
 
-## Server errors (5000-5999)
+## Server errors (50000-59999)
 
 Server errors represent transient or systemic problems that prevent the request from being processed.
 Retrying the request may resolve the issue.
