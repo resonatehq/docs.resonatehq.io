@@ -18,6 +18,31 @@
   --docusaurus-announcement-bar-height: 3.5rem !important;
 }
 
+[data-theme="dark"] {
+  --ifm-color-primary: #88a7f6;
+  --ifm-color-primary-dark: #6689f3;
+  --ifm-color-primary-darker: #546bf2;
+  --ifm-color-primary-darkest: #2140ee;
+  --ifm-color-primary-light: #aac5f9;
+  --ifm-color-primary-lighter: #bcd3fa;
+  --ifm-color-primary-lightest: #eef3fe;
+  --ifm-background-color: #1b1b1d;
+  --ifm-navbar-background-color: #1b1b1d;
+  --ifm-footer-background-color: #1b1b1d;
+  --ifm-menu-color: #ffffff;
+  --ifm-toc-border-color: #2f2f33;
+  --ifm-navbar-link-color: #ffffff;
+  --ifm-menu-color-active: #88a7f6;
+  --ifm-toc-link-color: #ffffff;
+  --ifm-font-color-base: #ffffff;
+  --ifm-background-surface-color: #242526;
+  --ifm-color-content-secondary: #ebedf0;
+  --ifm-breadcrumb-color-active: #ffffff;
+  --ifm-border-color: #2f2f33;
+  --ifm-alert-background-color: #242526;
+  --ifm-code-background: #242526;
+}
+
 body {
   font-family: "Open Sans", sans-serif;
 }
@@ -45,6 +70,10 @@ article {
   color: #353f58 !important;
 }
 
+[data-theme="dark"] article {
+  color: #ffffff !important;
+}
+
 √ß .footer__link-separator {
   visibility: hidden;
 }
@@ -57,6 +86,28 @@ article a {
   text-decoration: underline;
   color: #88a7f6;
   font-weight: 400;
+}
+
+/* Switching logos for dark / white theme */
+.logo-container {
+  position: relative;
+  display: inline-block;
+}
+
+.logo {
+  display: block;
+}
+
+.dark-mode-logo {
+  display: none;
+}
+
+[data-theme="dark"] .light-mode-logo {
+  display: none;
+}
+
+[data-theme="dark"] .dark-mode-logo {
+  display: block;
 }
 
 .waiting-list-announcement {
@@ -86,8 +137,17 @@ article a {
   border-color: #b0b8c3;
 }
 
+[data-theme="dark"] .menu {
+  background-color: var(--ifm-background-color);
+  border-color: var(--ifm-border-color);
+}
+
 .menu__link {
   color: #353f58 !important;
+}
+
+[data-theme="dark"] .menu__link {
+  color: var(--ifm-menu-color) !important;
 }
 
 .menu__link:hover {
@@ -96,7 +156,7 @@ article a {
 
 .menu__link--active,
 .table-of-contents__link--active {
-  color: #88a7f6 !important;
+  color: var(--ifm-color-primary) !important;
 }
 
 .menu__caret {
@@ -115,16 +175,25 @@ article a {
   box-shadow: none !important;
 }
 
+[data-theme="dark"] .navbar {
+  border-color: var(--ifm-border-color);
+}
+
 .navbar_icon {
   vertical-align: middle;
 }
+
 .navbar__link {
   font-family: "Space Mono", monospace;
   color: #353f58 !important;
 }
 
+[data-theme="dark"] .navbar__link {
+  color: var(--ifm-navbar-link-color) !important;
+}
+
 .navbar__link:hover {
-  color: #88a7f6 !important;
+  color: var(--ifm-color-primary) !important;
 }
 
 .navbar__link i,
@@ -140,6 +209,46 @@ article a {
   border-style: solid;
   border-color: #b0b8c3;
   font-family: "Space Mono", monospace;
+}
+
+.footer-container {
+  padding: 2rem 0;
+  background-color: var(--ifm-footer-background-color);
+  border-top: 1px solid var(--ifm-border-color);
+}
+
+/* Footer specific styles */
+[data-theme="dark"] .footer {
+  background-color: var(--ifm-background-color);
+  border-color: var(--ifm-border-color);
+  color: var(--ifm-font-color-base);
+}
+
+[data-theme="dark"] .footer a {
+  background-color: var(--ifm-background-surface-color);
+  border-color: var(--ifm-border-color);
+  color: var(--ifm-font-color-base);
+}
+
+[data-theme="dark"] .footer a:hover {
+  border-color: var(--ifm-color-primary);
+  color: var(--ifm-color-primary);
+}
+
+[data-theme="dark"] .footer__title {
+  color: var(--ifm-font-color-base);
+}
+
+[data-theme="dark"] .footer__description {
+  color: var(--ifm-color-content-secondary);
+}
+
+[data-theme="dark"] .footer__copyright {
+  color: var(--ifm-color-content-secondary);
+}
+
+[data-theme="dark"] .footer__item {
+  color: var(--ifm-color-content-secondary);
 }
 
 .navbar-icon {
@@ -158,6 +267,14 @@ article a {
   border-color: #b0b8c3;
 }
 
+[data-theme="dark"] .table-of-contents {
+  border-color: var(--ifm-toc-border-color);
+}
+
+[data-theme="dark"] .table-of-contents__link {
+  color: var(--ifm-toc-link-color);
+}
+
 .pagination-nav__link {
   font-family: "Space Mono", monospace;
   border-width: 1px;
@@ -166,8 +283,13 @@ article a {
   border-radius: 0 !important;
 }
 
-pagination-nav__link:hover {
-  border-color: #88a7f6 !important;
+[data-theme="dark"] .pagination-nav__link {
+  border-color: var(--ifm-border-color);
+  color: var(--ifm-font-color-base);
+}
+
+.pagination-nav__link:hover {
+  border-color: var(--ifm-color-primary) !important;
 }
 
 .card {
@@ -196,6 +318,11 @@ pagination-nav__link:hover {
   box-shadow: none !important;
 }
 
+[data-theme="dark"] .alert--success {
+  background-color: var(--ifm-alert-background-color);
+  color: var(--ifm-font-color-base);
+}
+
 .alert--differentiator {
   background-color: #ffffff;
   border-left: 4px solid #88a7f6;
@@ -204,10 +331,67 @@ pagination-nav__link:hover {
   box-shadow: none !important;
 }
 
+[data-theme="dark"] .alert--differentiator {
+  background-color: var(--ifm-alert-background-color);
+  color: var(--ifm-font-color-base);
+}
+
 .alert a {
-  text-decoration-color: #88a7f6 !important;
+  text-decoration-color: var(--ifm-color-primary) !important;
+  color: var(--ifm-color-primary) !important;
+}
+
+[data-theme="dark"] .alert a {
+  color: var(--ifm-color-primary) !important;
 }
 
 .alert a:hover {
-  text-decoration-color: #353f58 !important;
+  text-decoration-color: var(--ifm-color-primary-dark) !important;
+  color: var(--ifm-color-primary-dark) !important;
+}
+
+.link-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.link-box {
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.link-box:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.link-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--ifm-color-primary);
+}
+
+.link-title i {
+  font-size: 1.25rem;
+}
+
+/* Dark theme variants */
+[data-theme="dark"] .link-box:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .card {
+  border-color: var(--ifm-border-color) !important;
+  background-color: var(--ifm-background-surface-color);
+}
+
+[data-theme="dark"] .card h2 {
+  color: var(--ifm-font-color-base) !important;
+}
+
+[data-theme="dark"] .card p {
+  color: var(--ifm-color-content-secondary) !important;
 }

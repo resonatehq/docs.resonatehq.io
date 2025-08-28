@@ -33,3 +33,20 @@
 .admonitionContent > :last-child {
   margin-bottom: 0;
 }
+
+/* Dark theme variants */
+[data-theme='dark'] .admonition {
+  color: var(--ifm-font-color-base);
+}
+
+[data-theme='dark'] .admonitionHeading {
+  color: var(--ifm-font-color-base);
+}
+
+[data-theme='dark'] .admonitionIcon svg {
+  fill: var(--ifm-alert-foreground-color);
+}
+
+[data-theme='dark'] .admonitionContent {
+  color: var(--ifm-font-color-base);
+}
