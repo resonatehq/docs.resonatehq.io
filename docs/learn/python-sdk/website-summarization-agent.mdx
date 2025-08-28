@@ -55,7 +55,7 @@ This tutorial assumes that you have [Python 3](https://www.python.org/downloads/
 
 This tutorial recommends using [uv](https://docs.astral.sh/uv/) as the package manager.
 
-This tutorial was written and tested with Resonate Server v0.7.9 and Resonate Python SDK v0.5.6.
+This tutorial was written and tested with Resonate Server v0.7.13 and Resonate Python SDK v0.6.2.
 
 Part 5 of this tutorial assumes you have [Ollama](https://ollama.com/) installed and model "llama3.1" running locally on your machine.
 
@@ -74,7 +74,7 @@ brew install resonatehq/tap/resonate
 Navigate to the directory you want to scaffold your project in and run the following command:
 
 ```shell
-resonate project create --name summarization-agent --template lfi-workflow-py
+resonate project create --name summarization-agent --template local-run-workflow-py
 ```
 
 :::differentiator LFI = Local Function Invocation
@@ -108,6 +108,9 @@ resonate = Resonate.local()
 def foo(ctx, greeting):
     print("running foo")
     greeting = yield ctx.run(bar, greeting)
+    # to make this call asynchronous
+    # promise = yield ctx.lfi(bar, greeting)
+    # greeting = yield promise
     greeting = yield ctx.run(baz, greeting)
     return greeting
 
