@@ -20,3 +20,19 @@
   background-color: #ffffff;
   border-color: #88a7f6;
 }
+
+/* Dark theme variants */
+[data-theme='dark'] .input-container {
+  color: var(--ifm-font-color-base);
+}
+
+[data-theme='dark'] .full-width-input {
+  background-color: var(--ifm-background-surface-color);
+  border-color: var(--ifm-border-color);
+  color: var(--ifm-font-color-base);
+}
+
+[data-theme='dark'] .full-width-input:hover {
+  background-color: var(--ifm-background-color);
+  border-color: var(--ifm-color-primary);
+}

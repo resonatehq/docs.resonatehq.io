@@ -80,3 +80,36 @@
   font-size: 0.9rem;
   text-align: center;
 }
+
+/* Dark theme variants */
+[data-theme='dark'] .footerWrapper {
+  border-top-color: var(--ifm-border-color);
+}
+
+[data-theme='dark'] .footerContainer {
+  background-color: var(--ifm-footer-background-color);
+  color: var(--ifm-font-color-base);
+}
+
+[data-theme='dark'] .linkBox {
+  background-color: var(--ifm-background-surface-color);
+  border-color: var(--ifm-border-color);
+  color: var(--ifm-font-color-base);
+}
+
+[data-theme='dark'] .linkBox:hover {
+  border-color: var(--ifm-color-primary);
+  color: var(--ifm-color-primary);
+}
+
+[data-theme='dark'] .linkTitle {
+  color: var(--ifm-color-primary);
+}
+
+[data-theme='dark'] .linkDescription {
+  color: var(--ifm-color-content-secondary);
+}
+
+[data-theme='dark'] .copyright {
+  color: var(--ifm-color-content-secondary);
+}

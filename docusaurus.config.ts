@@ -146,7 +146,7 @@ const config: Config = {
     image: "img/echo.png", // used for link previews
     colorMode: {
       defaultMode: "light",
-      disableSwitch: true,
+      disableSwitch: false,
       respectPrefersColorScheme: false,
     },
     navbar: {
@@ -154,6 +154,7 @@ const config: Config = {
       logo: {
         alt: "Resonate Logo",
         src: "img/echo-logo.svg",
+        srcDark: "img/echo-logo-white.svg",
         href: "https://www.resonatehq.io",
         target: "_self",
         width: 40,
