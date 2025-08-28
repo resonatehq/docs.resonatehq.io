@@ -63,6 +63,26 @@ def main():
 
     <TabItem value="typescript">
 
+See it in action: [example-recursive-factorial-ts](https://github.com/resonatehq-examples/example-recursive-factorial-ts)
+
+```typescript
+function* factorial(ctx: Context, n: number): Generator<any, number, any> {
+  if (n <= 1) {
+    return 1;
+  }
+  const result = yield* ctx.run(factorial, n - 1);
+
+  return n * result;
+}
+
+const factorialR = resonate.register("factorial", factorial);
+
+async function main() {
+  const result = await factorialR.run("factorial-5", 5);
+  console.log(result);
+}
+```
+
     </TabItem>
 
 </Tabs>
@@ -97,13 +117,21 @@ resonate = Resonate.local()
 
     <TabItem value="typescript">
 
+```typescript
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = Resonate.local();
+
+// ...
+```
+
     </TabItem>
 
 </Tabs>
 
 ## Human-in-the-loop
 
-With DBOS, you can use a `@recv` func to block the Workflow and await input from a human.
+With DBOS, you can use a '@recv' func to block the Workflow and await input from a human.
 
 With Resonate, you can achieve the same effect by creating a Durable Promise that is not attached to any function execution, and then await on it.
 Then, you can resolve it from anywhere, optionally sending data into the function while doing so.
@@ -146,6 +174,23 @@ def main():
 
     <TabItem value="typescript">
 
+See it in action: [example-human-in-the-loop-ts](https://github.com/resonatehq-examples/example-human-in-the-loop-ts)
+
+```typescript
+function* foo(context: Context) {
+  const blockingPromise = yield* context.promise();
+  // ...
+  // wait for the promise to be resolved
+  data = yield* blockingPromise;
+  // ...
+}
+```
+
+```typescript
+// client.ts
+await resonate.promises.resolve({ id: promiseId, data: JSON.stringify(data) });
+```
+
     </TabItem>
 
 </Tabs>
@@ -153,8 +198,77 @@ def main():
 ## Distributed execution
 
 A major difference between Resonate and DBOS is that Resonate can orchestrate executions across multiple Workers while DBOS cannot.
-
 That is, with Resonate you can run multiple Workers in a group and Resonate will automatically load balance the invocations across the Workers in the group.
+
+Consider the following Resonate example.
+How would you accomplish this using DBOS?
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}
+>
+
+    <TabItem value="python">
+
+See it in action: [example-load-balancing-py](https://github.com/resonatehq-examples/example-load-balancing-py)
+
+```python
+# worker.py
+resonate = Resonate.remote(
+    group="workers"
+    # ...
+)
+```
+
+```python
+# client.py
+resonate = Resonate.remote(
+    group="client"
+)
+
+def main():
+    # ...
+    result = resonate.options(target="poll://any@workers").rpc(promise_id, "function_name", params)
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+See it in action: [example-load-balancing-ts](https://github.com/resonatehq-examples/example-load-balancing-ts)
+
+```typescript
+// worker.ts
+const resonate = Resonate.remote({
+  group: "workers",
+});
+```
+
+```typescript
+//client.ts
+const resonate = Resonate.remote({
+  group: "client",
+});
+
+async function main() {
+  resonate.rpc(
+    promiseId,
+    "function_name",
+    params,
+    resonate.options({
+      target: "poll://any@workers",
+    })
+  );
+}
+```
+
+    </TabItem>
+
+</Tabs>
 
 DBOS is designed to ensure durability for a single instance of an application.
 When a DBOS application process crashes, an operator must restart the application for any in-progress functions/workflows to recover and resume.

@@ -67,7 +67,28 @@ def main():
 
     </TabItem>
 
+
     <TabItem value="typescript">
+
+See it in action: [example-recursive-factorial-ts](https://github.com/resonatehq-examples/example-recursive-factorial-ts)
+
+```typescript
+function* factorial(ctx: Context, n: number): Generator<any, number, any> {
+  if (n <= 1) {
+    return 1;
+  }
+  const result = yield* ctx.run(factorial, n - 1);
+
+  return n * result;
+}
+
+const factorialR = resonate.register("factorial", factorial);
+
+async function main() {
+  const result = await factorialR.run("factorial-5", 5);
+  console.log(result);
+}
+```
 
     </TabItem>
 
@@ -96,12 +117,19 @@ from resonate import Resonate
 resonate = Resonate.local()
 
 #...
-
 ```
 
     </TabItem>
 
     <TabItem value="typescript">
+
+```typescript
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = Resonate.local();
+
+// ...
+```
 
     </TabItem>
 
@@ -152,6 +180,23 @@ def main():
 
     <TabItem value="typescript">
 
+See it in action: [example-human-in-the-loop-ts](https://github.com/resonatehq-examples/example-human-in-the-loop-ts)
+
+```typescript
+function* foo(context: Context) {
+  const blockingPromise = yield* context.promise();
+  // ...
+  // wait for the promise to be resolved
+  data = yield* blockingPromise;
+  // ...
+}
+```
+
+```typescript
+// client.ts
+await resonate.promises.resolve({ id: promiseId, data: JSON.stringify(data) });
+```
+
     </TabItem>
 
 </Tabs>
@@ -179,10 +224,8 @@ See it in action: [example-load-balancing-py](https://github.com/resonatehq-exam
 
 ```python
 # worker.py
-from resonate import Resonate
-
 resonate = Resonate.remote(
-    group="worker-group"
+    group="workers"
     # ...
 )
 ```
@@ -190,17 +233,44 @@ resonate = Resonate.remote(
 ```python
 # client.py
 resonate = Resonate.remote(
-    group="client-group"
+    group="client"
 )
 
 def main():
     # ...
-    result = resonate.options(target="poll://any@worker-group").rpc(promise_id, "function_name", params)
+    result = resonate.options(target="poll://any@workers").rpc(promise_id, "function_name", params)
 ```
 
     </TabItem>
 
     <TabItem value="typescript">
+
+See it in action: [example-load-balancing-ts](https://github.com/resonatehq-examples/example-load-balancing-ts)
+
+```typescript
+// worker.ts
+const resonate = Resonate.remote({
+  group: "workers",
+});
+```
+
+```typescript
+//client.ts
+const resonate = Resonate.remote({
+  group: "client",
+});
+
+async function main() {
+  resonate.rpc(
+    promiseId,
+    "function_name",
+    params,
+    resonate.options({
+      target: "poll://any@workers",
+    })
+  );
+}
+```
 
     </TabItem>
 

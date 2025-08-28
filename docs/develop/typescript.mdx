@@ -5,6 +5,7 @@ description: Get started with the Resonate TypeScript SDK.
 sidebar_label: TypeScript SDK
 last_update:
   date: "08-18-2025"
+toc_max_header_level: 4
 pagination_next: null
 pagination_prev: null
 tags:
@@ -74,15 +75,6 @@ yarn add @resonatehq/sdk
 
 You will need to initialize a Resonate Client in each process that you want to use Resonate in.
 
-:::differentiator Zero-dependency development
-
-Your Resonate Client does not need to connect to a Resonate Server to get started.
-You can use the Resonate Client in "local mode", working with functions that are local to the process.
-
-This is in contrast to Temporal, Restate, and DBOS whichrequire a server or database to get started.
-
-:::
-
 There are two ways to initialize Resonate, local and remote.
 
 **Local initialization**
@@ -123,18 +115,30 @@ const resonate = Resonate.remote({
 
 {/* The Poller is a great starting place as it will long-poll for messages from the Resonate Server without any additional setup. */}
 
-## Registration
+## Client APIs
+
+Resonate client APIs are used in the "ephemeral world".
+
+:::tip Ephemeral vs Durable
+
+In the context of Resonate, we use the term "ephemeral" for functions that do not automatically recover and resume after a process crash.
+Whereas, the term "durable" is used for functions that do.
+
+You can think of Ephmeral-to-Durable APIs as Resonate Client APIs.
+That is — these are the APIs that are used at the edge of your Resonate application.
+
+:::
+
+### `.register()`
 
 **How to register a function with Resonate in the Typescript SDK.**
 
 After you have initialized Resonate, you can register functions with it.
 
-If Resonate is initialized in local mode, the registered functions are only available in that process.
+If Resonate is initialized in local mode, the registered functions are only available to be called from that process.
 However, if Resonate is initialized in remote mode, then the registered functions become available to any process that is connected to the same Resonate Server.
 
 Using the `.register()` method is the only way to register a function with the TypeScript SDK.
-
-### `resonate.register()`
 
 **Method**
 
@@ -151,25 +155,13 @@ resonate.register("foo", foo);
 rFoo = resonate.register("foo", foo);
 ```
 
-## Dependency injection
+### `.setDependency()`
+
+**How to inject a dependency into Resonate function call stack**
 
 Use the `.setDependency()` method to set dependencies for your functions. If you have a database connection, a client object, custom logger, or other dependency that you want your functions to have access to, you can use this method to make it available.
 
-### `.setDependency()`
-
 Resonate's `.setDependency()` method is not implemented yet for the Typescript SDK
-
-## Client APIs | Ephemeral-to-Durable
-
-:::tip Ephemeral vs Durable
-
-In the context of Resonate, we use the term "ephemeral" for functions that do not automatically recover and resume after a process crash.
-Whereas, the term "durable" is used for functions that do.
-
-You can think of Ephmeral-to-Durable APIs as Resonate Client APIs.
-That is — these are the APIs that are used at the edge of your application.
-
-:::
 
 **How to invoke a function in the ephemeral world with the Resonate Class.**
 
@@ -179,36 +171,32 @@ There are two methods that you can use `.run()` and `.rpc()`.
 
 ### `.run()`
 
-Resonate's `.run()` method will invoke the function in the same process.
-You can think of it as a "run right here" invocation.
-After invocation, the function is considered durable and can recover in another process if desired.
+**How to invoke a function locally (same process), synchronously (blocking), from the ephemeral world (doesn't resume after recovery).**
 
-**Decorated function invocation**
+You can think of this as a, "I will wait while you run right here" invocation.
 
-```typescript
-function foo(ctx: Context, ...args: any): any {
-  // ...
-  return result;
-}
-
-const rfoo = resonate.register("foo", foo);
-
-rfoo.run("foo");
-```
-
-**Method registered invocation**
+After invocation, the called function is durable and will recover in another process if needed.
 
 ```typescript
 function foo(ctx: Context, ...args: any): any {
   // ...
   return result;
 }
-g;
+
+const fooR = resonate.register("foo", foo);
+
+fooR.run("foo");
+
+// OR
 
 resonate.register("foo", foo);
 
 resonate.run("foo", foo);
 ```
+
+### `.beginRun()`
+
+Invoke a function locally (same process), asynchronously (non-blocking), from the ephemeral world (doesn't resume after recovery) to the durable world (resumes after recovery).
 
 ### `.rpc()`
 
@@ -256,6 +244,8 @@ resonate.rpc(
 );
 ```
 
+### `.beginRPC()`
+
 ### `.promises.create()`
 
 Resonate's `.promise.create()` method is not exposed yet
@@ -272,7 +262,7 @@ Resonate's `.promise.resolve()` method is not exposed yet
 
 Resonate's `.promise.reject()` method is not exposed yet
 
-## Function APIs | Durable-to-Durable
+## Function APIs
 
 **How to use the Resonate Context object in the Typescript SDK.**
 

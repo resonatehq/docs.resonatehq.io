@@ -1,5 +1,5 @@
 ---
-id: human-in-the-loop-use-case
+id: human-in-the-loop
 title: Human-in-the-loop use case
 sidebar_label: Human in the loop
 sidebar_position: 2
@@ -33,3 +33,33 @@ How do you suspend a business process until a human has completed a task, and th
 
 Await on a Durable Promise to block the process.
 Resolve the Promise once the human has completed their task.
+
+Quick example:
+
+```typescript
+// process x
+function* foo(context: Context, workflowId: string) Generator<any, void, any> {
+  // create a promise
+  const blockingPromise = yield* context.promise();
+  // expose the id to the outside world
+  yield* context.run(sendEmail, blockingPromise.id);
+  console.log(`blocked, waiting on human interaction`);
+  // wait until the promise is resolved
+  yield* blockingPromise;
+  console.log(`unblocked, promise resolved`);
+  return;
+}
+
+//process y
+app.get("/unblock-workflow", async (req: Request, res: Response) => {
+  // expose an endpoint to resolve the promise
+  try {
+    // ...
+    // unblock a workflow by resolving a promise
+    await resonate.promises.resolve(promiseId);
+    // ...
+  } catch (err: any) {
+    // ...
+  }
+});
+```

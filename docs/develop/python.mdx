@@ -119,7 +119,9 @@ resonate = Resonate.remote(host="https://my-resonate.com")
 Resonate workers can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
 The Poller is a great starting place as it will long-poll for messages from the Resonate Server without any additional setup.
 
-## Registration
+## Client APIs
+
+Registration
 
 **How to register a function with Resonate in the Python SDK.**
 
@@ -136,7 +138,7 @@ def foo(ctx, args):
     return result
 ```
 
-### `resonate.register()`
+### `.register()`
 
 **Method**
 
@@ -148,13 +150,25 @@ def foo(ctx, args):
 resonate.register(foo)
 ```
 
-## Ephemeral-to-Durable
-
 **How to invoke a function in the ephemeral world with the Resonate Class.**
 
 To move from the ephemeral world to the durable world you use the Resonate Class to invoke functions.
 
 There are two methods that you can use `.run()` and `.rpc()`.
+
+### `.set_dependency()`
+
+Resonate's `.set_dependency()` method allows you to set a dependency for the Application Node.
+You can then access the dependency in the function using the [Context's `.get_dependency()`](#get_dependency) method.
+
+Dependencies can only be added in the ephemeral world.
+
+```python
+resonate.set_dependency("dependency-name", dependency)
+```
+
+The dependency can be accesses from any function in the Call Graph on that Application Node.
+This is useful for things like database connections or other resources that you want to share across functions.
 
 ### `.run()`
 
@@ -183,6 +197,8 @@ def foo(ctx, args):
 resonate.register(foo)
 result = resonate.run("invocation-id", foo, args)
 ```
+
+### `.begin_run()`
 
 ### `.rpc()`
 
@@ -222,25 +238,13 @@ def foo(ctx, args):
 resonate = Resonate.remote(
     group="group-b",
 )
-# highlight-next-line
+
 result = resonate.options(target="poll://any@group-a").rpc(
         "invocation-id", "foo", args
     )
 ```
 
-### `.set_dependency()`
-
-Resonate's `.set_dependency()` method allows you to set a dependency for the Application Node.
-You can then access the dependency in the function using the [Context's `.get_dependency()`](#get_dependency) method.
-
-Dependencies can only be added in the ephemeral world.
-
-```python
-resonate.set_dependency("dependency-name", dependency)
-```
-
-The dependency can be accesses from any function in the Call Graph on that Application Node.
-This is useful for things like database connections or other resources that you want to share across functions.
+### `.begin_rpc()`
 
 ### `.promises.create()`
 
@@ -286,7 +290,7 @@ resonate.promise.reject(
 )
 ```
 
-## Durable
+## Function APIs
 
 **How to use the Resonate Context object in the Python SDK.**
 
@@ -345,7 +349,6 @@ That is — the calling function blocks until the invoked function returns.
 @resonate.register
 def foo(ctx, args):
     # ...
-    # highlight-next-line
     result = yield ctx.rfc("bar", args)
     # do more stuff
     # ...

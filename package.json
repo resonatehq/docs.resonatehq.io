@@ -28,9 +28,9 @@
     "react-syntax-highlighter": "^15.6.1"
   },
   "devDependencies": {
-    "@docusaurus/module-type-aliases": "^3.4.0",
-    "@docusaurus/tsconfig": "^3.4.0",
-    "@docusaurus/types": "^3.4.0",
+    "@docusaurus/module-type-aliases": "^3.8.1",
+    "@docusaurus/tsconfig": "^3.8.1",
+    "@docusaurus/types": "^3.8.1",
     "docusaurus-plugin-llms": "^0.1.2",
     "typescript": "~5.2.2"
   },

@@ -1,0 +1,70 @@
+---
+id: summarization-agent
+title: Website summarization agent use case
+sidebar_label: Summarization agent
+description: Start a new project using a website summarization agent use case example.
+---
+
+Start a new project using a website summarization agent use case example.
+
+import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
+import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Website summarization AI agent project example"
+    link="https://github.com/resonatehq-examples/example-website-summarization-agent-py"
+  />
+</CloneRepoGrid>
+
+## Use case
+
+Looking for a simple and reliable AI agent to summarize websites?
+
+Resonate makes it simple to create a recoverable and procedural workflow that waits for human input.
+
+Quick example of the main workflow:
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+@resonate.register
+def downloadAndSummarize(ctx: Context, params: dict) -> str:
+    url = params["url"]
+    usable_id = params["usable_id"]
+    email = params["email"]
+
+    # Download the content from the URL and save it to a file
+    filename = yield ctx.lfc(download, usable_id, url).options(durable=False,non_retryable_exceptions=(NetworkResolutionError,))
+    while True:
+        # Summarize the content of the file
+        summary = yield ctx.lfc(summarize, filename)
+
+        # Create Durable Promise to block on confirmation
+        promise = yield ctx.promise()
+
+        # Send email with summary and confirmation/rejection links
+        yield ctx.lfc(send_email, summary, email, promise.id)
+
+        # Wait for summary to be confirmed or rejected / wait for the promise to be resolved
+        confirmed = yield promise
+        if confirmed:
+            break
+
+    return summary
+```
+
+    </TabItem>
+
+</Tabs>
