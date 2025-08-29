@@ -5,6 +5,12 @@ import styles from "./styles.module.css"; // Optional: for custom styles
 
 const footerLinks = [
   {
+    href: "https://resonatehq.io/pricing",
+    icon: "bx-dollar",
+    title: "pricing",
+    description: "Resonate pricing models",
+  },
+  {
     href: "https://journal.resonatehq.io",
     icon: "bx-pen",
     title: "journal",

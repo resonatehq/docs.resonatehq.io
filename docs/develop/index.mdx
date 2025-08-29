@@ -4,14 +4,758 @@ title: Develop with Resonate
 description: Develop your application with a Resonate SDK.
 sidebar_label: Develop
 last_update:
-  date: "08-23-2024"
+  date: "08-25-2025"
 tags:
   - develop
 ---
 
-This section contains information about how to develop your application with a Resonate SDK.
+This section is designed as a reference for developers who are past the initial getting started phase and just need quick reference material.
+This page contains an overview of the Resonate API surface area with quick examples in each language.
+Each example contains a link to a more detailed section specific to that language.
+
+Or, you can jump right to the guide for the SDK you are using.
 
 import DocCardList from "@theme/DocCardList";
 import { useCurrentSidebarCategory } from "@docusaurus/theme-common";
 
 <DocCardList items={useCurrentSidebarCategory().items} />
+
+## Installing SDKs
+
+You can use your favorite package manager to install the Resonate SDK.
+
+Quick example:
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```shell
+uv add resonate-sdk
+```
+
+[More examples of installing the Resonate Python SDK](/develop/python#installation).
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```shell
+bun add @resonatehq/sdk
+```
+
+[More examples of installing the Resonate TypeScript SDK](/develop/typescript#installation).
+
+    </TabItem>
+
+</Tabs>
+
+## Initializing clients
+
+You need to initialize a Resonate Client in each process that you want to use Resonate.
+
+:::differentiator Zero-dependency development
+
+Your Resonate Client does not need to connect to a Resonate Server to start developing.
+You can use the Resonate Client in "local mode", working with functions that are local to the process.
+
+This is in contrast to Temporal, Restate, and DBOS which require connecting to a server or database, even for development.
+
+:::
+
+Quick example:
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+from resonate import Resonate
+
+resonate = Resonate.local()
+```
+
+[More examples of initializing a Resonate Client in Python](/develop/python#initialization).
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = Resonate.local();
+```
+
+[More examples of initializing a Resonate Client in TypeScript](/develop/typescript#initialization).
+
+    </TabItem>
+
+</Tabs>
+
+## Client APIs
+
+You can use Resonate Client APIs just about anywhere, except from within a Durable Function.
+Inside Durable Functions, you need to use [Function APIs](#function-apis).
+
+### Registering functions
+
+One of the things you can do with a Resonate Client is register functions.
+Registered functions are checkpointed during execution, making them durable to hard failures.
+A registered function can then be called from anywhere.
+However, all parameters passed to a Durable Functions must be serializable.
+
+Quick example:
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+In Python, you can use the `@resonate.register` decorator to register a function:
+
+```python
+@resonate.register
+def foo(context: Context, arg: str) -> str:
+    # ...
+    return result
+```
+
+[More examples of the Resonate Register API in Python](/develop/python#resonateregister).
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+In TypeScript, you can use the `register` method to register a function:
+
+```typescript
+function foo(context: Context, arg: string): string {
+  // ...
+  return result;
+}
+
+const fooR = resonate.register(foo);
+```
+
+[More examples of the Resonate Register API in TypeScript](/develop/typescript#register).
+
+    </TabItem>
+
+</Tabs>
+
+### Dependency injection
+
+Let's say that you have initialized a DB connection or some other resource that some of your functions in that process might need to use.
+You can set a dependency with the Resonate Client which makes it available to all Durable Functions in that process.
+
+Quick example:
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python" >
+
+```python
+resonate.set_dependency("db", db_connection)
+```
+
+[More examples of the Resonate Set Dependency API in Python](/develop/python#set_dependency).
+
+</TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+resonate.setDependency("db", db_connection);
+```
+
+[More examples of the Resonate Set Dependency API in TypeScript](/develop/typescript#setdependency).
+
+    </TabItem>
+
+</Tabs>
+
+### Create promise
+
+The Resonate Client enables you to create, get, resolve, and reject promises.
+
+A common reason to use the create promise API on the Resonate Client, is to be able to know the ID of a promise that you will later need to resolve inside the Call Graph.
+
+Quick example:
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+promise = resonate.promises.create()
+```
+
+[More examples of the Resonate Create Promise API in Python](/develop/python#promisescreate).
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+const promise = resonate.promises.create();
+```
+
+[More examples of the Resonate Create Promise API in TypeScript](/develop/typescript#promisescreate).
+
+    </TabItem>
+
+</Tabs>
+
+### Get promise
+
+A common reason for using the Resonate Client get promise API, is to check whether a promise exists, and if it does, whether it is resolved.
+For example, if you have a long-running background job that you want to check on, you can use the get promise API to get the handle of the promise and check if it is resolved yet.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+promise = resonate.promises.get("promise-id")
+```
+
+[More examples of the Resonate Get Promise API in Python](/develop/python#promisesget).
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+const promise = resonate.promises.get("promise-id");
+```
+
+[More examples of the Resonate Get Promise API in TypeScript](/develop/typescript#promisesget).
+
+    </TabItem>
+
+</Tabs>
+
+### Resolve promise
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+
+```
+
+    </TabItem>
+
+</Tabs>
+
+### Reject promise
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+
+```
+
+    </TabItem>
+
+</Tabs>
+
+### Run
+
+The Run API on the Resonate Client enables you to invoke a Durable Function locally (in the same process) and synchronously (waits for the result).
+
+Quick example:
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+@resonate.register
+def foo(ctx: Context, arg: str) -> str:
+    # ...
+    return
+
+def main():
+    result = foo.run("invocation-id", "Hello World!")
+```
+
+[More examples of the Resonate Run API in Python](/develop/python#run-1).
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+function foo(ctx: Context, arg: string): string {
+  // ...
+  return result;
+}
+
+const fooR = resonate.register("foo", foo);
+
+async function main() {
+  const result = await fooR.run("invocation-id", "Hello World!");
+}
+```
+
+[More examples of the Resonate Run API in TypeScript](/develop/typescript#run-1)
+
+    </TabItem>
+
+</Tabs>
+
+### Begin run
+
+The Begin Run API on the Resonate Client enables you to invoke a Durable Function in the same process and not block, waiting for the result (asynchronously).
+
+Quick example:
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+@resonate.register
+def foo(ctx: Context, arg: str) -> str:
+    # ...
+    return
+
+def main():
+    handle = foo.run("invocation-id", "Hello World!")
+    # ...
+    result = handle.result()
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+function foo(ctx: Context, arg: string): string {
+  // ...
+  return result;
+}
+
+const fooR = resonate.register("foo", foo);
+
+async function main() {
+  const handle = await fooR.run("invocation-id", "Hello World!");
+  // ...
+  const result = await handle.result;
+}
+```
+
+[More examples of the Resonate Begin Run API in TypeScript](/develop/typescript#beginrun-1)
+
+    </TabItem>
+
+</Tabs>
+
+### RPC
+
+The RPC API on the Resonate Client enables you to invoke a Durable Function in a different process and synchronously wait for the result.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+# process x
+@resonate.register
+def foo(context: Context, arg: str):
+    # ...
+    return result
+
+
+# process y
+def main():
+    result = resonate.options(target="process-x").rpc(
+        "invocation_id", func="foo", arg="Hello World!"
+    )
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+
+```
+
+    </TabItem>
+
+</Tabs>
+
+### Begin RPC
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+
+```
+
+    </TabItem>
+
+</Tabs>
+
+## Function APIs
+
+These are durable to durable APIs.
+Used inside the "durable world" — a world that automatically resumes after recovery.
+
+### Get dependency
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+
+```
+
+    </TabItem>
+
+</Tabs>
+
+### Get or create promise
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+
+```
+
+    </TabItem>
+
+</Tabs>
+
+### Sleep
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+
+```
+
+    </TabItem>
+
+</Tabs>
+
+### Generate random number
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+
+```
+
+    </TabItem>
+
+</Tabs>
+
+### Get the time
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+
+```
+
+    </TabItem>
+
+</Tabs>
+
+### Run
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+
+```
+
+    </TabItem>
+
+</Tabs>
+
+### Begin run
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+
+```
+
+    </TabItem>
+
+</Tabs>
+
+### RPC
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+
+```
+
+    </TabItem>
+
+</Tabs>
+
+### Begin RPC
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript
+
+```
+
+    </TabItem>
+
+</Tabs>

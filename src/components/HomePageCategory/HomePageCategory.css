@@ -1,0 +1,32 @@
+.home-page-category {
+  height: 16rem;
+  border: 1px solid var(--ifm-color-primary);
+  padding: 1rem;
+  margin: 1rem 0;
+  background-color: var(--ifm-color-dark);
+  color: white;
+  transition: transform 0.2s;
+  text-decoration: none;
+}
+
+.home-page-category-button {
+  text-decoration: none;
+}
+
+.home-page-category-button:hover {
+  text-decoration: none !important;
+}
+
+.home-page-category:hover {
+  color: var(--ifm-color-muted);
+  border-color: var(--ifm-color-muted);
+}
+
+.home-page-category-title {
+  font-weight: bold;
+  font-size: 2rem;
+}
+
+.home-page-category-description {
+  color: var(--ifm-color-muted);
+}

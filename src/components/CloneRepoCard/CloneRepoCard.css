@@ -1,0 +1,38 @@
+.clone-repo-card {
+  border: 1px solid var(--ifm-color-muted);
+  padding: 1rem;
+  margin: 1rem 0;
+  background-color: var(--ifm-color-dark);
+  color: white;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s;
+}
+
+.clone-repo-card:hover {
+  transform: scale(1.02);
+}
+
+.clone-repo-card-sdk {
+  font-weight: bold;
+  font-size: 2rem;
+}
+
+.clone-repo-card-description {
+  color: var(--ifm-color-muted);
+}
+
+.clone-button {
+  display: inline-block;
+  margin-top: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: var(--ifm-color-secondary);
+  text-decoration: none;
+  font-weight: bold;
+  color: var(--ifm-color-dark) !important;
+}
+
+.clone-button:hover {
+  background-color: var(--ifm-color-muted);
+  color: white !important;
+  text-decoration: none !important;
+}
