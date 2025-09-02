@@ -6,7 +6,7 @@ const config: Config = {
   title: "Resonate",
   tagline:
     " Holistic cloud programming model for modern distributed applications",
-  favicon: "img/favicon.ico",
+  favicon: "img/favicon.png",
 
   // Set the production url of your site here
   url: "https://docs.resonatehq.io",
