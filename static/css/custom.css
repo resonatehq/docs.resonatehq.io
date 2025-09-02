@@ -6,11 +6,16 @@
 
 /* You can override the default Infima variables here. */
 :root {
-  --ifm-color-primary: #353f58;
-
+  --ifm-background-color: #080a0e !important;
+  --ifm-color-primary: #e4e7eb;
+  --ifm-color-dark: #080a0e;
+  --ifm-color-secondary: #1ee3cf;
+  --ifm-color-accent: #ff5e5b;
+  --ifm-color-muted: #94a3b8;
   --ifm-color-primary-dark: #080a0e;
   --ifm-color-primary-darker: #080a0e;
   --ifm-color-primary-darkest: #080a0e;
+  --ifm-code-background: #ff5e5b !important;
 
   --ifm-color-primary-light: #b0b8c3;
   --ifm-color-primary-lighter: #b0b8c3;
@@ -30,19 +35,53 @@ h5,
 h6 {
   font-family: "Open sans", sans-serif;
   font-weight: 500;
+  color: #ffffff !important;
 }
 
 h1 {
   font-size: 3.5em;
   letter-spacing: -1px;
-  font-weight: 400;
+  font-weight: 700;
+  color: #080a0e !important;
+  background-color: #1ee3cf;
+  padding: 0.5rem;
+}
+
+code {
+  color: #080a0e !important;
+  border-radius: 0;
+  padding-left: 0.36rem;
+  padding-right: 0.36rem;
+  padding-top: 0.2rem;
+  padding-bottom: 0.29 rem;
+}
+
+.alert code {
+  background-color: var(--ifm-color-accent);
+  color: #080a0e !important;
+  border-radius: 0;
+  padding-left: 0.36rem;
+  padding-right: 0.36rem;
+  padding-top: 0.2rem;
+  padding-bottom: 0.29 rem;
+}
+
+[class^="codeBlockLines_"] {
+  background-color: #080a0e !important;
+  border-radius: 0;
+  padding-left: 0 !important;
+}
+
+.prism-code {
+  border-radius: 0;
+  padding-left: 0;
 }
 
 article {
   font-family: "Open sans", sans-serif !important;
   font-size: 1.15em;
   font-weight: 400; /* var(--ifm-font-weight-light); */
-  color: #353f58 !important;
+  color: #e4e7eb !important;
 }
 
 √ß .footer__link-separator {
@@ -55,8 +94,13 @@ article {
 
 article a {
   text-decoration: underline;
-  color: #88a7f6;
+  color: #ffffff !important;
   font-weight: 400;
+}
+
+article a:hover {
+  text-decoration: underline;
+  color: var(--ifm-color-muted) !important;
 }
 
 .waiting-list-announcement {
@@ -80,23 +124,23 @@ article a {
 
 .menu {
   font-family: "Space Mono", monospace;
-  background-color: white;
+  background-color: var(--ifm-background-color);
   border-width: 0 1px 0 0;
   border-style: solid;
   border-color: #b0b8c3;
 }
 
 .menu__link {
-  color: #353f58 !important;
+  color: #ffffff !important;
 }
 
 .menu__link:hover {
-  color: #88a7f6 !important;
+  color: var(--ifm-color-muted) !important;
 }
 
 .menu__link--active,
 .table-of-contents__link--active {
-  color: #88a7f6 !important;
+  color: var(--ifm-color-muted) !important;
 }
 
 .menu__caret {
@@ -105,10 +149,11 @@ article a {
 }
 
 .tabs__item--active {
-  border-color: #88a7f6 !important;
+  border-color: var(--ifm-color-accent) !important;
 }
 
 .navbar {
+  background-color: var(--ifm-background-color);
   border-width: 0px 0 1px 0;
   border-style: solid;
   border-color: #b0b8c3;
@@ -120,11 +165,11 @@ article a {
 }
 .navbar__link {
   font-family: "Space Mono", monospace;
-  color: #353f58 !important;
+  color: var(--ifm-color-secondary) !important;
 }
 
 .navbar__link:hover {
-  color: #88a7f6 !important;
+  color: var(--ifm-color-muted) !important;
 }
 
 .navbar__link i,
@@ -135,7 +180,7 @@ article a {
 }
 
 .footer {
-  background-color: white;
+  background-color: var(--ifm-background-color) !important;
   border-width: 1px 0 0 0;
   border-style: solid;
   border-color: #b0b8c3;
@@ -167,21 +212,22 @@ article a {
 }
 
 pagination-nav__link:hover {
-  border-color: #88a7f6 !important;
+  border-color: var(--ifm-color-muted) !important;
 }
 
 .card {
+  background-color: var(--ifm-background-color) !important;
   border-width: 1px !important;
-  border-color: #b0b8c3 !important;
+  border-color: var(--ifm-color-primary) !important;
   border-style: solid !important;
   border-radius: 0 !important;
   box-shadow: none !important;
   text-decoration: none !important;
-  color: #353f58 !important;
+  color: var(--ifm-color-primary) !important;
 }
 
 .card:hover {
-  border-color: #88a7f6 !important;
+  border-color: var(--ifm-color-muted) !important;
 }
 
 .navbar__search-input {
@@ -189,25 +235,28 @@ pagination-nav__link:hover {
 }
 
 .alert--success {
-  background-color: #ffffff;
-  border-left: 4px solid #88a7f6;
-  border-right: 4px solid #88a7f6;
+  background-color: var(--ifm-color-dark);
+  border-left: 0;
+  color: var(--ifm-color-primary);
   border-radius: 0;
   box-shadow: none !important;
+  padding-left: 0;
 }
 
 .alert--differentiator {
-  background-color: #ffffff;
-  border-left: 4px solid #88a7f6;
-  border-right: 4px solid #88a7f6;
+  background-color: var(--ifm-color-dark);
+  color: var(--ifm-color-primary);
   border-radius: 0;
   box-shadow: none !important;
+  padding-left: 0;
 }
 
 .alert a {
-  text-decoration-color: #88a7f6 !important;
+  color: var(--ifm-color-primary) !important;
+  text-decoration-color: var(--ifm-color-primary) !important;
 }
 
 .alert a:hover {
-  text-decoration-color: #353f58 !important;
+  color: var(--ifm-color-primary) !important;
+  text-decoration-color: var(--ifm-color-primary) !important;
 }

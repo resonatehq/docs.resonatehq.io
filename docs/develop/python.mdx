@@ -16,7 +16,11 @@ Welcome to the Resonate Python SDK guide!
 This SDK makes it possible to write Distributed Async Await applications with Python.
 This guide covers installation and features that the SDK offers.
 
-:::tip [API reference](https://resonatehq.github.io/resonate-sdk-py/)
+:::tip API Reference
+
+Looking for the API reference?
+
+The Resonate Python SDK API reference is available [here](https://resonatehq.github.io/resonate-sdk-py/).
 
 :::
 
@@ -26,25 +30,49 @@ This guide covers installation and features that the SDK offers.
 
 To install the Resonate Python SDK, you can use any of your favorite package managers.
 
-### `uv add resonate-sdk`
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+<Tabs
+    groupId="preferred-package-manager-py"
+    defaultValue="uv"
+    values={[
+        {label: 'uv', value: 'uv'},
+        {label: 'pip', value: 'pip'},
+        {label: 'poetry', value: 'poetry'},
+    ]}>
+
+    <TabItem value="uv">
 
 ```shell
 uv add resonate-sdk
 ```
 
-### `pip install resonate-sdk`
+    </TabItem>
+
+    <TabItem value="pip">
 
 ```shell
 pip install resonate-sdk
 ```
+
+    </TabItem>
+
+    <TabItem value="poetry">
+
+```shell
+poetry add resonate-sdk
+```
+
+    </TabItem>
+
+</Tabs>
 
 ## Initialization
 
 **How to initialize Resonate in your Worker / Application Node.**
 
 There are two ways to initialize Resonate, local and remote.
-
-### `resonate = Resonate()`
 
 **Local initialization**
 
@@ -91,7 +119,9 @@ resonate = Resonate.remote(host="https://my-resonate.com")
 Resonate workers can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
 The Poller is a great starting place as it will long-poll for messages from the Resonate Server without any additional setup.
 
-## Registration
+## Client APIs
+
+Registration
 
 **How to register a function with Resonate in the Python SDK.**
 
@@ -108,7 +138,7 @@ def foo(ctx, args):
     return result
 ```
 
-### `resonate.register()`
+### `.register()`
 
 **Method**
 
@@ -120,13 +150,25 @@ def foo(ctx, args):
 resonate.register(foo)
 ```
 
-## Ephemeral-to-Durable
-
 **How to invoke a function in the ephemeral world with the Resonate Class.**
 
 To move from the ephemeral world to the durable world you use the Resonate Class to invoke functions.
 
 There are two methods that you can use `.run()` and `.rpc()`.
+
+### `.set_dependency()`
+
+Resonate's `.set_dependency()` method allows you to set a dependency for the Application Node.
+You can then access the dependency in the function using the [Context's `.get_dependency()`](#get_dependency) method.
+
+Dependencies can only be added in the ephemeral world.
+
+```python
+resonate.set_dependency("dependency-name", dependency)
+```
+
+The dependency can be accesses from any function in the Call Graph on that Application Node.
+This is useful for things like database connections or other resources that you want to share across functions.
 
 ### `.run()`
 
@@ -142,7 +184,6 @@ def foo(ctx, args):
     # ...
     return
 
-# highlight-next-line
 result = foo.run("invocation-id", args)
 ```
 
@@ -154,9 +195,10 @@ def foo(ctx, args):
     return
 
 resonate.register(foo)
-# highlight-next-line
 result = resonate.run("invocation-id", foo, args)
 ```
+
+### `.begin_run()`
 
 ### `.rpc()`
 
@@ -196,23 +238,13 @@ def foo(ctx, args):
 resonate = Resonate.remote(
     group="group-b",
 )
-# highlight-next-line
-result = resonate.options(target="poll://any@group-b").rpc("invocation-id", "foo", args)
+
+result = resonate.options(target="poll://any@group-a").rpc(
+        "invocation-id", "foo", args
+    )
 ```
 
-### `.set_dependency()`
-
-Resonate's `.set_dependency()` method allows you to set a dependency for the Application Node.
-You can then access the dependency in the function using the [Context's `.get_dependency()`](#get_dependency) method.
-
-Dependencies can only be added in the ephemeral world.
-
-```python
-resonate.set_dependency("dependency-name", dependency)
-```
-
-The dependency can be accesses from any function in the Call Graph on that Application Node.
-This is useful for things like database connections or other resources that you want to share across functions.
+### `.begin_rpc()`
 
 ### `.promises.create()`
 
@@ -258,7 +290,7 @@ resonate.promise.reject(
 )
 ```
 
-## Durable
+## Function APIs
 
 **How to use the Resonate Context object in the Python SDK.**
 
@@ -266,27 +298,7 @@ Resonate's Context object enables you to invoke functions from inside a Durable 
 This is how you extend the Call Graph and create a world of Durable Functions.
 Inside a Durable Function you use the `yield` keyword to interact with the Context object.
 
-### `.lfi()` or alias `.begin_run()`
-
-Context's `.lfi()` method (Local Function Invocation) invokes a function in the **same process** in an **asynchronous manner**.
-That is — the invocation returns a promise which can be awaited on at any point after.
-
-```python
-@resonate.register
-def foo(ctx, args):
-    # ...
-    promise = yield ctx.lfi(bar, args)
-    # do more sture
-    result = yield promise
-    # ...
-
-
-def bar(ctx, args):
-    # ...
-    return
-```
-
-### `.lfc()` or alias `.run()`
+### `.run()`
 
 Context's `.lfc()` method (Local Function Call) invokes a function in the **same process** in a **synchronous manner**.
 That is — the calling function blocks until the invoked function returns.
@@ -305,7 +317,54 @@ def bar(ctx, args):
     return
 ```
 
-### `.rfi()` or alias `.begin_rpc()`
+### `.begin_run()`
+
+Context's `.lfi()` method (Local Function Invocation) invokes a function in the **same process** in an **asynchronous manner**.
+That is — the invocation returns a promise which can be awaited on at any point after.
+
+```py
+@resonate.register
+def foo(ctx, args):
+    # ...
+    promise = yield ctx.lfi(bar, args)
+    # do more sture
+    result = yield promise
+    # ...
+
+
+def bar(ctx, args):
+    # ...
+    return
+```
+
+### `.rpc()`
+
+Context's `.rfc()` method (Remote Function Call) invokes a function in a **remote process** in a **synchronous manner**.
+That is — the calling function blocks until the invoked function returns.
+
+**process a**
+
+```py
+# process a
+@resonate.register
+def foo(ctx, args):
+    # ...
+    result = yield ctx.rfc("bar", args)
+    # do more stuff
+    # ...
+```
+
+**process b**
+
+```python
+# process b
+@resonate.register
+def bar(ctx, args):
+    # ...
+    return
+```
+
+### `.begin_rpc()`
 
 Context's `.rfi()` method (Remote Function Invocation) invokes a function in a **remote process** in an **asynchronous manner**.
 That is — the invocation returns a promise which can be awaited on at any point after.
@@ -320,34 +379,6 @@ def foo(ctx, args):
     promise = yield ctx.rfi("bar", args)
     # do more stuff
     result = yield promise
-    # ...
-```
-
-**process b**
-
-```python
-# process b
-@resonate.register
-def bar(ctx, args):
-    # ...
-    return
-```
-
-### `.rfc()` or alias `.rpc()`
-
-Context's `.rfc()` method (Remote Function Call) invokes a function in a **remote process** in a **synchronous manner**.
-That is — the calling function blocks until the invoked function returns.
-
-**process a**
-
-```python
-# process a
-@resonate.register
-def foo(ctx, args):
-    # ...
-    # highlight-next-line
-    result = yield ctx.rfc("bar", args)
-    # do more stuff
     # ...
 ```
 

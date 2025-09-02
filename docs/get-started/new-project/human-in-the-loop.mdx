@@ -1,0 +1,65 @@
+---
+id: human-in-the-loop
+title: Human-in-the-loop use case
+sidebar_label: Human in the loop
+sidebar_position: 2
+---
+
+Start a new project using a human-in-the-loop (HITL) use case example.
+
+import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
+import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Human-in-the-loop use case project example"
+    link="https://github.com/resonatehq-examples/example-human-in-the-loop-py"
+  />
+  <CloneRepoCard
+    sdk="TypeScript SDK"
+    description="Human-in-the-loop use case project example"
+    link="https://github.com/resonatehq-examples/example-human-in-the-loop-ts"
+  />
+</CloneRepoGrid>
+
+## Problem
+
+You want to build a system that requires human input at certain stages of the process, such as manual review or approval.
+
+How do you suspend a business process until a human has completed a task, and then resume the process once the human has completed their task?
+
+## Solution
+
+Await on a Durable Promise to block the process.
+Resolve the Promise once the human has completed their task.
+
+Quick example:
+
+```typescript
+// process x
+function* foo(context: Context, workflowId: string) Generator<any, void, any> {
+  // create a promise
+  const blockingPromise = yield* context.promise();
+  // expose the id to the outside world
+  yield* context.run(sendEmail, blockingPromise.id);
+  console.log(`blocked, waiting on human interaction`);
+  // wait until the promise is resolved
+  yield* blockingPromise;
+  console.log(`unblocked, promise resolved`);
+  return;
+}
+
+//process y
+app.get("/unblock-workflow", async (req: Request, res: Response) => {
+  // expose an endpoint to resolve the promise
+  try {
+    // ...
+    // unblock a workflow by resolving a promise
+    await resonate.promises.resolve(promiseId);
+    // ...
+  } catch (err: any) {
+    // ...
+  }
+});
+```

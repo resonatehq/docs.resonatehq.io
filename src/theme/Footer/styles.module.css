@@ -1,6 +1,6 @@
 .footerWrapper {
   width: 100%;
-  border-top: 1px solid var(--ifm-color-primary-light);
+  border-top: 1px solid var(--ifm-color-primary);
 }
 
 .footerContainer {
@@ -9,7 +9,7 @@
   padding: 2rem;
   margin: 0 auto;
   color: var(--ifm-footer-color);
-  background-color: #fff;
+  background-color: var(--ifm-background-color);
 }
 
 .linkGrid {
@@ -32,9 +32,9 @@
 }
 
 .linkBox {
-  background-color: #fff;
-  color: var(--ifm-footer-color);
-  border: 1px solid var(--ifm-color-primary-light);
+  background-color: var(--ifm-background-color);
+  color: #ffffff;
+  border: 1px solid var(--ifm-color-primary);
   padding: 1.5rem;
   text-align: center;
   text-decoration: none;
@@ -55,8 +55,8 @@
 }
 
 .linkBox:hover {
-  border-color: #88a7f6 !important;
-  color: #88a7f6;
+  border-color: var(--ifm-color-muted) !important;
+  color: var(--ifm-color-muted);
   text-decoration: none !important;
 }
 
@@ -68,6 +68,13 @@
   font-size: 1.125rem;
   font-weight: 600;
   margin-bottom: 0.5rem;
+}
+
+.linkTitle i {
+  display: flex;
+  align-items: center;
+  height: 1em;
+  width: 1em;
 }
 
 .linkDescription {

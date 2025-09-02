@@ -19,6 +19,8 @@ There are a few key concepts that are important to understand how Resonate works
 Resonate works by checkpointing steps in your application code.
 At each checkpoint, a bit of data is saved that enables Resonate to replay the execution of your application code in the event of a failure.
 
+![Checkpointing](/img/checkpointing.svg)
+
 As the developer, you decide where the checkpoints exist.
 
 Your code can checkpoint on things that are happening locally in the same process, or on things that are happening remotely in a different process.
@@ -45,9 +47,11 @@ This causes a message to be sent back to the caller process letting it know that
 
 This is how Resonate enables a sequential programming model in a distributed system.
 
-See an example:
+:::tip See an example
 
 - [Python SDK](https://github.com/resonatehq-examples/example-async-rpc-py)
+
+:::
 
 ## System architecture
 

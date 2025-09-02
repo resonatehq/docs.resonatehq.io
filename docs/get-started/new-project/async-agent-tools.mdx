@@ -1,0 +1,47 @@
+---
+id: async-agent-tools
+title: Async agent tools use case
+sidebar_label: Async agent tools
+---
+
+Start a new project using the Claude async MCP tool server use case example.
+
+import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
+import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Claude async MCP tool server use case"
+    link="https://github.com/resonatehq-examples/example-async-tools-mcp-server-py"
+  />
+</CloneRepoGrid>
+
+## The problem
+
+The main issue with MCP, and all LLM tool calling functionality at present, is that it is synchronous with no built-in mechanisms for handling failure.
+
+Even though MCP standardizes a tool calling convention - it ignores all the other issues that arise from building a distributed system and as the developer you are burdened with figuring out:
+
+- Supervision, such as timeouts, to detect issues
+- Retry logic for application level errors
+- Deduplication and/or idempotency guarantees
+- Recovery for process crashes
+
+## The solution
+
+The solution is promises.
+
+The MCP Server Quickstart guide uses weather forecasting as an example use case.
+
+This example flips it around and uses historic weather data gathering as our example, a use case which could take a much longer time and better reflect the need for a background job.
+
+And, instead of a single tool such as get_weather_data, we will create three tools:
+
+- start gathering
+- probe status
+- await result
+
+The key is that the start gathering tool, instead of blocking on the result of the data gather job, kicks off a background job and returns a promise ID.
+
+Integrating Resonate into a MCP server preserves the standardized tool calling while completely transforming it into a Durable Distributed System.
