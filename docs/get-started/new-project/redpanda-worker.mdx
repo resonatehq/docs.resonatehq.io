@@ -4,6 +4,8 @@ title: Redpanda processing worker
 sidebar_label: Redpanda worker
 ---
 
+![project readme banner](/img/echo-redpanda-banner.png)
+
 Start a new project using a Redpanda processing worker example.
 
 import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
@@ -13,7 +15,7 @@ import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
   <CloneRepoCard
     sdk="Python SDK"
     description="Redpanda processing worker project example (batch record deletion)"
-    link="https://github.com/resonatehq-examples/example-batch-record-deletion-py"
+    link="https://github.com/resonatehq-examples/example-kafka-worker-py"
   />
 </CloneRepoGrid>
 
@@ -36,3 +38,50 @@ Resume cleanly after crashes to stay reliable.
 ## Solution
 
 Use Resonate to build a worker that can process messages concurrently and recover from crashes without repeating work.
+
+Quick example:
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+    ]}>
+
+    <TabItem value="python" >
+
+````python
+@resonate.register
+def workflow(ctx, record_id, offset):
+
+    while (yield ctx.lfc(delete_batch, record_id)):
+
+        yield ctx.sleep(5)
+
+    yield ctx.lfc(enqueue, record_id, offset)
+
+
+def consume():
+    consumer.subscribe(["records_to_be_deleted"])
+    try:
+        while True:
+            msg = consumer.poll(timeout=1.0)
+            # ...
+            try:
+                record_id = json.loads(msg.value().decode("utf-8"))
+                workflow.run(record_id[0], record_id[0], msg.offset())
+            except Exception as e:
+                print(f"Error processing message: {e}")
+    except KeyboardInterrupt:
+        # Handle shutdown gracefully
+    finally:
+        consumer.close()
+        ```
+````
+
+</TabItem>
+
+</Tabs>
