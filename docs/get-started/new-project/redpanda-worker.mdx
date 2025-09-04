@@ -8,37 +8,6 @@ sidebar_label: Redpanda worker
 
 Start a new project using a Redpanda processing worker example.
 
-import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
-import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
-
-<CloneRepoGrid>
-  <CloneRepoCard
-    sdk="Python SDK"
-    description="Redpanda processing worker project example (batch record deletion)"
-    link="https://github.com/resonatehq-examples/example-kafka-worker-py"
-  />
-</CloneRepoGrid>
-
-## Problem
-
-Imagine a worker process that pulls messages from a queue, performs the requested task, and then pushes a completion message to another queue.
-
-**Problem one**: head-of-line blocking.
-If the first message kicks off a long operation—say, an hour—and the next one would only take 30 seconds, the shorter job gets stuck waiting.
-Unless the worker supports concurrency, this kills efficiency.
-
-**Problem two**: crashes and repeat work.
-If a task involves multiple steps and the worker crashes halfway through, it may redo already-completed steps when it restarts, leading to duplicate work or unintended side effects.
-
-The bottom line is a worker node sitting between two queues should do two things well:
-
-Handle tasks concurrently to stay efficient.
-Resume cleanly after crashes to stay reliable.
-
-## Solution
-
-Use Resonate to build a worker that can process messages concurrently and recover from crashes without repeating work.
-
 Quick example:
 
 import Tabs from "@theme/Tabs";
@@ -85,3 +54,34 @@ def consume():
 </TabItem>
 
 </Tabs>
+
+import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
+import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Redpanda processing worker project example (batch record deletion)"
+    link="https://github.com/resonatehq-examples/example-kafka-worker-py"
+  />
+</CloneRepoGrid>
+
+## Problem
+
+Imagine a worker process that pulls messages from a queue, performs the requested task, and then pushes a completion message to another queue.
+
+**Problem one**: head-of-line blocking.
+If the first message kicks off a long operation—say, an hour—and the next one would only take 30 seconds, the shorter job gets stuck waiting.
+Unless the worker supports concurrency, this kills efficiency.
+
+**Problem two**: crashes and repeat work.
+If a task involves multiple steps and the worker crashes halfway through, it may redo already-completed steps when it restarts, leading to duplicate work or unintended side effects.
+
+The bottom line is a worker node sitting between two queues should do two things well:
+
+Handle tasks concurrently to stay efficient.
+Resume cleanly after crashes to stay reliable.
+
+## Solution
+
+Use Resonate to build a worker that can process messages concurrently and recover from crashes without repeating work.

@@ -9,23 +9,6 @@ description: Start a new project using a website summarization agent use case ex
 
 Start a new project using a website summarization agent use case example.
 
-import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
-import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
-
-<CloneRepoGrid>
-  <CloneRepoCard
-    sdk="Python SDK"
-    description="Website summarization AI agent project example"
-    link="https://github.com/resonatehq-examples/example-website-summarization-agent-py"
-  />
-</CloneRepoGrid>
-
-## Use case
-
-Looking for a simple and reliable AI agent to summarize websites?
-
-Resonate makes it simple to create a recoverable and procedural workflow that waits for human input.
-
 Quick example of the main workflow:
 
 import Tabs from "@theme/Tabs";
@@ -70,3 +53,20 @@ def download_and_summarize(ctx: Context, params: dict) -> str:
     </TabItem>
 
 </Tabs>
+
+import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
+import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Website summarization AI agent project example"
+    link="https://github.com/resonatehq-examples/example-website-summarization-agent-py"
+  />
+</CloneRepoGrid>
+
+## Use case
+
+Looking for a simple and reliable AI agent to summarize websites?
+
+Resonate makes it simple to create a recoverable and procedural workflow that waits for human input.
