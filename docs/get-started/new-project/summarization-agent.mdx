@@ -5,6 +5,8 @@ sidebar_label: Summarization agent
 description: Start a new project using a website summarization agent use case example.
 ---
 
+![summarization agent project banner](/img/summarization-agent.svg)
+
 Start a new project using a website summarization agent use case example.
 
 import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
@@ -40,7 +42,7 @@ import TabItem from "@theme/TabItem";
 
 ```python
 @resonate.register
-def downloadAndSummarize(ctx: Context, params: dict) -> str:
+def download_and_summarize(ctx: Context, params: dict) -> str:
     url = params["url"]
     usable_id = params["usable_id"]
     email = params["email"]
