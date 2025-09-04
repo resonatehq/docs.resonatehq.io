@@ -74,13 +74,12 @@ brew install resonatehq/tap/resonate
 Navigate to the directory you want to scaffold your project in and run the following command:
 
 ```shell
-resonate project create --name summarization-agent --template local-run-workflow-py
+resonate project create --name summarization-agent --template classic-hello-world-python-sdk
 ```
 
-:::differentiator LFI = Local Function Invocation
+:::differentiator Zero-dependency development
 
 The template you are using does not require a Resonate Server to run.
-All function invocations are local, meaning they run in the same process as the worker, and store promises in memory.
 
 Other "Durable Execution" platforms, such as Temporal, Restate, and DBOS, require your worker to connect to a server or database to get started.
 This is not the case with Resonate.
@@ -91,44 +90,42 @@ You should now have a directory called “summarization-agent” with the follow
 
 ```text
 summarization-agent
-    - src/
-        - app.py
+    - main.py
     - pyproject.toml
 ```
 
-The app.py file should contain the following code:
+The main.py file should contain the following code:
 
 ```python
-from resonate import Resonate
+from resonate import Resonate, Context
+from typing import Generator, Any
 
 resonate = Resonate.local()
 
 
+def baz(_: Context, greetee: str) -> str:
+    return f"Hello {greetee} from baz!"
+
+
+def bar(_: Context, greetee: str) -> str:
+    return f"Hello {greetee} from bar!"
+
+
 @resonate.register
-def foo(ctx, greeting):
-    print("running foo")
-    greeting = yield ctx.run(bar, greeting)
-    # to make this call asynchronous
-    # promise = yield ctx.lfi(bar, greeting)
-    # greeting = yield promise
-    greeting = yield ctx.run(baz, greeting)
+def foo(ctx: Context, greetee: str) -> Generator[str, Any, Any]:
+
+    foo_greeting = f"Hello {greetee} from foo!"
+    bar_greeting = yield ctx.run(bar, greetee=greetee)
+    baz_greeting = yield ctx.run(baz, greetee=greetee)
+    greeting = f"{foo_greeting} {bar_greeting} {baz_greeting}"
     return greeting
-
-
-def bar(_, v):
-    print("running bar")
-    return f"{v} world"
-
-
-def baz(_, v):
-    print("running baz")
-    return f"{v}!"
 
 
 def main():
     try:
-        handle = foo.begin_run("hello-world-greeting", greeting="hello")
-        print(handle.result())
+        promise_id = "hello-world-example"
+        result = foo.run(promise_id, greetee="World")
+        print(result)
     except Exception as e:
         print(e)
 
@@ -137,15 +134,14 @@ if __name__ == "__main__":
     main()
 ```
 
-In this template, `foo()` takes a string argument, greeting, and passes it first to `bar()` and then to `baz()`, each step concatenating to the string.
-The greeting is then returned back to the caller and printed.
+In this template, `foo()` takes a string argument, 'greetee', and passes it first to `bar()` and then to `baz()`, each step creating and returning a greeting of its own.
+The full greeting, from all functions, is then returned back to the caller and printed.
 
-The `@resonate.register` decorator registers `foo()` with the Resonate instance enabling its invocation with a the `.begin_run()` method.
+The `@resonate.register` decorator registers `foo()` with the Resonate instance enabling its invocation with a the `.run()` method.
 
-The handle variable is a promise.
-Calling `handle.result()` blocks progress of `main()` until `foo()` returns a result.
+The `.run()` method is synchronous, and blocks progress of `main()` until `foo()` returns a result.
 
-Both `bar()` and `baz()` are invoked using the Resonate Context’s Run API (Local Function Call API), giving Resonate control over the invocation and execution of those functions.
+Both `bar()` and `baz()` are invoked using the Resonate Context’s Run API, giving Resonate control over the invocation and execution of those functions.
 
 Next, move into the root of the project and run the following commands to execute the app as-is:
 
@@ -160,7 +156,7 @@ You should see the following output:
 running foo
 running bar
 running baz
-hello world!
+Hello World from foo! Hello World from bar! Hello World from baz!
 ```
 
 Let's update the function names to better reflect the purpose of the use case.
