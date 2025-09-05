@@ -152,7 +152,7 @@ resonate.register("foo", foo);
 
 // OR
 
-rFoo = resonate.register("foo", foo);
+const rFoo = resonate.register("foo", foo);
 ```
 
 ### `.setDependency()`
@@ -161,7 +161,18 @@ rFoo = resonate.register("foo", foo);
 
 Use the `.setDependency()` method to set dependencies for your functions. If you have a database connection, a client object, custom logger, or other dependency that you want your functions to have access to, you can use this method to make it available.
 
-Resonate's `.setDependency()` method is not implemented yet for the Typescript SDK
+```typescript
+const foo = (ctx: Context, name: string): string => {
+  const greeting = ctx.getDependency("greeting") as string;
+  return `${greeting} ${name}`;
+};
+
+const rFoo = resonate.register("foo", foo);
+
+resonate.setDependency("greeting", "Hello");
+const v = await rFoo.run("rfoo", "World!");
+// v === "Heloo World!"
+```
 
 **How to invoke a function in the ephemeral world with the Resonate Class.**
 
@@ -185,18 +196,43 @@ function foo(ctx: Context, ...args: any): any {
 
 const fooR = resonate.register("foo", foo);
 
-fooR.run("foo");
+// The first argument of run is the promise id followed by the arguments to the function
+const result = await fooR.run("foo");
 
 // OR
 
 resonate.register("foo", foo);
 
-resonate.run("foo", foo);
+// For this version of run, the first argument still the promise id, this time
+// followed by the function to be run and its arguemnts 
+const result  = await resonate.run("foo", foo);
 ```
 
 ### `.beginRun()`
 
 Invoke a function locally (same process), asynchronously (non-blocking), from the ephemeral world (doesn't resume after recovery) to the durable world (resumes after recovery).
+
+```typescript
+function foo(ctx: Context, ...args: any): any {
+  // ...
+  return result;
+}
+
+const fooR = resonate.register("foo", foo);
+
+// The first argument of run is the promise id followed by the arguments to the function
+const promiseOfResult = await fooR.run("foo");
+const result = await promiseOfResult.result();
+
+// OR
+
+resonate.register("foo", foo);
+
+// For this version of run, the first argument still the promise id, this time
+// followed by the function to be run and its arguemnts 
+const promiseOfResult  = await resonate.run("foo", foo);
+const result = await promiseOfResult.result();
+```
 
 ### `.rpc()`
 
@@ -218,7 +254,7 @@ The invocation returns a promise which can be awaited on at any point after.
 **process a**
 
 ```typescript
-// process b
+// process a
 const resonate = Resonate.remote({ group: "group-a" });
 
 function foo(ctx: Context, ...args: any): any {
@@ -248,19 +284,19 @@ resonate.rpc(
 
 ### `.promises.create()`
 
-Resonate's `.promise.create()` method is not exposed yet
+Resonate's `.promise.create()`
 
 ### `.promises.get()`
 
-Resonate's `.promise.get()` method is not exposed yet
+Resonate's `.promise.get()`
 
 ### `.promises.resolve()`
 
-Resonate's `.promise.resolve()` method is not exposed yet
+Resonate's `.promise.resolve()`
 
 ### `.promises.reject()`
 
-Resonate's `.promise.reject()` method is not exposed yet
+Resonate's `.promise.reject()`
 
 ## Function APIs
 
@@ -268,57 +304,57 @@ Resonate's `.promise.reject()` method is not exposed yet
 
 Resonate's Context object enables you to invoke functions from inside a Durable Function.
 This is how you extend the Call Graph and create a world of Durable Functions.
-Inside a Durable Function you use the `yield` keyword to interact with the Context object.
+Inside a Durable Function you use the `yield*` or `yield` keyword to interact with the Context object, `yield*` is recommended for improved type inference.
 
 ### `.run()`
 
-Context's `.lfc()` method (Local Function Call) invokes a function in the **same process** in a **synchronous manner**.
+Context's `.run()` method invokes a function in the **same process** in a **synchronous manner**.
 That is — the calling function blocks until the invoked function returns.
 
 ```typescript
-function* foo(ctx: Context, ...args: any): any {
-  const value = yield ctx.run(bar, args);
-  return value;
+function* foo(ctx: Context): Generator<any, number, any> { // The return type of the generator is number
+  const value = yield* ctx.run(bar, 2);
+  return value; // 42
 }
 
-function bar(ctx: Context, ...args: any): any {
-  return;
+function bar(ctx: Context, n: number): number {
+  return 40 + n;
 }
 ```
 
 ### `.beginRun()`
 
-Context's `.lfi()` method (Local Function Invocation) invokes a function in the **same process** in an **asynchronous manner**.
+Context's `.beginRun` method invokes a function in the **same process** in an **asynchronous manner**.
 That is — the invocation returns a promise which can be awaited on at any point after.
 
 ```typescript
-function* foo(ctx: Context, ...args: any): any {
-  const promise = yield ctx.beginRun(bar, args);
-  const value = yield promise;
+function* foo(ctx: Context):  Generator<any, string, any> {
+  const promise = yield* ctx.beginRun(bar, "Resonate");
+  const value = yield* promise; // After yielding the future
   return value;
 }
 
-function bar(ctx: Context, ...args: any): any {
-  return;
+function bar(ctx: Context, name: string): string {
+  return `Hello ${name}`;
 }
 ```
 
 ### `.rpc()`
 
-Context's `.rfc()` method (Remote Function Call) invokes a function in a **remote process** in a **synchronous manner**.
+Context's `.rpc()` method (Remote Procedure Call) invokes a function in a **remote process** in a **synchronous manner**.
 That is — the calling function blocks until the invoked function returns.
 
 **process a**
 
 ```typescript
 // process a
-function* foo(ctx: Context, ...args: any): any {
-  const value = yield ctx.rpc(
-    bar,
-    args,
+function* foo(ctx: Context): Generator<any, string, any> {
+  const value = yield* ctx.rpc<string>(
+    "bar", // This function is registered in process-b
+    "process A", // arg to the function registered in process-b
     ctx.options({ target: "poll://any@group-b" })
   );
-  return value;
+  return value; // "Called from process A"
 }
 resonate.register("foo", foo);
 ```
@@ -326,8 +362,8 @@ resonate.register("foo", foo);
 **process b**
 
 ```typescript
-function bar(ctx: Context, ...args: any): any {
-  return;
+function bar(ctx: Context, from: string): string {
+  return `Called from ${from}`;
 }
 
 resonate.register("bar", bar);
@@ -335,7 +371,7 @@ resonate.register("bar", bar);
 
 ### `.beginRpc()`
 
-Context's `.rfi()` method (Remote Function Invocation) invokes a function in a **remote process** in an **asynchronous manner**.
+Context's `.beginRpc()` method (Remote Function Invocation) invokes a function in a **remote process** in an **asynchronous manner**.
 That is — the invocation returns a promise which can be awaited on at any point after.
 
 **process a**
@@ -343,24 +379,25 @@ That is — the invocation returns a promise which can be awaited on at any poin
 ```typescript
 // process a
 function* foo(ctx: Context, ...args: any): any {
-  const promise = yield ctx.beginRpc(
-    bar,
-    args,
+  const promise = yield* ctx.beginRpc<string>(
+    "bar", // This function is registered in process-b
+    "process A", // arg to the function registered in process-b
     ctx.options({ target: "poll://any@group-b" })
   );
-  const value = yield promise;
-  return value;
+  const value = yield* promise;
+  return value; // "Called from process A"
 }
 
 resonate.register("foo", foo);
+// ...
 ```
 
 **process b**
 
 ```typescript
 // process b
-function bar(ctx: Context, ...args: any): any {
-  return;
+function bar(ctx: Context, from: string): any {
+  return `Called from ${from}`;
 }
 
 resonate.register("bar", bar);
@@ -368,15 +405,62 @@ resonate.register("bar", bar);
 
 ### `.getDependency()`
 
-Context's `.getDependency()` method is not implemented yet
+Context's `.getDependency()` method allows you to get a dependency that was set in the ephemeral world using the Resonate's `.setDependency()` method and use it the Durable World.
+
+```typescript
+const g = (ctx: Context, name: string): string => {
+  const greeting = ctx.getDependency("greeting") as string; // Use it in the durable world
+  return `${greeting} ${name}`;
+};
+
+const f = resonate.register("f", function* foo(ctx: Context) {
+  const v = yield* ctx.run(g, "World!");
+  return v;
+});
+
+resonate.setDependency("greeting", "Hello"); // Set it in the ephemeral world
+const v = await f.run("fId"); // "Hello World!"
+  
+```
 
 ### `.sleep()`
 
-Context's `.sleep()` method is not implemented yet.
+Context's `.sleep()` method allows you to sleep inside a function.
+There is no limit to how long you can sleep.
+The sleep method accepts a float value in seconds.
+This is a "durable" sleep, if the node crashes or suspends the "timer" for this sleep will keep going.
+
+```typescript
+const f = resonate.register("f", function* foo(ctx: Context) {
+  yield* ctx.sleep(24 * util.HOUR);
+  return "myValue";
+});
+
+
+const value = await f.run("fId"); // "myValue"
+// f will take 24 hours to complete
+```
 
 ### `.promise()`
+Context's `.promise()` method allows you to get or create a promise that can be awaited on.
 
-Context's `.promise()` method is not implemented yet.
+If no ID is provided, one is generated and a new promise is created.
+If an ID is provided and a promise already exists with that ID, then the existing promise is returned.
+
+This is very useful for HITL (Human-In-The-Loop) use cases where you want to block progress until a human has taken an action or provided data.
+It works well in conjunction with [Resonate's `.promise.resolve()` method](#promisesresolve).
+
+```typescript
+const f = resonate.register("f", function* foo(ctx: Context) {
+  const promise = yield* ctx.promise({ id: "myId" });
+  return yield* promise;
+});
+
+const p = await f.beginRun("f");
+
+await resonate.promises.resolve("myId", "myId", false, "myValue"); // Manually resolves the promise with id "myId" and value "myValue"
+const value = await p.result(); // myValue
+```
 
 ### `.options()`
 
@@ -385,10 +469,10 @@ Many of Context's methods support options on the call you are making. But you pa
 ```typescript
 
 function* foo(ctx: Context, ...args: any): any{
-  const promise = yield ctx.beginRpc(bar, args, ctx.options(...))
+  const promise = yield ctx.beginRpc(bar, args, ctx.options({...}))
   const value = promise
   return value
 }
 
-resonate.run("foo", foo, args, resonate.options(...))
+resonate.run("foo", foo, args, resonate.options({...}))
 ```
