@@ -150,7 +150,7 @@ const config: Config = {
       theme: prismThemes.vsDark,
       darkTheme: prismThemes.vsDark,
     },
-    image: "img/echo.png", // used for link previews
+    image: "img/echo-teal.svg", // used for link previews
     colorMode: {
       defaultMode: "dark",
       disableSwitch: true,
