@@ -463,13 +463,38 @@ def main():
     )
 ```
 
+[More examples of the Resonate RPC API in Python](/develop/python#rpc-1).
+
     </TabItem>
 
     <TabItem value="typescript">
 
 ```typescript
+// process x
+resonate.register("foo", (ctx: Context, arg: string) => {
+  // ...
+  return result;
+});
 
+// process y
+async function foo() {
+  try {
+    const arg = "hello world!";
+    const result = await resonate.rpc(
+      "write_once_id",
+      "foo",
+      arg,
+      resonate.options({
+        target: "process-group-b",
+      })
+    );
+  } catch (error) {
+    // ...
+  }
+}
 ```
+
+[More examples of the Resonate RPC API in TypeScript](/develop/typescript#rpc-1)
 
     </TabItem>
 
@@ -488,16 +513,54 @@ def main():
     <TabItem value="python">
 
 ```python
+# process x
+@resonate.register
+def foo(context: Context, arg: str):
+    # ...
+    return result
 
+
+# process y
+def main():
+    handle = resonate.options(target="process-x").begin_rpc(
+        "invocation_id", func="foo", arg="Hello World!"
+    )
+    result = handle.result()
 ```
+
+[More examples of the Resonate Begin RPC API in Python](/develop/python#begin_rpc-1).
 
     </TabItem>
 
     <TabItem value="typescript">
 
 ```typescript
+// process x
+resonate.register("foo", (ctx: Context, arg: string) => {
+  // ...
+  return result;
+});
 
+// process y
+async function foo() {
+  try {
+    const arg = "hello world!";
+    const handle = await resonate.beginRpc(
+      "write_once_id",
+      "foo",
+      arg,
+      resonate.options({
+        target: "process-x",
+      })
+    );
+    result = await handle.result;
+  } catch (error) {
+    // ...
+  }
+}
 ```
+
+[More examples of the Resonate Begin RPC API in TypeScript](/develop/typescript#beginrpc-1).
 
     </TabItem>
 
