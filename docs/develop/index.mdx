@@ -568,10 +568,11 @@ async function foo() {
 
 ## Function APIs
 
-These are durable to durable APIs.
-Used inside the "durable world" — a world that automatically resumes after recovery.
+These are durable to durable APIs that are used inside the "durable world" — a world that automatically resumes after recovery.
 
 ### Get dependency
+
+Get a dependency that was set on the Resonate Client in the same process.
 
 <Tabs
     groupId="preferred-language"
@@ -584,16 +585,20 @@ Used inside the "durable world" — a world that automatically resumes after rec
     <TabItem value="python">
 
 ```python
-
+db_conn = ctx.get_dependency("database-connection")
 ```
+
+[More examples of the Resonate Get Dependency API in Python](/develop/python#get_dependency).
 
     </TabItem>
 
     <TabItem value="typescript">
 
 ```typescript
-
+const db_conn = ctx.getDependency("database-connection");
 ```
+
+[More examples of the Resonate Get Dependency API in TypeScript](/develop/typescript#getdependency).
 
     </TabItem>
 
@@ -629,6 +634,8 @@ Used inside the "durable world" — a world that automatically resumes after rec
 
 ### Sleep
 
+Put the function to sleep for a specified duration without blocking the process.
+
 <Tabs
     groupId="preferred-language"
     defaultValue="python"
@@ -640,7 +647,7 @@ Used inside the "durable world" — a world that automatically resumes after rec
     <TabItem value="python">
 
 ```python
-
+yield ctx.sleep(5) # seconds
 ```
 
     </TabItem>
@@ -648,7 +655,9 @@ Used inside the "durable world" — a world that automatically resumes after rec
     <TabItem value="typescript">
 
 ```typescript
-
+function* yourWorkflow() {
+  yield* ctx.sleep(5000); // milliseconds
+}
 ```
 
     </TabItem>
