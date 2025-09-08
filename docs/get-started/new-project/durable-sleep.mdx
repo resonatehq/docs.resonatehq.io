@@ -9,7 +9,35 @@ description: Start a new project using a durable sleep use case example.
 
 Start a new project using a durable sleep use case example.
 
-Quick example:
+import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
+import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Durable sleep use case"
+    link="https://github.com/resonatehq-examples/example-durable-sleep-py"
+  />
+  <CloneRepoCard
+    sdk="TypeScript SDK"
+    description="Durable sleep use case"
+    link="https://github.com/resonatehq-examples/example-durable-sleep-ts"
+  />
+</CloneRepoGrid>
+
+## Problem
+
+A business process may need to sleep for a period of time that is much longer than the probable lifetime of a process.
+
+In other words, a process is likely to crash the longer it is alive, and if a business process needs to "suspend", or "sleep", for days or weeks, or even years, then developers are often forced to use cron jobs as a means to reawaken long sleeping processes.
+
+This leads to complexity that is hard to reason about, test, and rely on.
+
+## Solution
+
+Resonate enables developers to handle that sleep directly in their workflows, reducing the complexity of the implemntation while also knowing that it can survive process crashes.
+
+## Quick example
 
 import Tabs from "@theme/Tabs";
 import TabItem from "@theme/TabItem";
@@ -50,31 +78,3 @@ resonate.register("sleepingWorkflow", sleepingWorkflow);
 </TabItem>
 
 </Tabs>
-
-import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
-import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
-
-<CloneRepoGrid>
-  <CloneRepoCard
-    sdk="Python SDK"
-    description="Durable sleep use case"
-    link="https://github.com/resonatehq-examples/example-durable-sleep-py"
-  />
-  <CloneRepoCard
-    sdk="TypeScript SDK"
-    description="Durable sleep use case"
-    link="https://github.com/resonatehq-examples/example-durable-sleep-ts"
-  />
-</CloneRepoGrid>
-
-## Problem
-
-A business process may need to sleep for a period of time that is much longer than the probable lifetime of a process.
-
-In other words, a process is likely to crash the longer it is alive, and if a business process needs to "suspend", or "sleep", for days or weeks, or even years, then developers are often forced to use cron jobs as a means to reawaken long sleeping processes.
-
-This leads to complexity that is hard to reason about, test, and rely on.
-
-## Solution
-
-Resonate enables developers to handle that sleep directly in their workflows, reducing the complexity of the implemntation while also knowing that it can survive process crashes.

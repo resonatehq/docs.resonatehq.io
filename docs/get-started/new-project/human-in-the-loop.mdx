@@ -9,7 +9,34 @@ sidebar_position: 2
 
 Start a new project using a human-in-the-loop (HITL) use case example.
 
-Quick example:
+import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
+import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Human-in-the-loop use case project example"
+    link="https://github.com/resonatehq-examples/example-human-in-the-loop-py"
+  />
+  <CloneRepoCard
+    sdk="TypeScript SDK"
+    description="Human-in-the-loop use case project example"
+    link="https://github.com/resonatehq-examples/example-human-in-the-loop-ts"
+  />
+</CloneRepoGrid>
+
+## Problem
+
+You want to build a system that requires human input at certain stages of the process, such as manual review or approval.
+
+How do you suspend a business process until a human has completed a task, and then resume the process once the human has completed their task?
+
+## Solution
+
+Await on a Durable Promise to block the process.
+Resolve the Promise once the human has completed their task.
+
+## Quick example
 
 import Tabs from "@theme/Tabs";
 import TabItem from "@theme/TabItem";
@@ -53,30 +80,3 @@ app.get("/unblock-workflow", async (req: Request, res: Response) => {
 
   </TabItem>
 </Tabs>
-
-import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
-import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
-
-<CloneRepoGrid>
-  <CloneRepoCard
-    sdk="Python SDK"
-    description="Human-in-the-loop use case project example"
-    link="https://github.com/resonatehq-examples/example-human-in-the-loop-py"
-  />
-  <CloneRepoCard
-    sdk="TypeScript SDK"
-    description="Human-in-the-loop use case project example"
-    link="https://github.com/resonatehq-examples/example-human-in-the-loop-ts"
-  />
-</CloneRepoGrid>
-
-## Problem
-
-You want to build a system that requires human input at certain stages of the process, such as manual review or approval.
-
-How do you suspend a business process until a human has completed a task, and then resume the process once the human has completed their task?
-
-## Solution
-
-Await on a Durable Promise to block the process.
-Resolve the Promise once the human has completed their task.
