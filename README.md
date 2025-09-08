@@ -1,15 +1,9 @@
-<p align="center">
-   <img height="170"src="https://raw.githubusercontent.com/resonatehq/resonate/main/docs/img/echo.png">
-</p>
+![resonate documentation banner](./static/img/resonate-documentation.png)
 
-<h1 align="center">Resonate Documentation</h1>
-
-<div align="center">
+# Resonate open-source documentation repo
 
 ![Website Deploy](https://deploy-badge.vercel.app/?url=https://docs.resonatehq.io/&name=website)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-
-</div>
 
 ## About this repository
 
