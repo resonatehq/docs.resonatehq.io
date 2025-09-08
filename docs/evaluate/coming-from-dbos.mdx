@@ -5,13 +5,13 @@ sidebar_label: Coming from DBOS
 sidebar_position: 5
 ---
 
-**Are you coming from experience from DBOS?**
+**Are you coming from DBOS?**
 
 If so, this guide is meant to help you understand the differences and similarities between Resonate and DBOS.
 
 ## Durability
 
-A core value proposition of DBOS are their durable workflows.
+A core value proposition of DBOS is its durable workflows.
 A durable workflow or Durable Execution is one that can recover in another process after a hard failure and resume from where it left off.
 
 Resonate also provides durable workflows (Durable Executions).
@@ -89,7 +89,7 @@ async function main() {
 
 ## Zero-dependency development
 
-With DBOS, you always need your Worker or application to connect to a Postgres database, whether that is a local development instance or a production instance.
+With DBOS, your Worker or application must always connect to a Postgres database, whether it’s a local development or a production instance.
 
 Resonate offers a zero-dependency development experience, where a Worker (single node application) can run without connecting to a Resonate Server.
 
@@ -131,7 +131,7 @@ const resonate = Resonate.local();
 
 ## Human-in-the-loop
 
-With DBOS, you can use a '@recv' func to block the Workflow and await input from a human.
+With DBOS, you can use a '@recv' function to block the Workflow and await input from a human.
 
 With Resonate, you can achieve the same effect by creating a Durable Promise that is not attached to any function execution, and then await on it.
 Then, you can resolve it from anywhere, optionally sending data into the function while doing so.
@@ -198,7 +198,7 @@ await resonate.promises.resolve({ id: promiseId, data: JSON.stringify(data) });
 ## Distributed execution
 
 A major difference between Resonate and DBOS is that Resonate can orchestrate executions across multiple Workers while DBOS cannot.
-That is, with Resonate you can run multiple Workers in a group and Resonate will automatically load balance the invocations across the Workers in the group.
+With Resonate, you can run multiple Workers in a group, and Resonate will automatically load-balance invocations across them.
 
 Consider the following Resonate example.
 How would you accomplish this using DBOS?
@@ -275,4 +275,4 @@ When a DBOS application process crashes, an operator must restart the applicatio
 
 Resonate will automatically recover and resume in-progress functions/workflows in another Worker.
 
-In essence, DBOS focuses on single-instance durability, not addressing scalability at all, while Resonate aims to holistically address the needs of a modern distributed system.
+In essence, DBOS focuses on single-instance durability without addressing scalability, while Resonate holistically addresses the needs of modern distributed systems.

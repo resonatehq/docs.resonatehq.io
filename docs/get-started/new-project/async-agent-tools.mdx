@@ -19,12 +19,12 @@ import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
 
 ## The problem
 
-The main issue with MCP, and all LLM tool calling functionality at present, is that it is synchronous with no built-in mechanisms for handling failure.
+The main issue with MCP—and LLM tool calling in general—is that it is synchronous, with no built-in mechanisms for handling failure.
 
-Even though MCP standardizes a tool calling convention - it ignores all the other issues that arise from building a distributed system and as the developer you are burdened with figuring out:
+Even though MCP standardizes a tool-calling convention, it ignores the other issues that arise from building a distributed system and as the developer you are burdened with figuring out:
 
 - Supervision, such as timeouts, to detect issues
-- Retry logic for application level errors
+- Retry logic for application-level errors
 - Deduplication and/or idempotency guarantees
 - Recovery for process crashes
 
