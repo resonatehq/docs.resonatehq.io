@@ -36,12 +36,12 @@ There is an upper limit to the first option, and it is a single point of failure
 
 Therefore, the second option tends to be the desired approach, because in theory you can scale the number of instances indefinitely. However, this introduces another problem: service discovery and load balancing — that is, knowing which worker / application node has the capacity to take more work.
 
-But not just that, what happens if a worker / microservice instance crashes after starting claiming work and starting to make progress it.
+But what happens if a worker/microservice instance crashes after claiming work and beginning to make progress on it?
 
-How does the system know it needs to recover that work somewhere else, and where to recover it?
+How does the system detect the failure and know where to recover that work?
 
-These are distributed system engineering issues that developers are commonly forced to solve again and again. And often they are forced to mix messy service discovery, load balancing, and recovery logic in with their application/business level logic, which makes for a very poor developer experience.
+These are distributed system engineering issues that developers are commonly forced to solve again and again. Developers are often forced to mix messy service discovery, load balancing, and recovery logic into their application or business logic. This makes for a poor developer experience.
 
 ## Solution
 
-Resonate has built-in service discovery, load balancing, and recovery. And it provides the developer with a simple RPC API and target schema to make use of these features.
+Resonate provides built-in service discovery, load balancing, and recovery, all exposed through a simple RPC API and target schema.

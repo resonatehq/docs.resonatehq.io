@@ -12,19 +12,19 @@ tags:
   - evaluate
 ---
 
-There are a few key concepts that are important to understand how Resonate works.
+There are a few key concepts that are important for understanding how Resonate works.
 
 ## Checkpointing
 
 Resonate works by checkpointing steps in your application code.
-At each checkpoint, a bit of data is saved that enables Resonate to replay the execution of your application code in the event of a failure.
+At each checkpoint, Resonate saves enough data to replay the execution of your application code in the event of a failure.
 
 ![Checkpointing](/img/checkpointing.svg)
 
 As the developer, you decide where the checkpoints exist.
 
 Your code can checkpoint on things that are happening locally in the same process, or on things that are happening remotely in a different process.
-That is — any call to a local function or a remote function can be a checkpoint.
+In other words, any call to a local or remote function can be a checkpoint.
 
 You can also create checkpoints that are not function calls, such as input from a human.
 
@@ -34,16 +34,16 @@ In Resonate, we call the checkpoints **Durable Promises**.
 
 One of the underlying protocols that Resonate uses to communicate between processes is an [asynchronous Remote Procedure Call (RPC)](https://www.async-rpc.io/).
 
-Durable Promises make Async RPC possible, by enabling the caller to invoke a remote function without blocking the caller process.
+Durable Promises make Async RPC possible by enabling the caller to invoke a remote function without blocking the caller process.
 
 This is just like async/await in JavaScript or Python, where you can invoke a function and get a promise back — a promise which resolves when the function finishes executing.
 
-Except in Resonate, this also works across processes.
+In Resonate, this also works across processes.
 
 When you invoke a function in a different process, you get a Durable Promise back.
 You can continue executing code in the caller process while the callee process is executing the function.
 When the callee process finishes executing the function, it resolves the promise and stores the result inside of it.
-This causes a message to be sent back to the caller process letting it know that the promise has been resolved and the result is available.
+This causes a message to be sent back to the caller process notifying it that the promise has been resolved and the result is available.
 
 This is how Resonate enables a sequential programming model in a distributed system.
 
@@ -67,14 +67,14 @@ Additionally, the SDK promotes a procedural programming model that produces code
 The Resonate Server manages the storage of Durable Promises and coordinates the execution of functions across multiple processes.
 
 Resonate is designed to be decentralized, meaning that multiple Resonate Servers can be used in a single system.
-Though, a single Resonate Server is sufficient for most use cases.
+However, a single Resonate Server is sufficient for most use cases.
 
 Additionally, it is designed to allow for a wide range of message transports.
 For example, by default a worker will connect to a Resonate Server using a long poll HTTP connection to poll for messages.
 However, the two components can be configured to pass messages over queues and streams such as RabbitMQ, RedPanda, Kafka, etc.
-Or, the Resonate Server can be configured to post messages to an HTTP endpoint on the worker or microservice.
+Alternatively, the Resonate Server can be configured to post messages to an HTTP endpoint on the worker or microservice.
 
-The following diagram illustrates a singe Resonate Server system architecture:
+The following diagram illustrates a single Resonate Server system architecture:
 
 ![Resonate system architecture](/img/resonate-architecture.svg)
 
@@ -85,7 +85,7 @@ There is no limit to the number of workers or microservices that can connect to 
 Resonate takes advantage of the possibilities provided by the Async RPC protocol by enabling built-in service discovery and load balancing.
 
 When a worker or microservice connects to a Resonate Server, it registers itself both uniquely and as part of a group.
-This enables the Resonate Server to keep track of which workers or microservices are available to handle requests for a given function, and to load balance requests across them.
+This enables the Resonate Server to track which workers or microservices are available for a given function. It then load balances requests across them.
 
 As a developer, you do not have to worry about tuning the load balancing algorithm.
 The Resonate Server automatically balances the load in a performant manner.

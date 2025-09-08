@@ -11,13 +11,13 @@ tags:
   - comparison
 ---
 
-**Are you coming from experience with Temporal?**
+**Are you coming from Temporal?**
 
 This guide is meant to help you understand the differences and similarities between Temporal and Resonate.
 
 ## Durability
 
-A core value proposition of Temporal is Durable Execution.
+One of Temporal’s core value propositions is Durable Execution.
 Essentially, Durable Execution is the ability for a function to recover in another process after a hard failure and resume from where it left off.
 
 Resonate also provides Durable Execution.
@@ -28,7 +28,7 @@ In Resonate, if your process crashes, your function can recover and resume from 
 
 If you have experience with Temporal, then you are familiar with thinking in terms of Workflows and Activities.
 
-Resonate does not have proprietary function types such as Workflows and Activities, it just has functions.
+Resonate does not have proprietary function types such as Workflows and Activities; it just uses functions.
 
 Resonate promotes a procedural programming model that enables you to compose functions indefinitely and recursively.
 
@@ -201,7 +201,7 @@ await resonate.promises.resolve({ id: promiseId, data: JSON.stringify(data) });
 
 </Tabs>
 
-## Distributed executions
+## Distributed execution
 
 In Temporal, you can run multiple Workers to handle the load of your application.
 You use Task Queue Names to identify which Workers should handle which Workflows and Activities.
@@ -278,7 +278,7 @@ async function main() {
 
 ## Decentralized architecture
 
-In Temporal any given Workflow Execution is tied to a specific Temporal Service.
+In Temporal, any given Workflow Execution is tied to a specific Temporal Service.
 This forces a star-like topology (centralized system) where all Workers in an application connect to a single Temporal Service.
 
 Additionally, Temporal requires you to size your Temporal Service ahead of time to handle the load of all Workers in your application.
@@ -291,7 +291,7 @@ Resonate applications, on the other hand, can use multiple Resonate Servers to d
     values={[
         {label: 'Temporal', value: 'temporal'},
         {label: 'Resonate', value: 'resonate'},
-    
+
     ]}
 >
 
@@ -317,7 +317,7 @@ Resonate at its core believes in simplicity.
 
 This belief drives many of the design decisions in Resonate, and has resulted in a much smaller API surface than Temporal.
 
-This smaller API surface, and a desire for simplicity has also resulted in a much smaller set of components.
+This smaller API surface and desire for simplicity have also resulted in a much smaller set of components.
 
 For example, Temporal SDKs have tens of thousands of lines of code needed to manage the complexity of their implementation.
 Resonate SDKs, on the other hand, have but a few hundred lines of code.
@@ -330,6 +330,6 @@ Resonate's belief in simplicity means that much of this complexity is pushed int
 
 For example, Temporal requires the developer to work with at least 4 different timeouts to detect and handle Activity Execution failures.
 It also requires the developer to manually develop heartbeats in the Activity, and tune the performance of Workers.
-Whereas, Resonate exposes a single timeout to developer for the resolution of the Durable Promise, and automatically handles failure detection, heartbeating, and load balancing across Workers.
+Whereas, Resonate exposes a single timeout to the developer for the resolution of the Durable Promise, and it automatically handles failure detection, heartbeating, and load balancing across Workers.
 
 Ultimately, as a developer, you will find many areas where Resonate has chosen to promote a specific model for the sake of simplicity, and to avoid indulging in what we believe to be unnecessary complexity.

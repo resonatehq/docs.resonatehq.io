@@ -29,12 +29,11 @@ import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
 
 You want to build a system that requires human input at certain stages of the process, such as manual review or approval.
 
-How do you suspend a business process until a human has completed a task, and then resume the process once the human has completed their task?
+How do you suspend a business process until a human completes a task, and then resume it once the task is done?
 
 ## Solution
 
-Await on a Durable Promise to block the process.
-Resolve the Promise once the human has completed their task.
+Await a Durable Promise to block the process until the human completes their task, then resolve the Promise to resume execution.
 
 ## Quick example
 
@@ -52,7 +51,7 @@ import TabItem from "@theme/TabItem";
 
 ```typescript
 // process x
-function* foo(context: Context, workflowId: string) Generator<any, void, any> {
+function* foo(context: Context, workflowId: string): Generator<any, void, any> {
   // create a promise
   const blockingPromise = yield* context.promise();
   // expose the id to the outside world
@@ -64,7 +63,7 @@ function* foo(context: Context, workflowId: string) Generator<any, void, any> {
   return;
 }
 
-//process y
+// process y
 app.get("/unblock-workflow", async (req: Request, res: Response) => {
   // expose an endpoint to resolve the promise
   try {
