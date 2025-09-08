@@ -1,7 +1,7 @@
 {
   "label": "New project",
   "position": 2,
-  "collapsed": true,
+  "collapsed": false,
   "collapsible": true,
   "link": {
     "type": "doc",
