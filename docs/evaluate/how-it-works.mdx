@@ -87,8 +87,7 @@ Resonate takes advantage of the possibilities provided by the Async RPC protocol
 When a worker or microservice connects to a Resonate Server, it registers itself both uniquely and as part of a group.
 This enables the Resonate Server to track which workers or microservices are available for a given function. It then load balances requests across them.
 
-As a developer, you do not have to worry about tuning the load balancing algorithm.
-The Resonate Server automatically balances the load in a performant manner.
+As a developer, you have control over the load balancing algorithm and how messages are routed.
 
 See an example:
 
