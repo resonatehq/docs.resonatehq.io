@@ -29,13 +29,13 @@ import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
 
 A business process may need to sleep for a period much longer than the typical lifetime of a process.
 
-In other words, a process is likely to crash the longer it is alive, and if a business process needs to suspend (or ‘sleep’) for days, weeks, or even years, then developers are often forced to use cron jobs as a means to reawaken long-sleeping processes.
+Since a process is more likely to crash the longer it is alive, and if a business process needs to suspend (or "sleep") for days, weeks, or even years, then developers are often forced to use cron jobs as a means to reawaken long-sleeping processes.
 
 This leads to complexity that is hard to reason about, test, and rely on.
 
 ## Solution
 
-Resonate enables developers to handle that sleep directly in their workflows, reducing implementation complexity while ensuring it can survive process crashes.
+Resonate enables developers to sleep directly in their workflows without leaving the process running idle, reducing implementation complexity while ensuring the business process can survive across process crashes.
 
 ## Quick example
 
@@ -54,9 +54,9 @@ import TabItem from "@theme/TabItem";
 
 ```python
 @resonate.register
-def sleeping_workflow(ctx: Context, dur: int):
+def sleeping_workflow(ctx: Context, seconds: int):
 
-    yield ctx.sleep(dur)
+    yield ctx.sleep(seconds)
 
     # ...
 ```
@@ -66,8 +66,8 @@ def sleeping_workflow(ctx: Context, dur: int):
 <TabItem value="typescript" >
 
 ```typescript
-function* sleepingWorkflow(ctx: Context, duration: number) {
-  yield ctx.sleep(duration * 1000);
+function* sleepingWorkflow(ctx: Context, milliseconds: number) {
+  yield ctx.sleep(milliseconds);
 
   // ...
 }
