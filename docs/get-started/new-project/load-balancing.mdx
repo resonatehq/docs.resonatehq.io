@@ -30,8 +30,9 @@ A single worker or microservice instance will eventually become overwhelmed if t
 
 There are generally two ways to solve for this:
 
-Increase the compute capability for the single worker / microservice.
-Increase the number of worker / microservice instances.
+1. Increase the compute capability for the single worker / microservice.
+2. Increase the number of worker / microservice instances.
+
 There is an upper limit to the first option, and it is a single point of failure if there is only ever one instance running.
 
 Therefore, the second option tends to be the desired approach, because in theory you can scale the number of instances indefinitely. However, this introduces another problem: service discovery and load balancing — that is, knowing which worker / application node has the capacity to take more work.
