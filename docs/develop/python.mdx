@@ -70,7 +70,7 @@ poetry add resonate-sdk
 
 ## Initialization
 
-**How to initialize Resonate in your Worker / Application Node.**
+**How to initialize a Resonate Client.**
 
 There are two ways to initialize Resonate, local and remote.
 
@@ -97,7 +97,6 @@ Temporal, Restate, and DBOS require a server or database to get started.
 
 Resonate enables you to get started with a local worker that stores promises in memory, no server or database required.
 This makes it easy to incrementally adopt Resonate into your existing Python application.
-
 :::
 
 **Remote initialization**
@@ -119,13 +118,13 @@ resonate = Resonate.remote(host="https://my-resonate.com")
 Resonate workers can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
 The Poller is a great starting place as it will long-poll for messages from the Resonate Server without any additional setup.
 
-## Client APIs
+## Resonate APIs
 
 Registration
 
 **How to register a function with Resonate in the Python SDK.**
 
-There are two ways to register a function with Resonate: using the `register` method or using the `@resonate.register` decorator.
+There are two ways to register a function with Resonate: using the `register()` method or using the `@resonate.register` decorator.
 
 ### `@resonate.register`
 
@@ -133,7 +132,7 @@ There are two ways to register a function with Resonate: using the `register` me
 
 ```python
 @resonate.register
-def foo(ctx, args):
+def foo(ctx, arg):
     # ...
     return result
 ```
@@ -143,7 +142,7 @@ def foo(ctx, args):
 **Method**
 
 ```python
-def foo(ctx, args):
+def foo(ctx, arg):
     # ...
     return result
 
@@ -154,12 +153,53 @@ resonate.register(foo)
 
 To move from the ephemeral world to the durable world you use the Resonate Class to invoke functions.
 
-There are two methods that you can use `.run()` and `.rpc()`.
+There are two methods that you can use: `.run()` and `.rpc()`.
+
+### `.run()`
+
+Resonate's `.run()` method invokes a function in the same process and returns the result.
+You can think of it as a "run right here" invocation.
+After invocation, the function is considered durable and will recover in another process if required.
+
+```python
+result = resonate.run("invocation-id", foo, arg)
+```
+
+### `.begin_run()`
+
+Similar to `.run()` but instead of returning the result, returns a handle so the result can be awaited later.
+
+```python
+handle = resonate.begin_run("invocation-id", foo, arg)
+result = handle.result()
+```
+
+### `.rpc()`
+
+Resonate's `.rpc()` method (Remote Procedure Call) invokes a function in a remote process and returns the result.
+You can think of it as a "run somewhere else" invocation (Asynchronous Remote Procedure Call).
+After invocation, the function is considered durable and will recover in another process if required.
+
+```python
+result = resonate.rpc("invocation-id", "foo", args)
+
+# optionally target a specific group
+result = resonate.options(target="workers").rpc("invocation-id", "foo", args)
+```
+
+### `.begin_rpc()`
+
+Similar to `.rpc()` but instead of returning the result, returns a handle so the result can be awaited later.
+
+```python
+handle = resonate.begin_rpc("invocation-id", "foo", arg)
+result = handle.result()
+```
 
 ### `.set_dependency()`
 
 Resonate's `.set_dependency()` method allows you to set a dependency for the Application Node.
-You can then access the dependency in the function using the [Context's `.get_dependency()`](#get_dependency) method.
+You can then access the dependency in the function using the [`.get_dependency()`](#get_dependency) method.
 
 Dependencies can only be added in the ephemeral world.
 
@@ -167,91 +207,15 @@ Dependencies can only be added in the ephemeral world.
 resonate.set_dependency("dependency-name", dependency)
 ```
 
-The dependency can be accesses from any function in the Call Graph on that Application Node.
+The dependency can be accessed from any function in the Call Graph on that Application Node.
 This is useful for things like database connections or other resources that you want to share across functions.
-
-### `.run()`
-
-Resonate's `.run()` method will invoke the function in the same process.
-You can think of it as a "run right here" invocation.
-After invocation, the function is considered durable and can recover in another process if desired.
-
-**Decorated function invocation**
-
-```python
-@resonate.register
-def foo(ctx, args):
-    # ...
-    return
-
-result = foo.run("invocation-id", args)
-```
-
-**Method registered invocation**
-
-```python
-def foo(ctx, args):
-    # ...
-    return
-
-resonate.register(foo)
-result = resonate.run("invocation-id", foo, args)
-```
-
-### `.begin_run()`
-
-### `.rpc()`
-
-Resonate's `.rpc()` method (Remote Procedure Call) invokes the function in a remote process.
-
-:::tip Remote initialization required
-
-The RPC method requires that the Worker / Application Node is connected with a Resonate Server.
-It also assumes that the Worker / Application Node where the invoked function is running is also connected to a Resonate Server and can receive messages.
-
-:::
-
-You can think of this API as a "run somewhere else" invocation (Asynchronous Remote Procedure Call).
-However, if the function is registered locally, it is still possible for the function to execute in the same process.
-After invocation, the function is considered durable and can recover in another process if desired.
-
-The invocation returns a promise which can be awaited on at any point after.
-
-**process a**
-
-```python
-# process a
-resonate = Resonate.remote(
-    group="group-a",
-)
-
-@resonate.register
-def foo(ctx, args):
-    # ...
-    return
-```
-
-**process b**
-
-```python
-# process b
-resonate = Resonate.remote(
-    group="group-b",
-)
-
-result = resonate.options(target="poll://any@group-a").rpc(
-        "invocation-id", "foo", args
-    )
-```
-
-### `.begin_rpc()`
 
 ### `.promises.create()`
 
-Resonate's `.promise.create()` method allows you to create a promise.
+Resonate's `.promises.create()` method allows you to create a promise.
 
 ```python
-resonate.promise.create(
+resonate.promises.create(
     id="promise-id",
     timeout=int(time.time() * 1000) + 30000,  # 30s in the future
 )
@@ -259,21 +223,21 @@ resonate.promise.create(
 
 ### `.promises.get()`
 
-Resonate's `.promise.get()` method allows you to get a promise by ID.
+Resonate's `.promises.get()` method allows you to get a promise by ID.
 
 ```python
-resonate.promise.get("promise-id")
+resonate.promises.get("promise-id")
 ```
 
 ### `.promises.resolve()`
 
-Resonate's `.promise.resolve()` method allows you to resolve a promise by ID.
+Resonate's `.promises.resolve()` method allows you to resolve a promise by ID.
 
 This is useful for HITL use cases where you want to wait for a human to approve or reject a function execution.
-It works well in conjunction with [Context's `.promise()` method](#promise).
+It works well in conjunction with the [`.promise()`](#promise) method.
 
 ```python
-resonate.promise.resolve(
+resonate.promises.resolve(
     id="promise-id",
     data=json.dumps({}),  # optional
 )
@@ -281,16 +245,20 @@ resonate.promise.resolve(
 
 ### `.promises.reject()`
 
-Resonate's `.promise.reject()` method allows you to reject a promise by ID.
+Resonate's `.promises.reject()` method allows you to reject a promise by ID.
 
 ```python
-resonate.promise.reject(
+resonate.promises.reject(
     id="promise-id",
     data=json.dumps({}),  # optional
 )
 ```
 
-## Function APIs
+### `.options()`
+
+Many of Resonate's methods support options on the call you are making.
+
+## Context APIs
 
 **How to use the Resonate Context object in the Python SDK.**
 
@@ -300,105 +268,93 @@ Inside a Durable Function you use the `yield` keyword to interact with the Conte
 
 ### `.run()`
 
-Context's `.lfc()` method (Local Function Call) invokes a function in the **same process** in a **synchronous manner**.
+Context's `.run()` method invokes a function in the **same process** in a **synchronous manner**.
 That is — the calling function blocks until the invoked function returns.
 
 ```python
 @resonate.register
-def foo(ctx, args):
+def foo(ctx, arg):
     # ...
-    result = yield ctx.lfc(bar, args)
+    result = yield ctx.run(bar, arg)
     # do more stuff
     # ...
 
 
-def bar(ctx, args):
+def bar(ctx, arg):
     # ...
     return
 ```
 
 ### `.begin_run()`
 
-Context's `.lfi()` method (Local Function Invocation) invokes a function in the **same process** in an **asynchronous manner**.
-That is — the invocation returns a promise which can be awaited on at any point after.
+Context's `.begin_run()` method invokes a function in the **same process** in an **asynchronous manner**.
+That is — the invocation returns a promise which can be awaited later.
 
 ```py
 @resonate.register
-def foo(ctx, args):
+def foo(ctx, arg):
     # ...
-    promise = yield ctx.lfi(bar, args)
+    promise = yield ctx.begin_run(bar, arg)
     # do more sture
     result = yield promise
     # ...
 
 
-def bar(ctx, args):
+def bar(ctx, arg):
     # ...
     return
 ```
 
 ### `.rpc()`
 
-Context's `.rfc()` method (Remote Function Call) invokes a function in a **remote process** in a **synchronous manner**.
+Context's `.rpc()` method invokes a function in a **remote process** in a **synchronous manner**.
 That is — the calling function blocks until the invoked function returns.
-
-**process a**
 
 ```py
 # process a
 @resonate.register
-def foo(ctx, args):
+def foo(ctx, arg):
     # ...
-    result = yield ctx.rfc("bar", args)
+    result = yield ctx.rpc("bar", arg)
     # do more stuff
     # ...
-```
 
-**process b**
-
-```python
 # process b
 @resonate.register
-def bar(ctx, args):
+def bar(ctx, arg):
     # ...
     return
 ```
 
 ### `.begin_rpc()`
 
-Context's `.rfi()` method (Remote Function Invocation) invokes a function in a **remote process** in an **asynchronous manner**.
-That is — the invocation returns a promise which can be awaited on at any point after.
-
-**process a**
+Context's `.begin_rpc()` method invokes a function in a **remote process** in an **asynchronous manner**.
+That is — the invocation returns a promise which can be awaited on later.
 
 ```python
 # process a
 @resonate.register
-def foo(ctx, args):
+def foo(ctx, arg):
     # ...
-    promise = yield ctx.rfi("bar", args)
+    promise = yield ctx.begin_rpc("bar", arg)
     # do more stuff
     result = yield promise
     # ...
-```
 
-**process b**
-
-```python
 # process b
 @resonate.register
-def bar(ctx, args):
+def bar(ctx, arg):
     # ...
     return
 ```
 
 ### `.get_dependency()`
 
-Context's `.get_dependency()` method allows you to get a dependency that was set in the ephemeral world using the `.set_dependency()` method and use it the Durable World.
+Context's `.get_dependency()` method allows you to get a dependency that was set in the ephemeral world using the [`.set_dependency()`](#set_dependency) method and use it the Durable World.
 
 ```python
 @resonate.register
-def foo(ctx, args):
+def foo(ctx, arg):
     # ...
     dependency = ctx.get_dependency("dependency-name")
     # do something with the dependency
@@ -413,14 +369,12 @@ The sleep method accepts a float value in seconds.
 
 ```python
 @resonate.register
-def foo(ctx, args):
+def foo(ctx, arg):
     # ...
     yield ctx.sleep(5.0)
     # do more stuff
     # ...
 ```
-
-The previous function will sleep for 5 seconds and then continue execution.
 
 ### `.promise()`
 
@@ -430,11 +384,11 @@ If no ID is provided, one is generated and a new promise is created.
 If an ID is provided and a promise already exists with that ID, then the existing promise is returned (if the idempotency keys match).
 
 This is very useful for HITL (Human-In-The-Loop) use cases where you want to block progress until a human has taken an action or provided data.
-It works well in conjunction with [Resonate's `.promise.resolve()` method](#promisesresolve).
+It works well in conjunction with the [`.promises.resolve()`](#promisesresolve) method.
 
 ```python
 @resonate.register
-def foo(ctx, args):
+def foo(ctx, arg):
     # ...
     promise = yield ctx.promise(id="promise-id")
     # do more stuff
@@ -444,13 +398,13 @@ def foo(ctx, args):
 
 You can also pass custom data into the promise.
 
-- In a Pending state, custom data stores in the `data` field of the promise.
+- In a Pending state, custom data stores in the `param` field of the promise.
 - In a Resolved state the custom data stores in the `result` field of the promise.
-- In a Rejected state the custom data stores in the `error` field of the promise.
+- In a Rejected state the custom data stores in the `result` field of the promise.
 
 ```python
 @resonate.register
-def foo(ctx, args):
+def foo(ctx, arg):
     # ...
     promise = yield ctx.promise(data={"key": "value"})
     # do more stuff
