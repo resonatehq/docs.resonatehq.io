@@ -1,7 +1,7 @@
 ---
 id: typescript
-title: Resonate TypeScript SDK
-description: Get started with the Resonate TypeScript SDK.
+title: TypeScript SDK API guidance
+description: Use Resonate's TypeScript SDK in your next project.
 sidebar_label: TypeScript SDK
 last_update:
   date: "08-18-2025"
@@ -204,8 +204,8 @@ const result = await fooR.run("foo");
 resonate.register("foo", foo);
 
 // For this version of run, the first argument still the promise id, this time
-// followed by the function to be run and its arguemnts 
-const result  = await resonate.run("foo", foo);
+// followed by the function to be run and its arguemnts
+const result = await resonate.run("foo", foo);
 ```
 
 ### `.beginRun()`
@@ -229,8 +229,8 @@ const result = await promiseOfResult.result();
 resonate.register("foo", foo);
 
 // For this version of run, the first argument still the promise id, this time
-// followed by the function to be run and its arguemnts 
-const promiseOfResult  = await resonate.run("foo", foo);
+// followed by the function to be run and its arguemnts
+const promiseOfResult = await resonate.run("foo", foo);
 const result = await promiseOfResult.result();
 ```
 
@@ -284,7 +284,9 @@ resonate.rpc(
 
 ### `.promises.create()`
 
-Resonate's `.promise.create()`
+```typescript
+const promise = resonate.promises.create("my-custom-id", 50000); // must provide a promise id and timeout
+```
 
 ### `.promises.get()`
 
@@ -312,7 +314,8 @@ Context's `.run()` method invokes a function in the **same process** in a **sync
 That is — the calling function blocks until the invoked function returns.
 
 ```typescript
-function* foo(ctx: Context): Generator<any, number, any> { // The return type of the generator is number
+function* foo(ctx: Context): Generator<any, number, any> {
+  // The return type of the generator is number
   const value = yield* ctx.run(bar, 2);
   return value; // 42
 }
@@ -328,7 +331,7 @@ Context's `.beginRun` method invokes a function in the **same process** in an **
 That is — the invocation returns a promise which can be awaited on at any point after.
 
 ```typescript
-function* foo(ctx: Context):  Generator<any, string, any> {
+function* foo(ctx: Context): Generator<any, string, any> {
   const promise = yield* ctx.beginRun(bar, "Resonate");
   const value = yield* promise; // After yielding the future
   return value;
@@ -420,7 +423,6 @@ const f = resonate.register("f", function* foo(ctx: Context) {
 
 resonate.setDependency("greeting", "Hello"); // Set it in the ephemeral world
 const v = await f.run("fId"); // "Hello World!"
-  
 ```
 
 ### `.sleep()`
@@ -436,12 +438,12 @@ const f = resonate.register("f", function* foo(ctx: Context) {
   return "myValue";
 });
 
-
 const value = await f.run("fId"); // "myValue"
 // f will take 24 hours to complete
 ```
 
 ### `.promise()`
+
 Context's `.promise()` method allows you to get or create a promise that can be awaited on.
 
 If no ID is provided, one is generated and a new promise is created.

@@ -230,7 +230,7 @@ promise = resonate.promises.create()
     <TabItem value="typescript">
 
 ```typescript
-const promise = resonate.promises.create();
+const promise = resonate.promises.create("my-custom-id", 50000); // must provide a promise id and timeout
 ```
 
 [More examples of the Resonate Create Promise API in TypeScript](/develop/typescript#promisescreate).
