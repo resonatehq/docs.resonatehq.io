@@ -46,7 +46,6 @@ uv add resonate-sdk
 [More examples of installing the Resonate Python SDK](/develop/python#installation).
 
     </TabItem>
-
     <TabItem value="typescript">
 
 ```shell
@@ -84,7 +83,7 @@ Quick example:
 
     <TabItem value="python">
 
-```python
+```py
 from resonate import Resonate
 
 resonate = Resonate.local()
@@ -96,7 +95,7 @@ resonate = Resonate.local()
 
     <TabItem value="typescript">
 
-```typescript
+```ts
 import { Resonate } from "@resonatehq/sdk";
 
 const resonate = Resonate.local();
@@ -134,7 +133,7 @@ Quick example:
 
 In Python, you can use the `@resonate.register` decorator to register a function:
 
-```python
+```py
 @resonate.register
 def foo(context: Context, arg: str) -> str:
     # ...
@@ -149,7 +148,7 @@ def foo(context: Context, arg: str) -> str:
 
 In TypeScript, you can use the `register` method to register a function:
 
-```typescript
+```ts
 function foo(context: Context, arg: string): string {
   // ...
   return result;
@@ -191,7 +190,7 @@ resonate.set_dependency("db", db_connection)
 
     <TabItem value="typescript">
 
-```typescript
+```ts
 resonate.setDependency("db", db_connection);
 ```
 
@@ -220,7 +219,10 @@ Quick example:
     <TabItem value="python">
 
 ```python
-promise = resonate.promises.create()
+resonate.promises.create(
+    id="promise-id",
+    timeout=int(time.time() * 1000) + 30000,  # 30s in the future
+)
 ```
 
 [More examples of the Resonate Create Promise API in Python](/develop/python#promisescreate).
@@ -229,8 +231,11 @@ promise = resonate.promises.create()
 
     <TabItem value="typescript">
 
-```typescript
-const promise = resonate.promises.create("my-custom-id", 50000); // must provide a promise id and timeout
+```ts
+await resonate.promises.create(
+  "promise-id",
+  Date.now() + 30000 // 30 seconds in the future
+);
 ```
 
 [More examples of the Resonate Create Promise API in TypeScript](/develop/typescript#promisescreate).
@@ -255,7 +260,7 @@ For example, if you have a long-running background job that you want to check on
     <TabItem value="python">
 
 ```python
-promise = resonate.promises.get("promise-id")
+p = resonate.promises.get("promise-id")
 ```
 
 [More examples of the Resonate Get Promise API in Python](/develop/python#promisesget).
@@ -264,8 +269,8 @@ promise = resonate.promises.get("promise-id")
 
     <TabItem value="typescript">
 
-```typescript
-const promise = resonate.promises.get("promise-id");
+```ts
+const p = resonate.promises.get("promise-id");
 ```
 
 [More examples of the Resonate Get Promise API in TypeScript](/develop/typescript#promisesget).
@@ -286,15 +291,17 @@ const promise = resonate.promises.get("promise-id");
 
     <TabItem value="python">
 
-```python
+```py
 resonate.promises.resolve("promise-id")
 ```
+
+[More examples of the Resonate Resolve Promise API in Python](/develop/python#promisesresolve).
 
     </TabItem>
 
     <TabItem value="typescript">
 
-```typescript
+```ts
 resonate.promises.resolve("promise-id");
 ```
 
@@ -314,16 +321,16 @@ resonate.promises.resolve("promise-id");
 
     <TabItem value="python">
 
-```python
-
+```py
+resonate.promises.reject("promise-id")
 ```
 
     </TabItem>
 
     <TabItem value="typescript">
 
-```typescript
-
+```ts
+resonate.promises.reject("promise-id");
 ```
 
     </TabItem>
@@ -346,7 +353,7 @@ Quick example:
 
     <TabItem value="python">
 
-```python
+```py
 @resonate.register
 def foo(ctx: Context, arg: str) -> str:
     # ...
@@ -362,7 +369,7 @@ def main():
 
     <TabItem value="typescript">
 
-```typescript
+```ts
 function foo(ctx: Context, arg: string): string {
   // ...
   return result;
@@ -397,7 +404,7 @@ Quick example:
 
     <TabItem value="python">
 
-```python
+```py
 @resonate.register
 def foo(ctx: Context, arg: str) -> str:
     # ...
@@ -413,7 +420,7 @@ def main():
 
     <TabItem value="typescript">
 
-```typescript
+```ts
 function foo(ctx: Context, arg: string): string {
   // ...
   return result;
@@ -448,7 +455,7 @@ The RPC API on the Resonate Client enables you to invoke a Durable Function in a
 
     <TabItem value="python">
 
-```python
+```py
 # process x
 @resonate.register
 def foo(context: Context, arg: str):
@@ -469,7 +476,7 @@ def main():
 
     <TabItem value="typescript">
 
-```typescript
+```ts
 // process x
 resonate.register("foo", (ctx: Context, arg: string) => {
   // ...
@@ -512,7 +519,7 @@ async function foo() {
 
     <TabItem value="python">
 
-```python
+```py
 # process x
 @resonate.register
 def foo(context: Context, arg: str):
@@ -534,7 +541,7 @@ def main():
 
     <TabItem value="typescript">
 
-```typescript
+```ts
 // process x
 resonate.register("foo", (ctx: Context, arg: string) => {
   // ...
@@ -584,7 +591,7 @@ Get a dependency that was set on the Resonate Client in the same process.
 
     <TabItem value="python">
 
-```python
+```py
 db_conn = ctx.get_dependency("database-connection")
 ```
 
@@ -594,7 +601,7 @@ db_conn = ctx.get_dependency("database-connection")
 
     <TabItem value="typescript">
 
-```typescript
+```ts
 const db_conn = ctx.getDependency("database-connection");
 ```
 
@@ -616,17 +623,22 @@ const db_conn = ctx.getDependency("database-connection");
 
     <TabItem value="python">
 
-```python
-
+```py
+promise = yield ctx.promise(id="promise-id")
 ```
+
+[More examples of the Resonate Get or Create Promise API in Python](/develop/python#promise).
 
     </TabItem>
 
     <TabItem value="typescript">
 
-```typescript
-
+```ts
+const promise = yield* ctx.promise({ id: "promise-id" });
+});
 ```
+
+[More examples of the Resonate Get or Create Promise API in TypeScript](/develop/typescript#promise).
 
     </TabItem>
 
@@ -646,19 +658,22 @@ Put the function to sleep for a specified duration without blocking the process.
 
     <TabItem value="python">
 
-```python
-yield ctx.sleep(5) # seconds
+```py
+yield ctx.sleep(5.0) // sleep for 5 seconds
 ```
+
+[More examples of the Resonate Sleep API in Python](/develop/python#sleep).
 
     </TabItem>
 
     <TabItem value="typescript">
 
-```typescript
-function* yourWorkflow() {
-  yield* ctx.sleep(5000); // milliseconds
+```ts
+yield* ctx.sleep(5000); // sleep for 5 seconds
 }
 ```
+
+[More examples of the Resonate Sleep API in TypeScript](/develop/typescript#sleep).
 
     </TabItem>
 
@@ -676,7 +691,7 @@ function* yourWorkflow() {
 
     <TabItem value="python">
 
-```python
+```py
 
 ```
 
@@ -684,7 +699,7 @@ function* yourWorkflow() {
 
     <TabItem value="typescript">
 
-```typescript
+```ts
 
 ```
 
@@ -704,7 +719,7 @@ function* yourWorkflow() {
 
     <TabItem value="python">
 
-```python
+```py
 
 ```
 
@@ -712,7 +727,7 @@ function* yourWorkflow() {
 
     <TabItem value="typescript">
 
-```typescript
+```ts
 
 ```
 
@@ -732,7 +747,7 @@ function* yourWorkflow() {
 
     <TabItem value="python">
 
-```python
+```py
 
 ```
 
@@ -740,7 +755,7 @@ function* yourWorkflow() {
 
     <TabItem value="typescript">
 
-```typescript
+```ts
 
 ```
 
@@ -760,7 +775,7 @@ function* yourWorkflow() {
 
     <TabItem value="python">
 
-```python
+```py
 
 ```
 
@@ -768,7 +783,7 @@ function* yourWorkflow() {
 
     <TabItem value="typescript">
 
-```typescript
+```ts
 
 ```
 
@@ -788,7 +803,7 @@ function* yourWorkflow() {
 
     <TabItem value="python">
 
-```python
+```py
 
 ```
 
@@ -796,7 +811,7 @@ function* yourWorkflow() {
 
     <TabItem value="typescript">
 
-```typescript
+```ts
 
 ```
 
@@ -816,7 +831,7 @@ function* yourWorkflow() {
 
     <TabItem value="python">
 
-```python
+```py
 
 ```
 
@@ -824,7 +839,7 @@ function* yourWorkflow() {
 
     <TabItem value="typescript">
 
-```typescript
+```ts
 
 ```
 
