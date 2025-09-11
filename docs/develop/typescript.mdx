@@ -115,7 +115,7 @@ const resonate = Resonate.remote({ host: "https://my-resonate.com" });
 Resonate workers can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
 The Poller is a great starting place as it will long-poll for messages from the Resonate Server without any additional setup.
 
-## Resonate APIs
+## Client APIs
 
 Registration
 
@@ -177,7 +177,7 @@ const result = await resonate.rpc(
   "foo",
   ...args,
   resonate.options({
-    target: "workers",
+    target: "poll://any@workers",
   })
 );
 ```
@@ -187,7 +187,14 @@ const result = await resonate.rpc(
 Similar to `.rpc()` but instead of returning the result, returns a handle so the result can be awaited later.
 
 ```ts
-const handle = await resonate.beginRpc("invocation-id", "foo", ...args);
+const handle = await resonate.beginRpc(
+  "invocation-id",
+  "foo",
+  ...args,
+  resonate.options({
+    target: "poll://any@workers",
+  })
+);
 const result = await handle.result();
 ```
 
@@ -303,7 +310,11 @@ That is — the calling function blocks until the invoked function returns.
 // process a
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
   // ...
-  const result = yield* ctx.rpc("bar", ...args);
+  const result = yield* ctx.rpc(
+    "bar",
+    ...args,
+    ctx.options({ target: "poll://any@workers" })
+  );
   // do more stuff
   // ...
 });
@@ -324,7 +335,11 @@ That is — the invocation returns a promise which can be awaited on later.
 // process a
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
   // ...
-  const promise = yield* ctx.beginRpc("bar", ...args);
+  const promise = yield* ctx.beginRpc(
+    "bar",
+    ...args,
+    ctx.options({ target: "poll://any@workers" })
+  );
   // do more stuff
   const result = yield* promise;
   // ...
@@ -353,7 +368,7 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
 ### `.sleep()`
 
 Context's `.sleep()` method allows you to sleep inside a function.
-There is no limit to how long you can sleep.
+There is no limit to how long you can sleep — even if the original process crashes or is terminated, the sleep will continue and the function will resume in a new process.
 The sleep method accepts a number value in milliseconds.
 
 ```ts
@@ -370,7 +385,7 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
 Context's `.promise()` method allows you to get or create a promise that can be awaited on.
 
 If no ID is provided, one is generated and a new promise is created.
-If an ID is provided and a promise already exists with that ID, then the existing promise is returned (if the idempotency keys match).
+If an ID is provided and a promise already exists with that ID, then the existing promise is returned.
 
 This is very useful for HITL (Human-In-The-Loop) use cases where you want to block progress until a human has taken an action or provided data.
 It works well in conjunction with the [`.promises.resolve()`](#promisesresolve) method.
@@ -386,10 +401,6 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
 ```
 
 You can also pass custom data into the promise.
-
-- In a Pending state, custom data stores in the `param` field of the promise.
-- In a Resolved state the custom data stores in the `result` field of the promise.
-- In a Rejected state the custom data stores in the `result` field of the promise.
 
 ```ts
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
