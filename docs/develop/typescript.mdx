@@ -106,10 +106,14 @@ The quickest way to get started with Remote initialization is for the worker to 
 ```ts
 import { Resonate } from "@resonatehq/sdk";
 
+// default connection to local development server
 const resonate = Resonate.remote();
 
-// or alternatively
+// connection to a custom endpoint
 const resonate = Resonate.remote({ host: "https://my-resonate.com" });
+
+// declaring which group it is part of
+const resonate = Resonate.remote({ group: "worker-group-x" });
 ```
 
 Resonate workers can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
@@ -169,9 +173,15 @@ You can think of it as a "run somewhere else" invocation (Asynchronous Remote Pr
 After invocation, the function is considered durable and will recover in another process if required.
 
 ```ts
-const result = await resonate.rpc("invocation-id", "foo", ...args);
+// worker.ts
+resonate.register("foo", (ctx: Context, ...args: any[]) => {
+  // ...
+  return result;
+});
+```
 
-// optionally target a specific group
+```ts
+// client.ts
 const result = await resonate.rpc(
   "invocation-id",
   "foo",
