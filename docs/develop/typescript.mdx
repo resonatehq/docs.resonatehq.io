@@ -211,7 +211,7 @@ const result = await handle.result();
 ### `.setDependency()`
 
 Resonate's `.setDependency()` method allows you to set a dependency for the Application Node.
-You can then access the dependency in the function using the [`.getDependency()`](#getDependency) method.
+You can then access the dependency in the function using the [`.getDependency()`](#getdependency) method.
 
 Dependencies can only be added in the ephemeral world.
 
@@ -238,7 +238,7 @@ await resonate.promises.create(
 Resonate's `.promises.get()` method allows you to get a promise by ID.
 
 ```ts
-await resonate.promises.get("promise-id");
+const p = await resonate.promises.get("promise-id");
 ```
 
 ### `.promises.resolve()`
@@ -364,7 +364,7 @@ resonate.register("bar", function (ctx: Context, ...args: any[]) {
 
 ### `.getDependency()`
 
-Context's `.getDependency()` method allows you to get a dependency that was set in the ephemeral world using the [`.setDependency()`](#setDependency) method and use it the Durable World.
+Context's `.getDependency()` method allows you to get a dependency that was set in the ephemeral world using the [`.setDependency()`](#setdependency) method and use it the Durable World.
 
 ```ts
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
@@ -384,7 +384,7 @@ The sleep method accepts a number value in milliseconds.
 ```ts
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
   // ...
-  yield* ctx.sleep(5000);
+  yield* ctx.sleep(5000); // sleep for 5 seconds
   // do more stuff
   // ...
 });
