@@ -1,7 +1,7 @@
 ---
 id: typescript
-title: Resonate TypeScript SDK
-description: Get started with the Resonate TypeScript SDK.
+title: TypeScript SDK API guidance
+description: APIs that stay simple, even when your use cases aren’t
 sidebar_label: TypeScript SDK
 last_update:
   date: "08-18-2025"
@@ -82,7 +82,7 @@ This is ideal for getting started quickly or for integrating Resonate into an ex
 
 The drawback is that you can't use Resonate's Async RPC or recover executions from process / worker crashes.
 
-``` ts
+```ts
 import { Resonate } from "@resonatehq/sdk";
 
 const resonate = Resonate.local();
@@ -125,15 +125,15 @@ Registration
 
 ```ts
 function foo(ctx: Context, ...args: any[]) {
-    // ...
-    return result
+  // ...
+  return result;
 }
 resonate.register(foo);
 
 // or alternatively
 resonate.register("foo", (ctx: Context, ...args: any[]) => {
-    // ...
-    return result
+  // ...
+  return result;
 });
 ```
 
@@ -172,9 +172,14 @@ After invocation, the function is considered durable and will recover in another
 const result = await resonate.rpc("invocation-id", "foo", ...args);
 
 // optionally target a specific group
-const result = await resonate.rpc("invocation-id", "foo", ...args, resonate.options({
-  target: "workers",
-}));
+const result = await resonate.rpc(
+  "invocation-id",
+  "foo",
+  ...args,
+  resonate.options({
+    target: "workers",
+  })
+);
 ```
 
 ### `.beginRpc()`
@@ -207,7 +212,7 @@ Resonate's `.promises.create()` method allows you to create a promise.
 ```ts
 await resonate.promises.create(
   "promise-id",
-  Date.now() + 30000, // 30 seconds in the future
+  Date.now() + 30000 // 30 seconds in the future
 );
 ```
 
@@ -257,15 +262,15 @@ That is — the calling function blocks until the invoked function returns.
 
 ```ts
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
-    // ...
-    const result = yield* ctx.run(bar, ...args);
-    // do more stuff
-    // ...
+  // ...
+  const result = yield* ctx.run(bar, ...args);
+  // do more stuff
+  // ...
 });
 
 function bar(ctx: Context, ...args: any[]) {
-    // ...
-    return;
+  // ...
+  return;
 }
 ```
 
@@ -276,16 +281,16 @@ That is — the invocation returns a promise which can be awaited later.
 
 ```ts
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
-    // ...
-    const promise = yield* ctx.beginRun(bar, ...args);
-    // do more stuff
-    const result = yield* promise;
-    // ...
+  // ...
+  const promise = yield* ctx.beginRun(bar, ...args);
+  // do more stuff
+  const result = yield* promise;
+  // ...
 });
 
 function bar(ctx: Context, ...args: any[]) {
-    // ...
-    return;
+  // ...
+  return;
 }
 ```
 
@@ -297,16 +302,16 @@ That is — the calling function blocks until the invoked function returns.
 ```ts
 // process a
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
-    // ...
-    const result = yield* ctx.rpc("bar", ...args);
-    // do more stuff
-    // ...
+  // ...
+  const result = yield* ctx.rpc("bar", ...args);
+  // do more stuff
+  // ...
 });
 
 // process b
 resonate.register("bar", function (ctx: Context, ...args: any[]) {
-    // ...
-    return;
+  // ...
+  return;
 });
 ```
 
@@ -318,17 +323,17 @@ That is — the invocation returns a promise which can be awaited on later.
 ```ts
 // process a
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
-    // ...
-    const promise = yield* ctx.beginRpc("bar", ...args);
-    // do more stuff
-    const result = yield* promise;
-    // ...
+  // ...
+  const promise = yield* ctx.beginRpc("bar", ...args);
+  // do more stuff
+  const result = yield* promise;
+  // ...
 });
 
 // process b
 resonate.register("bar", function (ctx: Context, ...args: any[]) {
-    // ...
-    return;
+  // ...
+  return;
 });
 ```
 
@@ -338,10 +343,10 @@ Context's `.getDependency()` method allows you to get a dependency that was set 
 
 ```ts
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
-    // ...
-    const dependency = ctx.getDependency("dependency-name");
-    // do something with the dependency
-    // ...
+  // ...
+  const dependency = ctx.getDependency("dependency-name");
+  // do something with the dependency
+  // ...
 });
 ```
 
@@ -353,10 +358,10 @@ The sleep method accepts a number value in milliseconds.
 
 ```ts
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
-    // ...
-    yield* ctx.sleep(5000);
-    // do more stuff
-    // ...
+  // ...
+  yield* ctx.sleep(5000);
+  // do more stuff
+  // ...
 });
 ```
 
@@ -372,11 +377,11 @@ It works well in conjunction with the [`.promises.resolve()`](#promisesresolve) 
 
 ```ts
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
-    // ...
-    const promise = yield* ctx.promise({ id: "promise-id" });
-    // do more stuff
-    const result = yield* promise;
-    // ...
+  // ...
+  const promise = yield* ctx.promise({ id: "promise-id" });
+  // do more stuff
+  const result = yield* promise;
+  // ...
 });
 ```
 
@@ -388,11 +393,11 @@ You can also pass custom data into the promise.
 
 ```ts
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
-    // ...
-    const promise = yield* ctx.promise({ data: {"key": "value"} });
-    // do more stuff
-    const result = yield* promise;
-    // ...
+  // ...
+  const promise = yield* ctx.promise({ data: { key: "value" } });
+  // do more stuff
+  const result = yield* promise;
+  // ...
 });
 ```
 
