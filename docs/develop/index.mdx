@@ -9,20 +9,27 @@ tags:
   - develop
 ---
 
-This section is designed as a reference for developers who are past the initial getting started phase and just need quick reference material.
-This page contains an overview of the Resonate API surface area with quick examples in each language.
-Each example contains a link to a more detailed section specific to that language.
+The Resonate API surface area is designed to fit the needs of a distributed application developer.
 
-Or, you can jump right to the guide for the SDK you are using.
+The API is intentionally minimal.
+With just a small set of primitives, you can do most of the heavy lifting required for building distributed applications.
+This surface area was designed carefully: it’s simple to learn, yet powerful enough to address the core challenges developers face when writing resilient, distributed systems.
 
-import DocCardList from "@theme/DocCardList";
-import { useCurrentSidebarCategory } from "@docusaurus/theme-common";
+Every API call in Resonate is durable by default.
+That means your operations survive process crashes, restarts, and unexpected failures.
+You don’t have to wire up custom retry loops or invent your own fault tolerance patterns — Resonate takes care of this, letting you focus on your business logic instead of infrastructure plumbing.
 
-<DocCardList items={useCurrentSidebarCategory().items} />
+Distributed applications introduce unique problems: coordination across processes, ordering of events, fault handling, and more.
+Developers often patch these problems with ad-hoc solutions that make the business process hard to follow and even harder for new contributors to understand.
+Resonate smooths away this complexity by giving you APIs that make sense at the business-logic level, while still solving for the hard distributed systems problems underneath.
+
+These docs aim to meet you where you are — whether you’re new to distributed programming or already familiar with the common pain points — while guiding you into the “Resonate way” of thinking about system design.
+Each code sample shown here is deliberately minimal, to highlight exactly what the API looks like and where it fits in the broader ecosystem of distributed application development.
+From there, you’ll find links to more detailed examples with step-by-step explanations.
 
 ## Installing SDKs
 
-You can use your favorite package manager to install the Resonate SDK.
+Resonate SDKs can be installed using your favorite package manager.
 
 Quick example:
 
@@ -62,14 +69,14 @@ bun add @resonatehq/sdk
 
 You need to initialize a Resonate Client in each process that you want to use Resonate.
 
-:::differentiator Zero-dependency development
+A Resonate Client connects to a Resonate Server and message sources while providing the top level APIs needed to durably invoke function executions.
 
-Your Resonate Client does not need to connect to a Resonate Server to start developing.
+It is important to note that your Resonate Client does not need to connect to a Resonate Server to start developing.
 You can use the Resonate Client in "local mode", working with functions that are local to the process.
 
 This is in contrast to Temporal, Restate, and DBOS which require connecting to a server or database, even for development.
 
-:::
+Resonate calls this capability "Zero dependency development".
 
 Quick example:
 
@@ -86,6 +93,7 @@ Quick example:
 ```py
 from resonate import Resonate
 
+# Initialize a Resonate Client in local mode
 resonate = Resonate.local()
 ```
 
@@ -98,6 +106,7 @@ resonate = Resonate.local()
 ```ts
 import { Resonate } from "@resonatehq/sdk";
 
+// Initialize a Resonate Client in local mode
 const resonate = Resonate.local();
 ```
 
@@ -109,15 +118,26 @@ const resonate = Resonate.local();
 
 ## Client APIs
 
-You can use Resonate Client APIs just about anywhere, except from within a Durable Function.
-Inside Durable Functions, you need to use [Function APIs](#function-apis).
+Many Resonate Client APIs can be used just about anywhere.
+Seriously.
+For example, the Resonate TypeScript SDK can run in your browser, enabling Async RPCs from your frontend code, or converting your browser session into a worker.
 
 ### Registering functions
 
-One of the things you can do with a Resonate Client is register functions.
-Registered functions are checkpointed during execution, making them durable to hard failures.
-A registered function can then be called from anywhere.
-However, all parameters passed to a Durable Functions must be serializable.
+Registering a function is a lot like exposing a service endpoint.
+
+Resonate promotes a concept called the [Call Graph](https://journal.resonatehq.io/p/resonate-call-graphs).
+Effectively, it is a graph of function calls that can span multiple processes.
+The first function in the Call Graph is called the "top level" function.
+
+The "top level" function must be registered with Resonate.
+A registered function becomes a Durable Function.
+A registered function can be invoked from any other process with a Resonate Client connected to the same Resonate Server.
+
+The first argument of a registered function will always be a Resonate Context, which can be used to call other functions.
+Local functions do not need to be registered, but will become Durable Functions if invoked from the registered Durable Function.
+
+Note that all parameters passed to a Durable Functions must be serializable.
 
 Quick example:
 
@@ -200,13 +220,23 @@ resonate.setDependency("db", db_connection);
 
 </Tabs>
 
-### Create promise
+### Promises
+
+Promises are the key primitive for asynchronous programming in Resonate.
+They allow you to represent a value that may not be available yet, but will be at some point in the future.
+As a developer, you effectively are programming with async/await across processes.
+Resonate promises are durable, however, persisted by the Resonate Server.
 
 The Resonate Client enables you to create, get, resolve, and reject promises.
 
-A common reason to use the create promise API on the Resonate Client, is to be able to know the ID of a promise that you will later need to resolve inside the Call Graph.
+These APIs are make it possible to manage the lifecycle of a promise outside of the Call Graph.
 
-Quick example:
+For example, you may need to create a promise before invoking a function that will resolve it later.
+Or, you need to get a promise to see if it was resolved before doing something else.
+
+#### **Create a promise**
+
+Quick example of creating a promise:
 
 <Tabs
     groupId="preferred-language"
@@ -244,10 +274,12 @@ await resonate.promises.create(
 
 </Tabs>
 
-### Get promise
+#### **Get a promise**
 
 A common reason for using the Resonate Client get promise API, is to check whether a promise exists, and if it does, whether it is resolved.
 For example, if you have a long-running background job that you want to check on, you can use the get promise API to get the handle of the promise and check if it is resolved yet.
+
+Quick example of getting a promise:
 
 <Tabs
     groupId="preferred-language"
@@ -279,7 +311,7 @@ const p = resonate.promises.get("promise-id");
 
 </Tabs>
 
-### Resolve promise
+#### **Resolve a promise**
 
 <Tabs
     groupId="preferred-language"
@@ -309,7 +341,7 @@ resonate.promises.resolve("promise-id");
 
 </Tabs>
 
-### Reject promise
+#### **Reject a promise**
 
 <Tabs
     groupId="preferred-language"
