@@ -169,12 +169,10 @@ def foo(context: Context, arg: str) -> str:
 In TypeScript, you can use the `register` method to register a function:
 
 ```ts
-function foo(context: Context, arg: string): string {
+fooR = resonate.register("foo", (context: Context, arg: string): string => {
   // ...
   return result;
-}
-
-const fooR = resonate.register(foo);
+});
 ```
 
 [More examples of the Resonate Register API in TypeScript](/develop/typescript#register).
@@ -231,12 +229,11 @@ The Resonate Client enables you to create, get, resolve, and reject promises.
 
 These APIs are make it possible to manage the lifecycle of a promise outside of the Call Graph.
 
-For example, you may need to create a promise before invoking a function that will resolve it later.
-Or, you need to get a promise to see if it was resolved before doing something else.
+The Create Promise API is useful for creating a promise before invoking the function that will resolve it later.
+And a common reason for using the Get Promise API, is to check whether a promise exists, and if it does, whether it is resolved.
+For example, if you have a long-running background job that you want to check on, you can use the get promise API to get the handle of the promise and check if it is resolved yet.
 
-#### **Create a promise**
-
-Quick example of creating a promise:
+Quick examples:
 
 <Tabs
     groupId="preferred-language"
@@ -249,121 +246,47 @@ Quick example of creating a promise:
     <TabItem value="python">
 
 ```python
+# create a promise
 resonate.promises.create(
     id="promise-id",
     timeout=int(time.time() * 1000) + 30000,  # 30s in the future
 )
-```
 
-[More examples of the Resonate Create Promise API in Python](/develop/python#promisescreate).
+# get a promise
+resonate.promises.get("promise-id")
 
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-await resonate.promises.create(
-  "promise-id",
-  Date.now() + 30000 // 30 seconds in the future
-);
-```
-
-[More examples of the Resonate Create Promise API in TypeScript](/develop/typescript#promisescreate).
-
-    </TabItem>
-
-</Tabs>
-
-#### **Get a promise**
-
-A common reason for using the Resonate Client get promise API, is to check whether a promise exists, and if it does, whether it is resolved.
-For example, if you have a long-running background job that you want to check on, you can use the get promise API to get the handle of the promise and check if it is resolved yet.
-
-Quick example of getting a promise:
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```python
-p = resonate.promises.get("promise-id")
-```
-
-[More examples of the Resonate Get Promise API in Python](/develop/python#promisesget).
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-const p = resonate.promises.get("promise-id");
-```
-
-[More examples of the Resonate Get Promise API in TypeScript](/develop/typescript#promisesget).
-
-    </TabItem>
-
-</Tabs>
-
-#### **Resolve a promise**
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
+# resolve a promise
 resonate.promises.resolve("promise-id")
-```
 
-[More examples of the Resonate Resolve Promise API in Python](/develop/python#promisesresolve).
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-resonate.promises.resolve("promise-id");
-```
-
-    </TabItem>
-
-</Tabs>
-
-#### **Reject a promise**
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
+# reject a promise
 resonate.promises.reject("promise-id")
+
 ```
+
+[More examples of the Resonate Promise APIs in Python](/develop/python#promisescreate).
 
     </TabItem>
 
     <TabItem value="typescript">
 
 ```ts
-resonate.promises.reject("promise-id");
+// create a promise
+const p = await resonate.promises.create(
+  "promise-id",
+  Date.now() + 30000 // timeout set for 30 seconds in the future
+);
+
+// get a promise
+const p = await resonate.promises.get("promise-id");
+
+// resolve a promise
+await resonate.promises.resolve("promise-id");
+
+// reject a promise
+await resonate.promises.reject("promise-id");
 ```
+
+[More examples of the Resonate Promise APIs in TypeScript](/develop/typescript#promisescreate).
 
     </TabItem>
 
@@ -371,7 +294,15 @@ resonate.promises.reject("promise-id");
 
 ### Run
 
-The Run API on the Resonate Client enables you to invoke a Durable Function locally (in the same process) and synchronously (waits for the result).
+Run is the workhorse API for your local process.
+
+The Run API on the Resonate Client is for invoking functions locally (in the same process).
+Basically, its the equivalent of a normal function call, but it creates a checkpoint so even if your process crashes, the caller function can resume in a new process.
+
+The Run API is synchronous, meaning it will block until the callee function completes and returns a result.
+So there is also a Begin Run API, which is asynchronous and does not block.
+
+Basically Run returns the value of the function being called while Begin Run returns a promise/handle to the function being called, which can be used to get the result later.
 
 Quick example:
 
@@ -386,88 +317,49 @@ Quick example:
     <TabItem value="python">
 
 ```py
+# process x
+# foo() and main() are in the same process
 @resonate.register
 def foo(ctx: Context, arg: str) -> str:
     # ...
     return
 
 def main():
+    # synchronous call with Run API
     result = foo.run("invocation-id", "Hello World!")
-```
 
-[More examples of the Resonate Run API in Python](/develop/python#run-1).
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-function foo(ctx: Context, arg: string): string {
-  // ...
-  return result;
-}
-
-const fooR = resonate.register("foo", foo);
-
-async function main() {
-  const result = await fooR.run("invocation-id", "Hello World!");
-}
-```
-
-[More examples of the Resonate Run API in TypeScript](/develop/typescript#run-1)
-
-    </TabItem>
-
-</Tabs>
-
-### Begin run
-
-The Begin Run API on the Resonate Client enables you to invoke a Durable Function in the same process and not block, waiting for the result (asynchronously).
-
-Quick example:
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-@resonate.register
-def foo(ctx: Context, arg: str) -> str:
-    # ...
-    return
-
-def main():
-    handle = foo.run("invocation-id", "Hello World!")
+    # asynchronous call with Begin Run API
+    handle = foo.begin_run("invocation-id", "Hello World!")
     # ...
     result = handle.result()
 ```
 
+[More examples of the Resonate Run API in Python](/develop/python#run).
+
     </TabItem>
 
     <TabItem value="typescript">
 
 ```ts
-function foo(ctx: Context, arg: string): string {
+// process x
+// foo() and main() are in the same process
+const fooR = resonate.register("foo", (ctx: Context, arg: string): string => {
   // ...
   return result;
-}
-
-const fooR = resonate.register("foo", foo);
+});
 
 async function main() {
-  const handle = await fooR.run("invocation-id", "Hello World!");
+  // synchronous call with Run API
+  const result = await fooR.run("invocation-id", "Hello World!");
+
+  // asynchronouse call with Begin Run API
+  const handle = await fooR.beginRun("invocation-id", "Hello World!");
   // ...
   const result = await handle.result;
 }
 ```
 
-[More examples of the Resonate Begin Run API in TypeScript](/develop/typescript#beginrun-1)
+[More examples of the Resonate Run API in TypeScript](/develop/typescript#run-1)
 
     </TabItem>
 
