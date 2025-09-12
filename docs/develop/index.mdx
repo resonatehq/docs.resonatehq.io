@@ -737,6 +737,14 @@ yield* ctx.sleep(5000); // sleep for 5 seconds
 
 ### Run
 
+The Context Run API invokes a function in the **same process** in a **synchronous manner**.
+
+When to use this API?
+
+Use the Context Run API when you want to checkpoint the next step in your application / workflow.
+This checkpoint makes it possible to replay the calling function with the result of the callee.
+Use this API if you want the calling function to wait for the result before continuing.
+
 <Tabs
     groupId="preferred-language"
     defaultValue="python"
@@ -747,17 +755,38 @@ yield* ctx.sleep(5000); // sleep for 5 seconds
 
     <TabItem value="python">
 
-```py
+```python
+@resonate.register
+def foo(ctx: Context, arg: string):
+    # ...
+    result = yield ctx.run(bar, arg)
+    # do more stuff
+    # ...
 
+
+def bar(ctx: Context, arg: string):
+    # ...
+    return result
 ```
+
+[More examples of the Resonate Run API in Python](/develop/python#run-1).
 
     </TabItem>
 
     <TabItem value="typescript">
 
-```ts
+````ts
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const result = yield* ctx.run(bar, ...args);
+  // do more stuff
+  // ...
+});
 
-```
+function bar(ctx: Context, ...args: any[]) {
+  // ...
+  return;
+}
 
     </TabItem>
 
@@ -777,7 +806,7 @@ yield* ctx.sleep(5000); // sleep for 5 seconds
 
 ```py
 
-```
+````
 
     </TabItem>
 
