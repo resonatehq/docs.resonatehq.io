@@ -353,8 +353,12 @@ async function main() {
 
 Promises are the key primitive for asynchronous programming in Resonate.
 They allow you to represent a value that may not be available yet, but will be at some point in the future.
-As a developer, you effectively are programming with async/await across processes.
+As a developer, you are effectively programming with async/await across processes.
 Resonate promises are durable, however, persisted by the Resonate Server.
+
+Each promise is unique, identified by an ID.
+The promise ID is a "write-once" value, meaning it can only be set once and cannot be changed.
+It can be used as an idempotency_key, ensuring that multiple attempts to take a step will not result in duplication.
 
 The Resonate Client enables you to create, get, resolve, and reject promises.
 
