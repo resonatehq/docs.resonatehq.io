@@ -141,6 +141,20 @@ resonate.register("foo", (ctx: Context, ...args: any[]) => {
 });
 ```
 
+### `.setDependency()`
+
+Resonate's `.setDependency()` method allows you to set a dependency for the Application Node.
+You can then access the dependency in the function using the [`.getDependency()`](#getdependency) method.
+
+Dependencies can only be added in the ephemeral world.
+
+```ts
+resonate.setDependency("dependency-name", dependency);
+```
+
+The dependency can be accessed from any function in the Call Graph on that Application Node.
+This is useful for things like database connections or other resources that you want to share across functions.
+
 **How to invoke a function in the ephemeral world with the Resonate Class.**
 
 To move from the ephemeral world to the durable world you use the Resonate Class to invoke functions.
@@ -208,19 +222,49 @@ const handle = await resonate.beginRpc(
 const result = await handle.result();
 ```
 
-### `.setDependency()`
+### `.options()`
 
-Resonate's `.setDependency()` method allows you to set a dependency for the Application Node.
-You can then access the dependency in the function using the [`.getDependency()`](#getdependency) method.
-
-Dependencies can only be added in the ephemeral world.
+Options can be used with `.run()`, `.beginRun()`, `.rpc()`, and `.beginRpc()` as the final argument.
 
 ```ts
-resonate.setDependency("dependency-name", dependency);
+await resonate.run("invocation-id", foo, ...args, resonate.options({
+  timeout: 60_000, // 1 minute in ms
+  target: "poll://any@workers",
+  tags: { key: "value" },
+}));
 ```
 
-The dependency can be accessed from any function in the Call Graph on that Application Node.
-This is useful for things like database connections or other resources that you want to share across functions.
+### `.get()`
+
+Resonate's `.get()` method allows you to subscribe to a function invocation.
+If the function invocation does not exist, an error will be thrown.
+
+```ts
+const handle = await resonate.get("invocation-id");
+const result = await handle.result();
+```
+
+### `.schedule()`
+
+Resonate's `.schedule()` method allows you to schedule a function to be invoked on a specified cron schedule.
+The scheduled function will be invoked until the schedule is deleted.
+
+```ts
+const schedule = await resonate.schedule(
+    "scheduled-foo",
+    "0 * * * *",  // every hour
+    foo,
+    ...args,
+);
+````
+
+### `.promises.get()`
+
+Resonate's `.promises.get()` method allows you to get a promise by ID.
+
+```ts
+const p = await resonate.promises.get("promise-id");
+```
 
 ### `.promises.create()`
 
@@ -231,14 +275,6 @@ await resonate.promises.create(
   "promise-id",
   Date.now() + 30000 // 30 seconds in the future
 );
-```
-
-### `.promises.get()`
-
-Resonate's `.promises.get()` method allows you to get a promise by ID.
-
-```ts
-const p = await resonate.promises.get("promise-id");
 ```
 
 ### `.promises.resolve()`
@@ -260,10 +296,6 @@ Resonate's `.promises.reject()` method allows you to reject a promise by ID.
 await resonate.promises.reject("promise-id");
 ```
 
-### `.options()`
-
-Many of Resonate's methods support options on the call you are making.
-
 ## Context APIs
 
 **How to use the Resonate Context object in the TypeScript SDK.**
@@ -271,6 +303,19 @@ Many of Resonate's methods support options on the call you are making.
 Resonate's Context object enables you to invoke functions from inside a Durable Function.
 This is how you extend the Call Graph and create a world of Durable Functions.
 Inside a Durable Function you use the `yield*` keyword to interact with the Context object.
+
+### `.getDependency()`
+
+Context's `.getDependency()` method allows you to get a dependency that was set in the ephemeral world using the [`.setDependency()`](#setdependency) method and use it the Durable World.
+
+```ts
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const dependency = ctx.getDependency("dependency-name");
+  // do something with the dependency
+  // ...
+});
+```
 
 ### `.run()`
 
@@ -362,31 +407,33 @@ resonate.register("bar", function (ctx: Context, ...args: any[]) {
 });
 ```
 
-### `.getDependency()`
+### `.detached()`
 
-Context's `.getDependency()` method allows you to get a dependency that was set in the ephemeral world using the [`.setDependency()`](#setdependency) method and use it the Durable World.
+Context's `.detached()` method invokes a function in a **remote process** in an **asynchronous manner**
+but unlike `.beginRpc()`, the promise is not implictly awaited.
+Use `.detached()` when you want to fire-and-forget a function invocation.
 
 ```ts
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
   // ...
-  const dependency = ctx.getDependency("dependency-name");
-  // do something with the dependency
-  // ...
+  yield* ctx.detached("bar", ...args);
+  // do more stuff
 });
 ```
 
-### `.sleep()`
+### `.options()`
 
-Context's `.sleep()` method allows you to sleep inside a function.
-There is no limit to how long you can sleep — even if the original process crashes or is terminated, the sleep will continue and the function will resume in a new process.
-The sleep method accepts a number value in milliseconds.
+Options can be used with `.run()`, `.beginRun()`, `.rpc()`, `.beginRpc()`, and `.detached()` as the final argument.
 
 ```ts
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
   // ...
-  yield* ctx.sleep(5000); // sleep for 5 seconds
-  // do more stuff
-  // ...
+  yield* ctx.run(bar, ...args, ctx.options({
+    id: "custom-id",
+    timeout: 60_000, // 1 minute in ms
+    target: "poll://any@workers",
+    tags: { key: "value" },
+  }));
 });
 ```
 
@@ -422,6 +469,47 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
 });
 ```
 
-### `.options()`
+### `.sleep()`
 
-Many of Context's methods support options on the call you are making.
+Context's `.sleep()` method allows you to sleep inside a function.
+There is no limit to how long you can sleep — even if the original process crashes or is terminated, the sleep will continue and the function will resume in a new process.
+The sleep method accepts a number value in milliseconds.
+
+```ts
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  yield* ctx.sleep(5000); // sleep for 5 seconds
+  // do more stuff
+  // ...
+});
+```
+
+### `.date.now()`
+
+Context's `.date.now()` method allows you to deterministically get the time in milliseconds since the epoch.
+If your function execution is recovered after the time has been retrieved, the same time will be returned.
+This is helpful for ensuring the same code path is taken in the event of a recovery.
+
+```ts
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const time = yield* ctx.date.now();
+  // do something with time
+  // ...
+});
+```
+
+### `.math.random()`
+
+Context's `.math.random()` method allows you to generate a deterministic random number.
+If your function execution is recovered after the random number has been generated, the same number will be returned.
+This is helpful for ensuring the same code path is taken in the event of a recovery.
+
+```ts
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const rand = yield* ctx.math.random();
+  // do something with rand
+  // ...
+});
+```
