@@ -50,7 +50,7 @@ import TabItem from "@theme/TabItem";
 uv add resonate-sdk
 ```
 
-[More examples of installing the Resonate Python SDK](/develop/python#installation).
+[More examples](/develop/python#installation).
 
     </TabItem>
     <TabItem value="typescript">
@@ -59,7 +59,7 @@ uv add resonate-sdk
 bun add @resonatehq/sdk
 ```
 
-[More examples of installing the Resonate TypeScript SDK](/develop/typescript#installation).
+[More examples](/develop/typescript#installation).
 
     </TabItem>
 
@@ -97,7 +97,7 @@ from resonate import Resonate
 resonate = Resonate.local()
 ```
 
-[More examples of initializing a Resonate Client in Python](/develop/python#initialization).
+[More examples](/develop/python#initialization).
 
     </TabItem>
 
@@ -110,7 +110,7 @@ import { Resonate } from "@resonatehq/sdk";
 const resonate = Resonate.local();
 ```
 
-[More examples of initializing a Resonate Client in TypeScript](/develop/typescript#initialization).
+[More examples](/develop/typescript#initialization).
 
     </TabItem>
 
@@ -160,7 +160,7 @@ def foo(context: Context, arg: str) -> str:
     return result
 ```
 
-[More examples of the Resonate Register API in Python](/develop/python#resonateregister).
+[More examples](/develop/python#resonateregister).
 
     </TabItem>
 
@@ -175,16 +175,23 @@ fooR = resonate.register("foo", (context: Context, arg: string): string => {
 });
 ```
 
-[More examples of the Resonate Register API in TypeScript](/develop/typescript#register).
+[More examples](/develop/typescript#register).
 
     </TabItem>
 
 </Tabs>
 
-### Dependency injection
+### Run
 
-Let's say that you have initialized a DB connection or some other resource that some of your functions in that process might need to use.
-You can set a dependency with the Resonate Client which makes it available to all Durable Functions in that process.
+Run is the workhorse API for your local process.
+
+The Run API on the Resonate Client is for invoking functions locally (in the same process).
+Basically, its the equivalent of a normal function call, but it creates a checkpoint so even if your process crashes, the caller function can resume in a new process.
+
+The Run API is synchronous, meaning it will block until the callee function completes and returns a result.
+So there is also a Begin Run API, which is asynchronous and does not block.
+
+Basically Run returns the value of the function being called while Begin Run returns a promise/handle to the function being called, which can be used to get the result later.
 
 Quick example:
 
@@ -196,23 +203,147 @@ Quick example:
         {label: 'TypeScript', value: 'typescript'},
     ]}>
 
-    <TabItem value="python" >
+    <TabItem value="python">
 
-```python
-resonate.set_dependency("db", db_connection)
+```py
+# process x
+# foo() and main() are in the same process
+@resonate.register
+def foo(ctx: Context, arg: str) -> str:
+    # ...
+    return
+
+def main():
+    # synchronous call with Run API
+    result = foo.run("invocation-id", "Hello World!")
+
+    # asynchronous call with Begin Run API
+    handle = foo.begin_run("invocation-id", "Hello World!")
+    # ...
+    result = handle.result()
 ```
 
-[More examples of the Resonate Set Dependency API in Python](/develop/python#set_dependency).
+[More examples](/develop/python#run).
 
-</TabItem>
+    </TabItem>
 
     <TabItem value="typescript">
 
 ```ts
-resonate.setDependency("db", db_connection);
+// process x
+// foo() and main() are in the same process
+const fooR = resonate.register("foo", (ctx: Context, arg: string): string => {
+  // ...
+  return result;
+});
+
+async function main() {
+  // synchronous call with Run API
+  const result = await fooR.run("invocation-id", "Hello World!");
+
+  // asynchronouse call with Begin Run API
+  const handle = await fooR.beginRun("invocation-id", "Hello World!");
+  // ...
+  const result = await handle.result;
+}
 ```
 
-[More examples of the Resonate Set Dependency API in TypeScript](/develop/typescript#setdependency).
+[More examples](/develop/typescript#run)
+
+    </TabItem>
+
+</Tabs>
+
+### RPC
+
+If the Run API is the workhorse of your local process, then the RPC API is a magical unicorn for your distributed application.
+
+The RPC API is how you durably communicate between processes.
+Its how you invoke functions in other processes and extend the Call Graph across process boundaries.
+
+RPC is synchronous, and blocks the calling function until the invoked function returns.
+Begin RPC is asynchronous, and returns a promise which can be awaited later.
+
+Quick example:
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```py
+# foo is in process x
+@resonate.register
+def foo(context: Context, arg: str):
+    # ...
+    return result
+
+
+# main is in process y
+def main():
+    # synchronously invoke foo
+    result = resonate.options(target="process-group-x").rpc(
+        "invocation_id", func="foo", arg="Hello World!"
+    )
+
+    # asynchronously invoke foo
+    handle = resonate.options(target="process-group-x").begin_rpc(
+        "invocation_id", func="foo", arg="Hello World!"
+    )
+    # do more stuff
+    result = handle.result()
+```
+
+[More examples](/develop/python#rpc).
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```ts
+// foo is in process x
+resonate.register("foo", (ctx: Context, arg: string) => {
+  // ...
+  return result;
+});
+
+// main is in process y
+async function main() {
+  try {
+    const arg = "hello world!";
+    // synchronously invoke foo
+    const result = await resonate.rpc(
+      "write_once_id",
+      "foo",
+      arg,
+      resonate.options({
+        target: "process-group-x",
+      })
+    );
+
+    // asynchronously invoke foo
+    const handle = await resonate.beginRpc(
+      "write_once_id",
+      "foo",
+      arg,
+      resonate.options({
+        target: "process-group-x",
+      })
+    );
+    // do more stuff
+    const result = await handle.result;
+  } catch (error) {
+    // ...
+  }
+}
+```
+
+[More examples](/develop/typescript#rpc)
 
     </TabItem>
 
@@ -263,7 +394,7 @@ resonate.promises.reject("promise-id")
 
 ```
 
-[More examples of the Resonate Promise APIs in Python](/develop/python#promisescreate).
+[More examples](/develop/python#promisescreate).
 
     </TabItem>
 
@@ -286,23 +417,16 @@ await resonate.promises.resolve("promise-id");
 await resonate.promises.reject("promise-id");
 ```
 
-[More examples of the Resonate Promise APIs in TypeScript](/develop/typescript#promisescreate).
+[More examples](/develop/typescript#promisescreate).
 
     </TabItem>
 
 </Tabs>
 
-### Run
+### Dependency injection
 
-Run is the workhorse API for your local process.
-
-The Run API on the Resonate Client is for invoking functions locally (in the same process).
-Basically, its the equivalent of a normal function call, but it creates a checkpoint so even if your process crashes, the caller function can resume in a new process.
-
-The Run API is synchronous, meaning it will block until the callee function completes and returns a result.
-So there is also a Begin Run API, which is asynchronous and does not block.
-
-Basically Run returns the value of the function being called while Begin Run returns a promise/handle to the function being called, which can be used to get the result later.
+Let's say that you have initialized a DB connection or some other resource that some of your functions in that process might need to use.
+You can set a dependency with the Resonate Client which makes it available to all Durable Functions in that process.
 
 Quick example:
 
@@ -314,184 +438,23 @@ Quick example:
         {label: 'TypeScript', value: 'typescript'},
     ]}>
 
-    <TabItem value="python">
+    <TabItem value="python" >
 
-```py
-# process x
-# foo() and main() are in the same process
-@resonate.register
-def foo(ctx: Context, arg: str) -> str:
-    # ...
-    return
-
-def main():
-    # synchronous call with Run API
-    result = foo.run("invocation-id", "Hello World!")
-
-    # asynchronous call with Begin Run API
-    handle = foo.begin_run("invocation-id", "Hello World!")
-    # ...
-    result = handle.result()
+```python
+resonate.set_dependency("db", db_connection)
 ```
 
-[More examples of the Resonate Run API in Python](/develop/python#run).
+[More examples](/develop/python#set_dependency).
 
-    </TabItem>
+</TabItem>
 
     <TabItem value="typescript">
 
 ```ts
-// process x
-// foo() and main() are in the same process
-const fooR = resonate.register("foo", (ctx: Context, arg: string): string => {
-  // ...
-  return result;
-});
-
-async function main() {
-  // synchronous call with Run API
-  const result = await fooR.run("invocation-id", "Hello World!");
-
-  // asynchronouse call with Begin Run API
-  const handle = await fooR.beginRun("invocation-id", "Hello World!");
-  // ...
-  const result = await handle.result;
-}
+resonate.setDependency("db", db_connection);
 ```
 
-[More examples of the Resonate Run API in TypeScript](/develop/typescript#run-1)
-
-    </TabItem>
-
-</Tabs>
-
-### RPC
-
-The RPC API on the Resonate Client enables you to invoke a Durable Function in a different process and synchronously wait for the result.
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-# process x
-@resonate.register
-def foo(context: Context, arg: str):
-    # ...
-    return result
-
-
-# process y
-def main():
-    result = resonate.options(target="process-x").rpc(
-        "invocation_id", func="foo", arg="Hello World!"
-    )
-```
-
-[More examples of the Resonate RPC API in Python](/develop/python#rpc-1).
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-// process x
-resonate.register("foo", (ctx: Context, arg: string) => {
-  // ...
-  return result;
-});
-
-// process y
-async function foo() {
-  try {
-    const arg = "hello world!";
-    const result = await resonate.rpc(
-      "write_once_id",
-      "foo",
-      arg,
-      resonate.options({
-        target: "process-group-b",
-      })
-    );
-  } catch (error) {
-    // ...
-  }
-}
-```
-
-[More examples of the Resonate RPC API in TypeScript](/develop/typescript#rpc-1)
-
-    </TabItem>
-
-</Tabs>
-
-### Begin RPC
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-# process x
-@resonate.register
-def foo(context: Context, arg: str):
-    # ...
-    return result
-
-
-# process y
-def main():
-    handle = resonate.options(target="process-x").begin_rpc(
-        "invocation_id", func="foo", arg="Hello World!"
-    )
-    result = handle.result()
-```
-
-[More examples of the Resonate Begin RPC API in Python](/develop/python#begin_rpc-1).
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-// process x
-resonate.register("foo", (ctx: Context, arg: string) => {
-  // ...
-  return result;
-});
-
-// process y
-async function foo() {
-  try {
-    const arg = "hello world!";
-    const handle = await resonate.beginRpc(
-      "write_once_id",
-      "foo",
-      arg,
-      resonate.options({
-        target: "process-x",
-      })
-    );
-    result = await handle.result;
-  } catch (error) {
-    // ...
-  }
-}
-```
-
-[More examples of the Resonate Begin RPC API in TypeScript](/develop/typescript#beginrpc-1).
+[More examples](/develop/typescript#setdependency).
 
     </TabItem>
 
@@ -500,6 +463,101 @@ async function foo() {
 ## Function APIs
 
 These are durable to durable APIs that are used inside the "durable world" — a world that automatically resumes after recovery.
+
+### Run
+
+The Run API is also available from the Context object, the first argument of any Durable Function.
+The difference between the Run API on Context vs the Client, is that the Context Run API is used from within Durable Functions.
+The Client Run API is used in regular "ephemeral" functions.
+
+Again, Run is synchronous and Begin Run is asynchronous.
+
+Use the Run API when you want to checkpoint the next step in your application / workflow.
+This checkpoint makes it possible to replay the calling function with the result of the callee.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+@resonate.register
+def foo(ctx: Context, arg: string):
+
+    # synchronously call bar
+    result = yield ctx.run(bar, arg)
+
+    # asynchronously call bar
+    promise = yield ctx.run(bar, arg)
+    # do more stuff
+    result = promise.result()
+
+def bar(ctx: Context, arg: string):
+    # ...
+    return result
+```
+
+[More examples](/develop/python#run-1).
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```ts
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // synchronously call bar
+  const result = yield* ctx.run(bar, ...args);
+
+  // asynchronously call bar
+  const promise = yield* ctx.run(bar, ...args);
+  // do more stuff
+  const result = promise.result;
+});
+
+function bar(ctx: Context, ...args: any[]) {
+  // ...
+  return;
+}
+```
+
+[More examples](/develop/typescript#run-1).
+
+    </TabItem>
+
+</Tabs>
+
+### RPC
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```py
+
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```ts
+
+```
+
+    </TabItem>
+
+</Tabs>
 
 ### Get dependency
 
@@ -632,147 +690,6 @@ yield* ctx.sleep(5000); // sleep for 5 seconds
 </Tabs>
 
 ### Get the time
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-
-```
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-
-```
-
-    </TabItem>
-
-</Tabs>
-
-### Run
-
-The Context Run API invokes a function in the **same process** in a **synchronous manner**.
-
-When to use this API?
-
-Use the Context Run API when you want to checkpoint the next step in your application / workflow.
-This checkpoint makes it possible to replay the calling function with the result of the callee.
-Use this API if you want the calling function to wait for the result before continuing.
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```python
-@resonate.register
-def foo(ctx: Context, arg: string):
-    # ...
-    result = yield ctx.run(bar, arg)
-    # do more stuff
-    # ...
-
-
-def bar(ctx: Context, arg: string):
-    # ...
-    return result
-```
-
-[More examples of the Resonate Run API in Python](/develop/python#run-1).
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-````ts
-resonate.register("foo", function* (ctx: Context, ...args: any[]) {
-  // ...
-  const result = yield* ctx.run(bar, ...args);
-  // do more stuff
-  // ...
-});
-
-function bar(ctx: Context, ...args: any[]) {
-  // ...
-  return;
-}
-
-    </TabItem>
-
-</Tabs>
-
-### Begin run
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-
-````
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-
-```
-
-    </TabItem>
-
-</Tabs>
-
-### RPC
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-
-```
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-
-```
-
-    </TabItem>
-
-</Tabs>
-
-### Begin RPC
 
 <Tabs
     groupId="preferred-language"

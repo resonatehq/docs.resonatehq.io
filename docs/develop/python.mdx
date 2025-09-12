@@ -343,21 +343,28 @@ def bar(ctx, arg):
 
 ### `.rpc()`
 
-Context's `.rpc()` method invokes a function in a **remote process** in a **synchronous manner**.
-That is — the calling function blocks until the invoked function returns.
+The RPC API is how you durably communicate between processes.
+Its how you invoke functions in other processes and extend the Call Graph across process boundaries.
+
+RPC is synchronous, and blocks the calling function until the invoked function returns.
+Begin RPC is asynchronous, and returns a promise which can be awaited later.
 
 ```py
-# process a
+# process x
 @resonate.register
-def foo(ctx, arg):
-    # ...
+def foo(ctx: Context, arg: str) -> str:
+    # synchronous invocation of bar
     result = yield ctx.rpc("bar", arg)
-    # do more stuff
-    # ...
 
-# process b
+    # asynchronous invocation of bar
+    promise = yield ctx.begin_rpc("bar", arg)
+    # do more stuff
+    result = yield promise
+
+
+# process y
 @resonate.register
-def bar(ctx, arg):
+def bar(ctx: Context, arg: str) -> str:
     # ...
     return
 ```
