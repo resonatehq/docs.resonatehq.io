@@ -9,20 +9,27 @@ tags:
   - develop
 ---
 
-This section is designed as a reference for developers who are past the initial getting started phase and just need quick reference material.
-This page contains an overview of the Resonate API surface area with quick examples in each language.
-Each example contains a link to a more detailed section specific to that language.
+The Resonate API surface area is designed to fit the needs of a distributed application developer.
 
-Or, you can jump right to the guide for the SDK you are using.
+The API is intentionally minimal.
+With just a small set of primitives, you can do most of the heavy lifting required for building distributed applications.
+This surface area was designed carefully: it’s simple to learn, yet powerful enough to address the core challenges developers face when writing resilient, distributed systems.
 
-import DocCardList from "@theme/DocCardList";
-import { useCurrentSidebarCategory } from "@docusaurus/theme-common";
+Every API call in Resonate is durable by default.
+That means your operations survive process crashes, restarts, and unexpected failures.
+You don’t have to wire up custom retry loops or invent your own fault tolerance patterns — Resonate takes care of this, letting you focus on your business logic instead of infrastructure plumbing.
 
-<DocCardList items={useCurrentSidebarCategory().items} />
+Distributed applications introduce unique problems: coordination across processes, ordering of events, fault handling, and more.
+Developers often patch these problems with ad-hoc solutions that make the business process hard to follow and even harder for new contributors to understand.
+Resonate smooths away this complexity by giving you APIs that make sense at the business-logic level, while still solving for the hard distributed systems problems underneath.
+
+These docs aim to meet you where you are — whether you’re new to distributed programming or already familiar with the common pain points — while guiding you into the “Resonate way” of thinking about system design.
+Each code sample shown here is deliberately minimal, to highlight exactly what the API looks like and where it fits in the broader ecosystem of distributed application development.
+From there, you’ll find links to more detailed examples with step-by-step explanations.
 
 ## Installing SDKs
 
-You can use your favorite package manager to install the Resonate SDK.
+Resonate SDKs can be installed using your favorite package manager.
 
 Quick example:
 
@@ -43,7 +50,7 @@ import TabItem from "@theme/TabItem";
 uv add resonate-sdk
 ```
 
-[More examples of installing the Resonate Python SDK](/develop/python#installation).
+[More examples](/develop/python#installation).
 
     </TabItem>
     <TabItem value="typescript">
@@ -52,7 +59,7 @@ uv add resonate-sdk
 bun add @resonatehq/sdk
 ```
 
-[More examples of installing the Resonate TypeScript SDK](/develop/typescript#installation).
+[More examples](/develop/typescript#installation).
 
     </TabItem>
 
@@ -62,14 +69,14 @@ bun add @resonatehq/sdk
 
 You need to initialize a Resonate Client in each process that you want to use Resonate.
 
-:::differentiator Zero-dependency development
+A Resonate Client connects to a Resonate Server and message sources while providing the top level APIs needed to durably invoke function executions.
 
-Your Resonate Client does not need to connect to a Resonate Server to start developing.
+It is important to note that your Resonate Client does not need to connect to a Resonate Server to start developing.
 You can use the Resonate Client in "local mode", working with functions that are local to the process.
 
 This is in contrast to Temporal, Restate, and DBOS which require connecting to a server or database, even for development.
 
-:::
+Resonate calls this capability "Zero dependency development".
 
 Quick example:
 
@@ -86,10 +93,11 @@ Quick example:
 ```py
 from resonate import Resonate
 
+# Initialize a Resonate Client in local mode
 resonate = Resonate.local()
 ```
 
-[More examples of initializing a Resonate Client in Python](/develop/python#initialization).
+[More examples](/develop/python#initialization).
 
     </TabItem>
 
@@ -98,10 +106,11 @@ resonate = Resonate.local()
 ```ts
 import { Resonate } from "@resonatehq/sdk";
 
+// Initialize a Resonate Client in local mode
 const resonate = Resonate.local();
 ```
 
-[More examples of initializing a Resonate Client in TypeScript](/develop/typescript#initialization).
+[More examples](/develop/typescript#initialization).
 
     </TabItem>
 
@@ -109,15 +118,26 @@ const resonate = Resonate.local();
 
 ## Client APIs
 
-You can use Resonate Client APIs just about anywhere, except from within a Durable Function.
-Inside Durable Functions, you need to use [Function APIs](#function-apis).
+Many Resonate Client APIs can be used just about anywhere.
+Seriously.
+For example, the Resonate TypeScript SDK can run in your browser, enabling Async RPCs from your frontend code, or converting your browser session into a worker.
 
 ### Registering functions
 
-One of the things you can do with a Resonate Client is register functions.
-Registered functions are checkpointed during execution, making them durable to hard failures.
-A registered function can then be called from anywhere.
-However, all parameters passed to a Durable Functions must be serializable.
+Registering a function is a lot like exposing a service endpoint.
+
+Resonate promotes a concept called the [Call Graph](https://journal.resonatehq.io/p/resonate-call-graphs).
+Effectively, it is a graph of function calls that can span multiple processes.
+The first function in the Call Graph is called the "top level" function.
+
+The "top level" function must be registered with Resonate.
+A registered function becomes a Durable Function.
+A registered function can be invoked from any other process with a Resonate Client connected to the same Resonate Server.
+
+The first argument of a registered function will always be a Resonate Context, which can be used to call other functions.
+Local functions do not need to be registered, but will become Durable Functions if invoked from the registered Durable Function.
+
+Note that all parameters passed to a Durable Functions must be serializable.
 
 Quick example:
 
@@ -140,7 +160,7 @@ def foo(context: Context, arg: str) -> str:
     return result
 ```
 
-[More examples of the Resonate Register API in Python](/develop/python#resonateregister).
+[More examples](/develop/python#resonateregister).
 
     </TabItem>
 
@@ -149,15 +169,255 @@ def foo(context: Context, arg: str) -> str:
 In TypeScript, you can use the `register` method to register a function:
 
 ```ts
-function foo(context: Context, arg: string): string {
+fooR = resonate.register("foo", (context: Context, arg: string): string => {
   // ...
   return result;
-}
-
-const fooR = resonate.register(foo);
+});
 ```
 
-[More examples of the Resonate Register API in TypeScript](/develop/typescript#register).
+[More examples](/develop/typescript#register).
+
+    </TabItem>
+
+</Tabs>
+
+### Run
+
+Run is the workhorse API for your local process.
+
+The Run API on the Resonate Client is for invoking functions locally (in the same process).
+Basically, its the equivalent of a normal function call, but it creates a checkpoint so even if your process crashes, the caller function can resume in a new process.
+
+The Run API is synchronous, meaning it will block until the callee function completes and returns a result.
+So there is also a Begin Run API, which is asynchronous and does not block.
+
+Basically Run returns the value of the function being called while Begin Run returns a promise/handle to the function being called, which can be used to get the result later.
+
+Quick example:
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```py
+# process x
+# foo() and main() are in the same process
+@resonate.register
+def foo(ctx: Context, arg: str) -> str:
+    # ...
+    return
+
+def main():
+    # synchronous call with Run API
+    result = foo.run("invocation-id", "Hello World!")
+
+    # asynchronous call with Begin Run API
+    handle = foo.begin_run("invocation-id", "Hello World!")
+    # ...
+    result = handle.result()
+```
+
+[More examples](/develop/python#run).
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```ts
+// process x
+// foo() and main() are in the same process
+const fooR = resonate.register("foo", (ctx: Context, arg: string): string => {
+  // ...
+  return result;
+});
+
+async function main() {
+  // synchronous call with Run API
+  const result = await fooR.run("invocation-id", "Hello World!");
+
+  // asynchronouse call with Begin Run API
+  const handle = await fooR.beginRun("invocation-id", "Hello World!");
+  // ...
+  const result = await handle.result;
+}
+```
+
+[More examples](/develop/typescript#run)
+
+    </TabItem>
+
+</Tabs>
+
+### RPC
+
+If the Run API is the workhorse of your local process, then the RPC API is a magical unicorn for your distributed application.
+
+The RPC API is how you durably communicate between processes.
+Its how you invoke functions in other processes and extend the Call Graph across process boundaries.
+
+RPC is synchronous, and blocks the calling function until the invoked function returns.
+Begin RPC is asynchronous, and returns a promise which can be awaited later.
+
+Quick example:
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```py
+# foo is in process x
+@resonate.register
+def foo(context: Context, arg: str):
+    # ...
+    return result
+
+
+# main is in process y
+def main():
+    # synchronously invoke foo
+    result = resonate.options(target="process-group-x").rpc(
+        "invocation_id", func="foo", arg="Hello World!"
+    )
+
+    # asynchronously invoke foo
+    handle = resonate.options(target="process-group-x").begin_rpc(
+        "invocation_id", func="foo", arg="Hello World!"
+    )
+    # do more stuff
+    result = handle.result()
+```
+
+[More examples](/develop/python#rpc).
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```ts
+// foo is in process x
+resonate.register("foo", (ctx: Context, arg: string) => {
+  // ...
+  return result;
+});
+
+// main is in process y
+async function main() {
+  try {
+    const arg = "hello world!";
+    // synchronously invoke foo
+    const result = await resonate.rpc(
+      "write_once_id",
+      "foo",
+      arg,
+      resonate.options({
+        target: "process-group-x",
+      })
+    );
+
+    // asynchronously invoke foo
+    const handle = await resonate.beginRpc(
+      "write_once_id",
+      "foo",
+      arg,
+      resonate.options({
+        target: "process-group-x",
+      })
+    );
+    // do more stuff
+    const result = await handle.result;
+  } catch (error) {
+    // ...
+  }
+}
+```
+
+[More examples](/develop/typescript#rpc)
+
+    </TabItem>
+
+</Tabs>
+
+### Promises
+
+Promises are the key primitive for asynchronous programming in Resonate.
+They allow you to represent a value that may not be available yet, but will be at some point in the future.
+As a developer, you effectively are programming with async/await across processes.
+Resonate promises are durable, however, persisted by the Resonate Server.
+
+The Resonate Client enables you to create, get, resolve, and reject promises.
+
+These APIs are make it possible to manage the lifecycle of a promise outside of the Call Graph.
+
+The Create Promise API is useful for creating a promise before invoking the function that will resolve it later.
+And a common reason for using the Get Promise API, is to check whether a promise exists, and if it does, whether it is resolved.
+For example, if you have a long-running background job that you want to check on, you can use the get promise API to get the handle of the promise and check if it is resolved yet.
+
+Quick examples:
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+# create a promise
+resonate.promises.create(
+    id="promise-id",
+    timeout=int(time.time() * 1000) + 30000,  # 30s in the future
+)
+
+# get a promise
+resonate.promises.get("promise-id")
+
+# resolve a promise
+resonate.promises.resolve("promise-id")
+
+# reject a promise
+resonate.promises.reject("promise-id")
+
+```
+
+[More examples](/develop/python#promisescreate).
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```ts
+// create a promise
+const p = await resonate.promises.create(
+  "promise-id",
+  Date.now() + 30000 // timeout set for 30 seconds in the future
+);
+
+// get a promise
+const p = await resonate.promises.get("promise-id");
+
+// resolve a promise
+await resonate.promises.resolve("promise-id");
+
+// reject a promise
+await resonate.promises.reject("promise-id");
+```
+
+[More examples](/develop/typescript#promisescreate).
 
     </TabItem>
 
@@ -184,7 +444,7 @@ Quick example:
 resonate.set_dependency("db", db_connection)
 ```
 
-[More examples of the Resonate Set Dependency API in Python](/develop/python#set_dependency).
+[More examples](/develop/python#set_dependency).
 
 </TabItem>
 
@@ -194,380 +454,7 @@ resonate.set_dependency("db", db_connection)
 resonate.setDependency("db", db_connection);
 ```
 
-[More examples of the Resonate Set Dependency API in TypeScript](/develop/typescript#setdependency).
-
-    </TabItem>
-
-</Tabs>
-
-### Create promise
-
-The Resonate Client enables you to create, get, resolve, and reject promises.
-
-A common reason to use the create promise API on the Resonate Client, is to be able to know the ID of a promise that you will later need to resolve inside the Call Graph.
-
-Quick example:
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```python
-resonate.promises.create(
-    id="promise-id",
-    timeout=int(time.time() * 1000) + 30000,  # 30s in the future
-)
-```
-
-[More examples of the Resonate Create Promise API in Python](/develop/python#promisescreate).
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-await resonate.promises.create(
-  "promise-id",
-  Date.now() + 30000 // 30 seconds in the future
-);
-```
-
-[More examples of the Resonate Create Promise API in TypeScript](/develop/typescript#promisescreate).
-
-    </TabItem>
-
-</Tabs>
-
-### Get promise
-
-A common reason for using the Resonate Client get promise API, is to check whether a promise exists, and if it does, whether it is resolved.
-For example, if you have a long-running background job that you want to check on, you can use the get promise API to get the handle of the promise and check if it is resolved yet.
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```python
-p = resonate.promises.get("promise-id")
-```
-
-[More examples of the Resonate Get Promise API in Python](/develop/python#promisesget).
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-const p = resonate.promises.get("promise-id");
-```
-
-[More examples of the Resonate Get Promise API in TypeScript](/develop/typescript#promisesget).
-
-    </TabItem>
-
-</Tabs>
-
-### Resolve promise
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-resonate.promises.resolve("promise-id")
-```
-
-[More examples of the Resonate Resolve Promise API in Python](/develop/python#promisesresolve).
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-resonate.promises.resolve("promise-id");
-```
-
-    </TabItem>
-
-</Tabs>
-
-### Reject promise
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-resonate.promises.reject("promise-id")
-```
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-resonate.promises.reject("promise-id");
-```
-
-    </TabItem>
-
-</Tabs>
-
-### Run
-
-The Run API on the Resonate Client enables you to invoke a Durable Function locally (in the same process) and synchronously (waits for the result).
-
-Quick example:
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-@resonate.register
-def foo(ctx: Context, arg: str) -> str:
-    # ...
-    return
-
-def main():
-    result = foo.run("invocation-id", "Hello World!")
-```
-
-[More examples of the Resonate Run API in Python](/develop/python#run-1).
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-function foo(ctx: Context, arg: string): string {
-  // ...
-  return result;
-}
-
-const fooR = resonate.register("foo", foo);
-
-async function main() {
-  const result = await fooR.run("invocation-id", "Hello World!");
-}
-```
-
-[More examples of the Resonate Run API in TypeScript](/develop/typescript#run-1)
-
-    </TabItem>
-
-</Tabs>
-
-### Begin run
-
-The Begin Run API on the Resonate Client enables you to invoke a Durable Function in the same process and not block, waiting for the result (asynchronously).
-
-Quick example:
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-@resonate.register
-def foo(ctx: Context, arg: str) -> str:
-    # ...
-    return
-
-def main():
-    handle = foo.run("invocation-id", "Hello World!")
-    # ...
-    result = handle.result()
-```
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-function foo(ctx: Context, arg: string): string {
-  // ...
-  return result;
-}
-
-const fooR = resonate.register("foo", foo);
-
-async function main() {
-  const handle = await fooR.run("invocation-id", "Hello World!");
-  // ...
-  const result = await handle.result;
-}
-```
-
-[More examples of the Resonate Begin Run API in TypeScript](/develop/typescript#beginrun-1)
-
-    </TabItem>
-
-</Tabs>
-
-### RPC
-
-The RPC API on the Resonate Client enables you to invoke a Durable Function in a different process and synchronously wait for the result.
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-# process x
-@resonate.register
-def foo(context: Context, arg: str):
-    # ...
-    return result
-
-
-# process y
-def main():
-    result = resonate.options(target="process-x").rpc(
-        "invocation_id", func="foo", arg="Hello World!"
-    )
-```
-
-[More examples of the Resonate RPC API in Python](/develop/python#rpc-1).
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-// process x
-resonate.register("foo", (ctx: Context, arg: string) => {
-  // ...
-  return result;
-});
-
-// process y
-async function foo() {
-  try {
-    const arg = "hello world!";
-    const result = await resonate.rpc(
-      "write_once_id",
-      "foo",
-      arg,
-      resonate.options({
-        target: "process-group-b",
-      })
-    );
-  } catch (error) {
-    // ...
-  }
-}
-```
-
-[More examples of the Resonate RPC API in TypeScript](/develop/typescript#rpc-1)
-
-    </TabItem>
-
-</Tabs>
-
-### Begin RPC
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-# process x
-@resonate.register
-def foo(context: Context, arg: str):
-    # ...
-    return result
-
-
-# process y
-def main():
-    handle = resonate.options(target="process-x").begin_rpc(
-        "invocation_id", func="foo", arg="Hello World!"
-    )
-    result = handle.result()
-```
-
-[More examples of the Resonate Begin RPC API in Python](/develop/python#begin_rpc-1).
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-// process x
-resonate.register("foo", (ctx: Context, arg: string) => {
-  // ...
-  return result;
-});
-
-// process y
-async function foo() {
-  try {
-    const arg = "hello world!";
-    const handle = await resonate.beginRpc(
-      "write_once_id",
-      "foo",
-      arg,
-      resonate.options({
-        target: "process-x",
-      })
-    );
-    result = await handle.result;
-  } catch (error) {
-    // ...
-  }
-}
-```
-
-[More examples of the Resonate Begin RPC API in TypeScript](/develop/typescript#beginrpc-1).
+[More examples](/develop/typescript#setdependency).
 
     </TabItem>
 
@@ -576,6 +463,101 @@ async function foo() {
 ## Function APIs
 
 These are durable to durable APIs that are used inside the "durable world" — a world that automatically resumes after recovery.
+
+### Run
+
+The Run API is also available from the Context object, the first argument of any Durable Function.
+The difference between the Run API on Context vs the Client, is that the Context Run API is used from within Durable Functions.
+The Client Run API is used in regular "ephemeral" functions.
+
+Again, Run is synchronous and Begin Run is asynchronous.
+
+Use the Run API when you want to checkpoint the next step in your application / workflow.
+This checkpoint makes it possible to replay the calling function with the result of the callee.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```python
+@resonate.register
+def foo(ctx: Context, arg: string):
+
+    # synchronously call bar
+    result = yield ctx.run(bar, arg)
+
+    # asynchronously call bar
+    promise = yield ctx.run(bar, arg)
+    # do more stuff
+    result = promise.result()
+
+def bar(ctx: Context, arg: string):
+    # ...
+    return result
+```
+
+[More examples](/develop/python#run-1).
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```ts
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // synchronously call bar
+  const result = yield* ctx.run(bar, ...args);
+
+  // asynchronously call bar
+  const promise = yield* ctx.run(bar, ...args);
+  // do more stuff
+  const result = promise.result;
+});
+
+function bar(ctx: Context, ...args: any[]) {
+  // ...
+  return;
+}
+```
+
+[More examples](/develop/typescript#run-1).
+
+    </TabItem>
+
+</Tabs>
+
+### RPC
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python">
+
+```py
+
+```
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```ts
+
+```
+
+    </TabItem>
+
+</Tabs>
 
 ### Get dependency
 
@@ -708,118 +690,6 @@ yield* ctx.sleep(5000); // sleep for 5 seconds
 </Tabs>
 
 ### Get the time
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-
-```
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-
-```
-
-    </TabItem>
-
-</Tabs>
-
-### Run
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-
-```
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-
-```
-
-    </TabItem>
-
-</Tabs>
-
-### Begin run
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-
-```
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-
-```
-
-    </TabItem>
-
-</Tabs>
-
-### RPC
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="python"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-
-```
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-
-```
-
-    </TabItem>
-
-</Tabs>
-
-### Begin RPC
 
 <Tabs
     groupId="preferred-language"

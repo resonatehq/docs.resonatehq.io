@@ -227,11 +227,16 @@ const result = await handle.result();
 Options can be used with `.run()`, `.beginRun()`, `.rpc()`, and `.beginRpc()` as the final argument.
 
 ```ts
-await resonate.run("invocation-id", foo, ...args, resonate.options({
-  timeout: 60_000, // 1 minute in ms
-  target: "poll://any@workers",
-  tags: { key: "value" },
-}));
+await resonate.run(
+  "invocation-id",
+  foo,
+  ...args,
+  resonate.options({
+    timeout: 60_000, // 1 minute in ms
+    target: "poll://any@workers",
+    tags: { key: "value" },
+  })
+);
 ```
 
 ### `.get()`
@@ -251,12 +256,12 @@ The scheduled function will be invoked until the schedule is deleted.
 
 ```ts
 const schedule = await resonate.schedule(
-    "scheduled-foo",
-    "0 * * * *",  // every hour
-    foo,
-    ...args,
+  "scheduled-foo",
+  "0 * * * *", // every hour
+  foo,
+  ...args
 );
-````
+```
 
 ### `.promises.get()`
 
@@ -275,6 +280,14 @@ await resonate.promises.create(
   "promise-id",
   Date.now() + 30000 // 30 seconds in the future
 );
+```
+
+### `.promises.get()`
+
+Resonate's `.promises.get()` method allows you to get a promise by ID.
+
+```ts
+const p = await resonate.promises.get("promise-id");
 ```
 
 ### `.promises.resolve()`
@@ -428,12 +441,16 @@ Options can be used with `.run()`, `.beginRun()`, `.rpc()`, `.beginRpc()`, and `
 ```ts
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
   // ...
-  yield* ctx.run(bar, ...args, ctx.options({
-    id: "custom-id",
-    timeout: 60_000, // 1 minute in ms
-    target: "poll://any@workers",
-    tags: { key: "value" },
-  }));
+  yield* ctx.run(
+    bar,
+    ...args,
+    ctx.options({
+      id: "custom-id",
+      timeout: 60_000, // 1 minute in ms
+      target: "poll://any@workers",
+      tags: { key: "value" },
+    })
+  );
 });
 ```
 
