@@ -386,6 +386,11 @@ resonate.promises.create(
     id="promise-id",
     timeout=int(time.time() * 1000) + 30000,  # 30s in the future
 )
+# RE: Promise creation resolution timeout
+# Functions await on other functions through Durable Promises.
+# In Resonate, a timeout is associated with the Durable Promise resolution, not individual function executions.
+# Resonate attempts to resolve a Durable Promise until the specified timeout is reached.
+# If the timeout is reached, Resonate marks the Durable Promise as failed.
 
 # get a promise
 resonate.promises.get("promise-id")
@@ -410,6 +415,11 @@ const p = await resonate.promises.create(
   "promise-id",
   Date.now() + 30000 // timeout set for 30 seconds in the future
 );
+// RE: Promise creation resolution timeout
+// Functions await on other functions through Durable Promises.
+// In Resonate, a timeout is associated with the Durable Promise resolution, not individual function executions.
+// Resonate attempts to resolve a Durable Promise until the specified timeout is reached.
+// If the timeout is reached, Resonate marks the Durable Promise as failed.
 
 // get a promise
 const p = await resonate.promises.get("promise-id");
@@ -426,6 +436,49 @@ await resonate.promises.reject("promise-id");
     </TabItem>
 
 </Tabs>
+
+#### **Naming scheme best practices**
+
+When designing the naming scheme for your durable promise IDs, keep the following considerations in mind:
+
+1. **Uniqueness**: The naming scheme should guarantee uniqueness to avoid conflicts between executions.
+   If an ID is reused for a different execution, it will result in retrieving the stored result of the previous execution instead of starting a new one.
+2. **Readability**: Choose a naming scheme that is easy to understand and interpret, making it easier to debug and manage executions.
+3. **Relevance**: Incorporate relevant information into the naming scheme, such as the purpose or context of the execution.
+
+There are several approaches to ensure your Durable Promise IDs are unique but also readable and relevant.
+
+**Date-based**
+
+One very common approach is to use the date as part of the naming scheme to. For example, if you have a durable promise that fetches and aggregates news articles on a daily basis, you could include the date in the ID format to ensure uniqueness and provide clear indication of when the execution occurred.
+
+```
+news_feed_YYYY-MM-DD
+```
+
+**Hierarchical**
+
+You can use a hierarchical naming scheme similar to file system paths to represent the identity of a durable promise. The naming scheme can include information such as the environment, service, and specific execution details. For example:
+
+```
+staging/analytics/monthly-report/2023-05
+```
+
+**Platform-specific**
+
+If your durable promises are running on a specific platform or orchestrator, you can incorporate the platform's identity concepts into the naming scheme. For example, if you are using Kubernetes, you can include the namespace, pod, and other relevant information:
+
+```
+k8s/staging/namespace/analytics/gpu/h100/monthly-report-2023-05
+```
+
+**Opaque with metadata**
+
+In this case, the durable promise ID is a randomly generated unique identifier, and you would store the associated metadata (such as environment, service, execution details) in a separate database that can be queried using the ID.
+
+```
+executions/a7b89c3d-f012-4e78-9a7d-89a3f6b2e1c7
+```
 
 ### Dependency injection
 
