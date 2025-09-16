@@ -222,9 +222,23 @@ const handle = await resonate.beginRpc(
 const result = await handle.result();
 ```
 
+### `.schedule()`
+
+Resonate's `.schedule()` method allows you to schedule a function to be invoked on a specified cron schedule.
+The scheduled function will be invoked until the schedule is deleted.
+
+```ts
+const schedule = await resonate.schedule(
+  "scheduled-foo",
+  "0 * * * *", // every hour
+  foo,
+  ...args
+);
+```
+
 ### `.options()`
 
-Options can be used with `.run()`, `.beginRun()`, `.rpc()`, and `.beginRpc()` as the final argument.
+Options can be used with `.run()`, `.beginRun()`, `.rpc()`, `.beginRpc()`, and `.schedule()` as the final argument.
 
 ```ts
 await resonate.run(
@@ -247,20 +261,6 @@ If the function invocation does not exist, an error will be thrown.
 ```ts
 const handle = await resonate.get("invocation-id");
 const result = await handle.result();
-```
-
-### `.schedule()`
-
-Resonate's `.schedule()` method allows you to schedule a function to be invoked on a specified cron schedule.
-The scheduled function will be invoked until the schedule is deleted.
-
-```ts
-const schedule = await resonate.schedule(
-  "scheduled-foo",
-  "0 * * * *", // every hour
-  foo,
-  ...args
-);
 ```
 
 ### `.promises.get()`
