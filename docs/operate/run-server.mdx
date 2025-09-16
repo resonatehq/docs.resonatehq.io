@@ -1,0 +1,429 @@
+---
+id: run-server
+title: Set up and run the Resonate Server
+sidebar_label: Run a Server
+description: A single binary that can be deployed anywhere.
+sidebar_position: 1
+last_update:
+  date: "09-16-2025"
+tags:
+  - operate
+  - resonate-server
+  - get-started
+---
+
+Blah blah blah, this page will help you install and run the Resonate Server.
+
+First install the Server on your machine.
+
+## Install with Homebrew
+
+You can download and install the Resonate Server using Homebrew with the following commands:
+
+```shell
+brew install resonatehq/tap/resonate
+```
+
+This previous example installs the latest release.
+You can see all available releases and associated release artifacts on the [releases page](https://github.com/resonatehq/resonate/releases).
+
+Once installed, you can start the server with:
+
+```shell
+resonate serve
+```
+
+You will see log output like the following:
+
+```shell
+time=2025-09-09T20:54:31.349-06:00 level=INFO msg="starting http server" addr=:8001
+time=2025-09-09T20:54:31.349-06:00 level=INFO msg="starting poll server" addr=:8002
+time=2025-09-09T20:54:31.349-06:00 level=INFO msg="starting grpc server" addr=:50051
+time=2025-09-09T20:54:31.351-06:00 level=INFO msg="starting metrics server" addr=:9090
+```
+
+The output indicates that the server has HTTP endpoints available at port 8001, a polling endpoint at port 8002, a gRPC endpoint at port 50051, and a metrics endpoint at port 9090.
+
+These are the default ports and can be changed via configuration.
+The SDKs are all configured to use these defaults unless otherwise specified.
+
+## Build from source
+
+If you don't have Homebrew, we recommend building from source using Go.
+Run the following commands to download the repository and build the server:
+
+```
+git clone https://github.com/resonatehq/resonate
+cd resonate
+go build -o resonate
+```
+
+After it is built, you can compile and run it as a Go program using the following command:
+
+```
+go run main.go serve
+```
+
+Or, you can run it as an executable using the following command:
+
+```
+./resonate server
+```
+
+## Custom configuration
+
+The Resonate Server is highly configurable.
+
+You can configure the server using a configuration file or via command flags.
+
+```shell
+./resonate serve --config resonate.yml
+```
+
+Command flags will override settings in the configuration file.
+See the [resonate serve command](/operate/cli-reference/commands/serve) for a full list of available options that are available via the CLI.
+
+For production deployments, we recommend using a configuration file.
+
+At the top level, the file supports five keys:
+
+- `system`: Controls core scheduling behavior.
+- `api`: Configures external interfaces.
+- `aio`: Configures asynchronous I/O subsystems.
+- `metricsAddr`: Prometheus metrics bind address (default :9090).
+- `logLevel`: One of debug, info, warn, error (default info).
+
+Here is a `resonate.yml` file that explicitly sets every option to the server's build-in defaults.
+Using this file is equivalent to starting Resonate with no configuration file.
+See the [config key reference](#config-key-reference) for details on each option.
+
+```yml
+system:
+  url: http://localhost:8001
+  coroutineMaxSize: 1000
+  submissionBatchSize: 1000
+  completionBatchSize: 1000
+  promiseBatchSize: 100
+  scheduleBatchSize: 100
+  taskBatchSize: 100
+  taskEnqueueDelay: 10s
+  signalTimeout: 1s
+
+api:
+  size: 1000
+  subsystems:
+    http:
+      enable: true
+      config:
+        addr: ":8001"
+        auth: {}
+        cors:
+          allowOrigin: []
+        timeout: 10s
+        taskFrequency: 1m
+    grpc:
+      enable: true
+      config:
+        addr: ":50051"
+
+aio:
+  size: 1000
+  subsystems:
+    echo:
+      enable: false
+      config:
+        size: 100
+        batchSize: 100
+        workers: 1
+    router:
+      enable: true
+      config:
+        size: 100
+        workers: 1
+        sources:
+          - name: default
+            type: tag
+            data: { "key": "resonate:invoke" }
+    sender:
+      enable: true
+      config:
+        size: 100
+        plugin:
+          http:
+            enable: true
+            config:
+              size: 100
+              workers: 1
+              timeout: 1s
+          poll:
+            enable: true
+            config:
+              size: 100
+              bufferSize: 100
+              maxConnections: 1000
+              addr: ":8002"
+              cors:
+                allowOrigin: []
+              timeout: 10s
+              auth: {}
+        targets:
+          - name: default
+            type: poll
+            data: { "cast": "any", "group": "default" }
+    store-postgres:
+      enable: false
+      config:
+        size: 1000
+        batchSize: 1000
+        workers: 1
+        host: localhost
+        port: "5432"
+        username: ""
+        password: ""
+        database: resonate
+        query: {}
+        txTimeout: 10s
+        reset: false
+    store-sqlite:
+      enable: true
+      config:
+        size: 1000
+        batchSize: 1000
+        path: resonate.db
+        txTimeout: 10s
+        reset: false
+
+metricsAddr: ":9090"
+logLevel: info
+```
+
+You can customize the configuration by supplying only the keys you want to change.
+
+For example, if you want to use PostgreSQL as the database instead of the default SQLite:
+
+```yml
+# resonate.yml
+aio:
+  subsystems:
+    store-postgres:
+      enable: true
+      config:
+        host: db.example.com
+        port: "5432"
+        username: resonate
+        password: secret
+        database: resonate
+```
+
+Or, just customize the connection ports, metrics port, and auth credentials:
+
+```yml
+# resonate.yml
+metricsAddr: ":9090" # custom metrics port
+
+system:
+  url: "https://<your-domain>:8001" # custom system URL, port is external store
+
+api:
+  subsystems:
+    http:
+      config:
+        addr: ":8001" # custom HTTP port
+        auth:
+          { app_id }: { password } # HTTP basic auth credentials
+
+    grpc:
+      config:
+        addr: ":50051" # custom gRPC port
+aio:
+  subsystems:
+    sender:
+      config:
+        plugins:
+          poll:
+            config:
+              addr: ":8002" # custom poller plugin port
+              auth:
+                { username }: { password } # poller plugin auth
+```
+
+## Run on Kubernetes
+
+The recommended Kubernetes deployment strategy is a deployment.
+The easiest way to do this is with the yaml manifest below:
+
+```yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: resonate
+spec:
+  selector:
+    app: resonate
+  ports:
+    - port: 8001
+      name: api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resonate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: resonate
+  template:
+    metadata:
+      labels:
+        app: resonate
+    spec:
+      containers:
+        - name: resonate
+          image: ghcr.io/resonatehq/resonate:v0.5.0
+          args:
+            - "serve"
+            - "--aio-store=postgres"
+            - "--aio-store-postgres-host=HOST"
+            - "--aio-store-postgres-port=PORT"
+            - "--aio-store-postgres-username=USERNAME"
+            - "--aio-store-postgres-password=SECRET"
+            - "--aio-store-postgres-database=DBNAME"
+          ports:
+            - name: api
+              containerPort: 8001
+```
+
+Create a file named resonate.yml and apply the above YAML manifest.
+
+```console
+kubectl apply -f resonate.yml
+```
+
+Finally, cleanup and remove resonate from your Kubernetes cluster.
+
+```console
+kubectl delete -f resonate.yml
+```
+
+## Config key reference
+
+### System Section
+
+| Key                 | Type     | Default | Description                       |
+| ------------------- | -------- | ------- | --------------------------------- |
+| url                 | string   | —       | Resonate server URL               |
+| coroutineMaxSize    | int      | 1000    | Maximum concurrent coroutines     |
+| submissionBatchSize | int      | 1000    | Max submissions per tick          |
+| completionBatchSize | int      | 1000    | Max completions per tick          |
+| promiseBatchSize    | int      | 100     | Promises processed per iteration  |
+| scheduleBatchSize   | int      | 100     | Schedules processed per iteration |
+| taskBatchSize       | int      | 100     | Tasks processed per iteration     |
+| taskEnqueueDelay    | duration | 10s     | Delay before re-enqueueing tasks  |
+| signalTimeout       | duration | 1s      | Wait time for API/AIO signals     |
+
+### API Section
+
+| Key                    | Type | Default | Description                                    |
+| ---------------------- | ---- | ------- | ---------------------------------------------- |
+| size                   | int  | 1000    | Submission channel buffer size                 |
+| subsystems.http.enable | bool | true    | Enable HTTP API                                |
+| subsystems.grpc.enable | bool | true    | Enable gRPC API (disabled in minimal examples) |
+
+#### HTTP Subsystem
+
+| Key              | Type     | Default | Description                |
+| ---------------- | -------- | ------- | -------------------------- |
+| addr             | string   | :8001   | HTTP listen address        |
+| auth             | map      | —       | Basic auth user/pass pairs |
+| cors.allowOrigin | []string | —       | Allowed origins for CORS   |
+| timeout          | duration | 10s     | Graceful shutdown timeout  |
+| taskFrequency    | duration | 1m      | Default task frequency     |
+
+#### gRPC Subsystem
+
+| Key  | Type   | Default | Description         |
+| ---- | ------ | ------- | ------------------- |
+| addr | string | :50051  | gRPC listen address |
+
+### AIO Section
+
+| Key                              | Type | Default | Description                    |
+| -------------------------------- | ---- | ------- | ------------------------------ |
+| size                             | int  | 1000    | Completion channel buffer size |
+| subsystems.echo.enable           | bool | false   | Echo subsystem                 |
+| subsystems.router.enable         | bool | true    | Router subsystem               |
+| subsystems.sender.enable         | bool | true    | Sender subsystem               |
+| subsystems.store-postgres.enable | bool | false   | Postgres store                 |
+| subsystems.store-sqlite.enable   | bool | true    | SQLite store                   |
+
+#### Echo Subsystem
+
+| Key       | Default | Description                   |
+| --------- | ------- | ----------------------------- |
+| size      | 100     | Submission channel size       |
+| batchSize | 100     | Max submissions per iteration |
+| workers   | 1       | Number of workers             |
+
+#### Router Subsystem
+
+| Key     | Default | Description                                       |
+| ------- | ------- | ------------------------------------------------- |
+| size    | 100     | Submission channel size                           |
+| workers | 1       | Number of workers                                 |
+| sources | []      | Routing sources; default adds tag resonate:invoke |
+
+#### Sender Subsystem
+
+| Key                | Default | Description                                        |
+| ------------------ | ------- | -------------------------------------------------- |
+| size               | 100     | Submission channel size                            |
+| plugin.http.enable | true    | HTTP plugin                                        |
+| plugin.poll.enable | true    | Poll plugin                                        |
+| targets            | list    | Delivery targets (default poll with group default) |
+
+#### HTTP Plugin
+
+| Key     | Default | Description         |
+| ------- | ------- | ------------------- |
+| size    | 100     | Message buffer size |
+| workers | 1       | Worker count        |
+| timeout | 1s      | Request timeout     |
+
+#### Poll Plugin
+
+| Key              | Default | Description            |
+| ---------------- | ------- | ---------------------- |
+| size             | 100     | Message buffer size    |
+| bufferSize       | 100     | Connection buffer size |
+| maxConnections   | 1000    | Max client connections |
+| addr             | :8002   | HTTP server address    |
+| cors.allowOrigin | []      | Allowed origins        |
+| timeout          | 10s     | Shutdown timeout       |
+| auth             | map     | Basic auth pairs       |
+
+#### SQLite Store
+
+| Key       | Default     | Description                               |
+| --------- | ----------- | ----------------------------------------- |
+| size      | 1000        | Submission channel size                   |
+| batchSize | 1000        | Max submissions per iteration             |
+| path      | resonate.db | DB file path (:memory: for in‑memory DST) |
+| txTimeout | 10s         | Transaction timeout                       |
+| reset     | false       | Drop database on shutdown                 |
+
+#### PostgreSQL Store
+
+| Key                 | Default   | Description                                 |
+| ------------------- | --------- | ------------------------------------------- |
+| size                | 1000      | Submission channel size                     |
+| batchSize           | 1000      | Max submissions per iteration               |
+| workers             | 1         | Worker count                                |
+| host                | localhost | DB host                                     |
+| port                | 5432      | DB port                                     |
+| username / password | —         | Credentials                                 |
+| database            | resonate  | DB name (resonate_dst in DST)               |
+| query               | {}        | Additional query parameters (e.g., sslmode) |
+| txTimeout           | 10s       | Transaction timeout                         |
+| reset               | false     | Drop database on shutdown                   |

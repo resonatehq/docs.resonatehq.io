@@ -19,6 +19,31 @@
       "source": "/learn/python-sdk/website-summarization-app",
       "destination": "/learn/python-sdk/website-summarization-agent",
       "permanent": true
+    },
+    {
+      "source": "/operate/server-architecture",
+      "destination": "https://github.com/resonatehq/resonate/tree/main/docs",
+      "permanent": true
+    },
+    {
+      "source": "/operate/server-api",
+      "destination": "https://resonatehq.github.io/resonate/",
+      "permanent": true
+    },
+    {
+      "source": "/operate/kubernetes-server-deployment",
+      "destination": "operate/run-server",
+      "permanent": true
+    },
+    {
+      "source": "/operate/server-installation",
+      "destination": "/operate/run-server",
+      "permanent": true
+    },
+    {
+      "source": "/operate/server-observability",
+      "destination": "operate/observe",
+      "permanent": true
     }
   ]
 }
