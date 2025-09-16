@@ -590,6 +590,17 @@ function bar(ctx: Context, ...args: any[]) {
 
 ### RPC
 
+The RPC API is also available from the Context object, the first argument of any Durable Function.
+The difference between the RPC API on Context vs the Client, is that the Context RPC API is used from within Durable Functions.
+The Client RPC API is used in regular "ephemeral" functions.
+
+Again, RPC is synchronous and Begin RPC is asynchronous.
+
+Use the RPC API when you want to call a function in another process and checkpoint it in your application / workflow.
+This checkpoint makes it possible to replay the calling function with the result of the callee.
+
+Quick example:
+
 <Tabs
     groupId="preferred-language"
     defaultValue="python"
@@ -601,16 +612,61 @@ function bar(ctx: Context, ...args: any[]) {
     <TabItem value="python">
 
 ```py
+# process x
+@resonate.register
+def foo(ctx: Context, arg: str) -> str:
+    # synchronous invocation of bar
+    result = yield ctx.rpc("bar", arg)
 
+    # asynchronous invocation of bar
+    promise = yield ctx.begin_rpc("bar", arg)
+    # do more stuff
+    result = yield promise
+
+
+# process y
+@resonate.register
+def bar(ctx: Context, arg: str) -> str:
+    # ...
+    return
 ```
+
+[More examples](/develop/python#rpc-1).
 
     </TabItem>
 
     <TabItem value="typescript">
 
 ```ts
+// process a
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const result = yield* ctx.rpc(
+    "bar",
+    ...args,
+    ctx.options({ target: "poll://any@workers" })
+  );
+  // do more stuff
 
+  // asynchronous invocation of bar
+  const promise = yield* ctx.beginRpc(
+    "bar",
+    ...args,
+    ctx.options({ target: "poll://any@workers" })
+  );
+  // do more stuff
+  const result = yield* promise;
+  // do more stuff
+});
+
+// process b
+resonate.register("bar", function (ctx: Context, ...args: any[]) {
+  // ...
+  return;
+});
 ```
+
+[More examples](/develop/typescript#rpc-1).
 
     </TabItem>
 
@@ -631,22 +687,32 @@ Get a dependency that was set on the Resonate Client in the same process.
     <TabItem value="python">
 
 ```py
-db_conn = ctx.get_dependency("database-connection")
+@resonate.register
+def foo(ctx, arg):
+    # ...
+    db_conn = ctx.get_dependency("database-connection") # get database connection
+    # use database connection
+    # ...
 ```
 
-[More examples of the Resonate Get Dependency API in Python](/develop/python#get_dependency).
+[More examples](/develop/python#get_dependency).
 
     </TabItem>
 
     <TabItem value="typescript">
 
 ```ts
-const db_conn = ctx.getDependency("database-connection");
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const db_conn = ctx.getDependency("database-connection"); // get database connection
+  // use database connection
+  // ...
+});
 ```
 
-[More examples of the Resonate Get Dependency API in TypeScript](/develop/typescript#getdependency).
+[More examples](/develop/typescript#getdependency).
 
-    </TabItem>
+</TabItem>
 
 </Tabs>
 
@@ -663,21 +729,34 @@ const db_conn = ctx.getDependency("database-connection");
     <TabItem value="python">
 
 ```py
-promise = yield ctx.promise(id="promise-id")
+@resonate.register
+def foo(ctx, arg):
+    # ...
+    promise = yield ctx.promise(id="promise-id") # optionally supply an id
+    # do something
+    yield promise # block on the promise's resolution
+    # do more stuff
+    # ...
 ```
 
-[More examples of the Resonate Get or Create Promise API in Python](/develop/python#promise).
+[More examples](/develop/python#promise).
 
     </TabItem>
 
     <TabItem value="typescript">
 
 ```ts
-const promise = yield* ctx.promise({ id: "promise-id" });
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const promise = yield* ctx.promise({ id: "promise-id" }); // optionally supply an id
+  // do something
+  yield* promise; // block on the promise's resolution
+  // do more stuff
+  // ...
 });
 ```
 
-[More examples of the Resonate Get or Create Promise API in TypeScript](/develop/typescript#promise).
+[More examples](/develop/typescript#promise).
 
     </TabItem>
 
@@ -685,7 +764,10 @@ const promise = yield* ctx.promise({ id: "promise-id" });
 
 ### Sleep
 
-Put the function to sleep for a specified duration without blocking the process.
+Context's sleep method is durable across replays.
+That means that, once invoked, a replay of the function will not reset, extend, or retrigger the sleep duration.
+
+Additionally, this sleep method is non-blocking, meaning that other functions in the process will be able to make progress even if some are sleeping.
 
 <Tabs
     groupId="preferred-language"
@@ -698,21 +780,28 @@ Put the function to sleep for a specified duration without blocking the process.
     <TabItem value="python">
 
 ```py
-yield ctx.sleep(5.0) // sleep for 5 seconds
+@resonate.register
+def foo(ctx, arg):
+    # ...
+    yield ctx.sleep(5.0)  # sleep for 5 seconds
+    # ...
 ```
 
-[More examples of the Resonate Sleep API in Python](/develop/python#sleep).
+[More examples](/develop/python#sleep).
 
     </TabItem>
 
     <TabItem value="typescript">
 
 ```ts
-yield* ctx.sleep(5000); // sleep for 5 seconds
-}
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  yield* ctx.sleep(5000); // sleep for 5 seconds
+  // ...
+});
 ```
 
-[More examples of the Resonate Sleep API in TypeScript](/develop/typescript#sleep).
+[More examples](/develop/typescript#sleep).
 
     </TabItem>
 
@@ -720,6 +809,10 @@ yield* ctx.sleep(5000); // sleep for 5 seconds
 
 ### Generate random number
 
+Use Context's random methods to generate random numbers to ensure a deterministic number across replays.
+
+Quick example:
+
 <Tabs
     groupId="preferred-language"
     defaultValue="python"
@@ -731,16 +824,30 @@ yield* ctx.sleep(5000); // sleep for 5 seconds
     <TabItem value="python">
 
 ```py
-
+@resonate.register
+def foo(ctx, arg):
+    # ...
+    rand = yield ctx.random.random() # ensures the result is the same across replays
+    # do something with rand
+    # ...
 ```
+
+[More examples](/develop/python#randomrandom).
 
     </TabItem>
 
     <TabItem value="typescript">
 
 ```ts
-
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const rand = yield* ctx.math.random(); // ensures the result is the same across replays
+  // do something with rand
+  // ...
+});
 ```
+
+[More examples](/develop/typescript#mathrandom).
 
     </TabItem>
 
@@ -748,6 +855,10 @@ yield* ctx.sleep(5000); // sleep for 5 seconds
 
 ### Get the time
 
+Use Context's time methods to get the current time to ensure a deterministic time across replays.
+
+Quick example:
+
 <Tabs
     groupId="preferred-language"
     defaultValue="python"
@@ -759,16 +870,30 @@ yield* ctx.sleep(5000); // sleep for 5 seconds
     <TabItem value="python">
 
 ```py
-
+@resonate.register
+def foo(ctx, arg):
+    # ...
+    time = yield ctx.time.time() # ensures the result is the same across replays
+    # do something with time
+    # ...
 ```
+
+[More examples](/develop/python#timetime).
 
     </TabItem>
 
     <TabItem value="typescript">
 
 ```ts
-
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const time = yield* ctx.date.now(); // ensures the result is the same across replays
+  // do something with time
+  // ...
+});
 ```
+
+[More examples](/develop/typescript#datenow).
 
     </TabItem>
 

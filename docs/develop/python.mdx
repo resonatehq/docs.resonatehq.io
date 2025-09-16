@@ -355,9 +355,6 @@ Begin RPC is asynchronous, and returns a promise which can be awaited later.
 def foo(ctx: Context, arg: str) -> str:
     # synchronous invocation of bar
     result = yield ctx.rpc("bar", arg)
-
-    # asynchronous invocation of bar
-    promise = yield ctx.begin_rpc("bar", arg)
     # do more stuff
     result = yield promise
 
