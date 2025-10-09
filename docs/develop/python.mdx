@@ -74,13 +74,11 @@ poetry add resonate-sdk
 
 There are two ways to initialize Resonate, local and remote.
 
-**Local initialization**
+**Local initialization = zero-dependency development**
 
 Local initialization means that Resonate uses local memory for promise storage.
 
 This is ideal for getting started quickly or for integrating Resonate into an existing application without relying on dependencies.
-
-The drawback is that you can't use Resonate's Async RPC or recover executions from process / worker crashes.
 
 ```py
 from resonate import Resonate
@@ -102,21 +100,72 @@ This makes it easy to incrementally adopt Resonate into your existing Python app
 **Remote initialization**
 
 Remote initialization means that promises are stored remotely, and that the worker receives messages from a remote source.
-This is how Resonate enables Async RPC for building distributed applications that are reliable and scalable.
+This is how Resonate enables Durable Async RPC for building distributed applications that are reliable and scalable.
 
-The quickest way to get started with Remote initialization is for the worker to use Resonate's default Poller message transport to receive messages directly from a Resonate Server.
+The quickest way to get started with Remote initialization is to connect to a locally running instance of a Resonate Server.
 
 ```py
 from resonate import Resonate
 
 resonate = Resonate.remote()
-
-# or alternatively
-resonate = Resonate.remote(host="https://my-resonate.com")
 ```
 
-Resonate workers can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
-The Poller is a great starting place as it will long-poll for messages from the Resonate Server without any additional setup.
+This default configuration uses the Resonate Server as the promise store and uses an HTTP Long Poller as the message transport to receive messages directly from the Resonate Server.
+
+A Resonate Client can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
+The Poller is a great starting place however, as it will long-poll for messages from the Resonate Server without any additional setup.
+
+### Environment Variables
+
+Environment variables can be used to configure the Resonate Client.
+These environment variables follow the following priority pattern:
+
+Explicit parameter passed to constructor (highest priority)
+Service-specific environment variable (e.g., RESONATE_HOST_STORE)
+Generic environment variable (e.g., RESONATE_HOST)
+Default hardcoded value (lowest priority)
+
+#### `RESONATE_HOST`
+
+Generic fallback host for Resonate services.
+
+Defaults to "http://localhost".
+
+#### `RESONATE_HOST_STORE`
+
+Specific host for the Store service.
+
+Defaults to RESONATE_HOST, then "http://localhost".
+
+#### `RESONATE_HOST_MESSAGE_SOURCE`
+
+Specific host for the Message Source service.
+
+Defaults to RESONATE_HOST, then "http://localhost".
+
+#### `RESONATE_PORT_STORE`
+
+Port for the Store service
+
+Defaults to port "8001", the default port exposed by the Resonate Server Store service.
+
+#### `RESONATE_PORT_MESSAGE_SOURCE`
+
+Port for the Message Source service
+
+Defaults to port "8002", the default port exposed by the Resonate Server Message Source service.
+
+#### `RESONATE_USERNAME`
+
+Username for HTTP Basic Authentication
+
+Defaults to "" (empty string) if variable exists, None if not set.
+
+#### `RESONATE_PASSWORD`
+
+Password for HTTP Basic Authentication
+
+Defaults to "" (empty string) if RESONATE_USERNAME exists, None otherwise.
 
 ## Client APIs
 
