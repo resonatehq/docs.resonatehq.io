@@ -1,6 +1,6 @@
 ---
 id: errors
-title: Troubleshoot a deployment issue
+title: Known errors and how to troubleshoot them
 sidebar_label: Errors
 sidebar_position: 3
 description: Troubleshoot an error code returned by the Resonate API.
@@ -11,27 +11,29 @@ tags:
   - errors
 ---
 
-This document lists all error codes that can be returned by our API.
+This page documents known errors that may be encountered when using Resonate and how to troubleshoot them.
 
-When encountering an error, follow these general steps:
+If you believe your issue is not covered here, reach out in [Discord](https://resonatehq.io/discord) to discuss.
 
-1. **Identify the Error Code**
+Known errors will likely have an error code associated with them and a short error message.
 
-   - Check the error code in the response or logs to understand the nature of the issue.
+Troubleshooting steps are categorized by error code ranges:
 
-2. **Refer to documentation**
+- [Server request errors (40000-49999)](#server-request-errors)
+- [Server errors (50000-59999)](#server-errors)
+- [Python SDK errors (1000-1099)](#python-sdk-errors)
+- [TypeScript SDK errors (1100-1199)](#typescript-sdk-errors)
 
-   - Check this document to find the description and recommended actions for the specific error code.
+## Server request errors
 
-3. **Troubleshoot**
+These are known errors you may encounter when making requests to the Resonate Server API.
 
-   - Follow the provided recommendations to troubleshoot and resolve the issue.
+**Range: 40000-49999**
 
-4. **Contact support:**
-   - If the problem persists, open a [GitHub issue](https://github.com/resonatehq/resonate/issues/new) with details, including the error code and steps to reproduce.
-     Or reach out via [Discord](https://resonatehq.io/discord) for community support.
+Request errors signify problems with the request.
+Generally, retrying the request will not resolve the issue.
 
-## Error Schema
+**Error Schema**
 
 When an error occurs, the response body will contain the following information.
 
@@ -59,9 +61,8 @@ The message and details provide a human readable description of what went wrong.
 
 The `details` provide structured diagnostic data such as the originating subsystem and links to documentation which can assist in debugging and troubleshooting.
 
-## Request errors (40000-49999)
-
-Request errors signify problems with the request. Generally, retrying the request will not resolve the issue.
+If the problem persists, open a [GitHub issue](https://github.com/resonatehq/resonate/issues/new) with details, including the error code and steps to reproduce.
+Or reach out via [Discord](https://resonatehq.io/discord) for support.
 
 ### 40000
 
@@ -131,10 +132,17 @@ A promise with the provided id already exists.
 
 A schedule with the provided id already exists. |
 
-## Server errors (50000-59999)
+## Server errors
+
+These are
+
+**Range: 50000-59999**
 
 Server errors represent transient or systemic problems that prevent the request from being processed.
 Retrying the request may resolve the issue.
+
+If the problem persists, open a [GitHub issue](https://github.com/resonatehq/resonate/issues/new) with details, including the error code and steps to reproduce.
+Or reach out via [Discord](https://resonatehq.io/discord) for support.
 
 ### 50000
 
@@ -171,3 +179,72 @@ The AIO submission queue is full. Please try again later.
 ### 50303
 
 The scheduler queue is full. Please try again later.
+
+## Python SDK errors
+
+**Range: 1000 - 1099**
+
+These are known errors you may encounter when using the Python SDK.
+
+:::tip SDK update required
+
+And update is required to the Python SDK to support these error codes.
+
+:::
+
+## TypeScript SDK errors
+
+**Range: 1100 - 1199**
+
+These are known errors you may encounter when using the TypeScript SDK.
+
+If the problem persists, open a [GitHub issue](https://github.com/resonatehq/resonate-sdk-ts/issues/new) with details, including the error code and steps to reproduce.
+Or reach out via [Discord](https://resonatehq.io/discord) for support.
+
+### 1100
+
+**REGISTRY_VERSION_INVALID**
+
+Function version must be greater than zero (x provided)
+
+### 1101
+
+**REGISTRY_NAME_REQUIRED**
+
+Function name is required
+
+### 1102
+
+**REGISTRY_FUNCTION_ALREADY_REGISTERED**
+
+Function 'x' (version y) is already registered [under 'u']
+
+### 1103
+
+**REGISTRY_FUNCTION_NOT_REGISTERED**
+
+Function 'x' (version y) is not registered. Will drop.
+
+### 1104
+
+**DEPENDENCY_ALREADY_REGISTERED**
+
+Dependency 'x' is already registered
+
+### 1105
+
+**DEPENDENCY_NOT_REGISTERED**
+
+Dependency 'x' is not registered. Will drop.
+
+### 1106
+
+**ENCODING_ARGS_UNENCODEABLE**
+
+Function arguments cannot be encoded.
+
+### 1199
+
+**SERVER_ERROR**
+
+An error occurred on the server. Please check for additional error codes for more details.
