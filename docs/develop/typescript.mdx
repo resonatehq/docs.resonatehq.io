@@ -124,10 +124,9 @@ The Poller is a great starting place however, as it will long-poll for messages 
 Environment variables can be used to configure the Resonate Client.
 These environment variables follow the following priority pattern:
 
-Explicit parameter passed to constructor (highest priority)
-Service-specific environment variable (e.g., RESONATE_HOST_STORE)
-Generic environment variable (e.g., RESONATE_HOST)
-Default hardcoded value (lowest priority)
+1. Explicit parameter passed to constructor (highest priority)
+2. Environment variable.
+3. Default hardcoded value (lowest priority)
 
 #### `RESONATE_HOST`
 
@@ -135,29 +134,24 @@ Generic fallback host for Resonate services.
 
 Defaults to "http://localhost".
 
-#### `RESONATE_HOST_STORE`
+#### `RESONATE_PORT`
 
-Specific host for the Store service.
+Port of the Resonate Server.
 
-Defaults to RESONATE_HOST, then "http://localhost".
+Defaults to port "8001", the default port exposed by the Resonate Server HTTP API.
 
-#### `RESONATE_HOST_MESSAGE_SOURCE`
+#### `RESONATE_URL`
 
-Specific host for the Message Source service.
+A full URL of the Resonate Server (e.g http://localhost:8001).
 
-Defaults to RESONATE_HOST, then "http://localhost".
+If this one is set it takes precedence over `RESONATE_HOST` and `RESONATE_PORT`.
 
-#### `RESONATE_PORT_STORE`
+#### `RESONATE_SCHEME`
 
-Port for the Store service
+The scheme of RESONATE_URL, i.e. the thing behind "://".
+Typically either 'https' or 'http'.
 
-Defaults to port "8001", the default port exposed by the Resonate Server Store service.
-
-#### `RESONATE_PORT_MESSAGE_SOURCE`
-
-Port for the Message Source service
-
-Defaults to port "8002", the default port exposed by the Resonate Server Message Source service.
+Defaults to http.
 
 #### `RESONATE_USERNAME`
 
