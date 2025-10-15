@@ -74,13 +74,11 @@ yarn add @resonatehq/sdk
 
 There are two ways to initialize Resonate, local and remote.
 
-**Local initialization**
+**Local initialization = zero-dependency development**
 
 Local initialization means that Resonate uses local memory for promise storage.
 
 This is ideal for getting started quickly or for integrating Resonate into an existing application without relying on dependencies.
-
-The drawback is that you can't use Resonate's Async RPC or recover executions from process / worker crashes.
 
 ```ts
 import { Resonate } from "@resonatehq/sdk";
@@ -98,10 +96,10 @@ This makes it easy to incrementally adopt Resonate into your existing TypeScript
 
 **Remote initialization**
 
-Remote initialization means that promises are stored remotely, and that the worker receives messages from a remote source.
-This is how Resonate enables Async RPC for building distributed applications that are reliable and scalable.
+Remote initialization means that promises are stored remotely, and that the Resonate Client receives messages from a remote source.
+This is how Resonate enables Durable Async RPC for building distributed applications that are reliable and scalable.
 
-The quickest way to get started with Remote initialization is for the worker to use Resonate's default Poller message transport to receive messages directly from a Resonate Server.
+The quickest way to get started with Remote initialization is to connect to a locally running instance of a Resonate Server.
 
 ```ts
 import { Resonate } from "@resonatehq/sdk";
@@ -116,8 +114,120 @@ const resonate = Resonate.remote({ url: "https://my-resonate.com" });
 const resonate = Resonate.remote({ group: "worker-group-x" });
 ```
 
-Resonate workers can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
-The Poller is a great starting place as it will long-poll for messages from the Resonate Server without any additional setup.
+The default configuration uses the Resonate Server as the promise store and uses an HTTP Long Poller as the message transport to receive messages directly from the Resonate Server.
+
+A Resonate Client can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
+The Poller is a great starting place however, as it will long-poll for messages from the Resonate Server without any additional setup.
+
+### Environment Variables
+
+The Resonate client constructor automatically inspects a handful of environment variables when instantiating the SDK.
+
+**Resolution order**
+
+When a Resonate Client is instantiated, explicit constructor arguments always win.
+If an argument is not provided, the client looks for related environment variables before falling back to built-in defaults.
+
+The following order is used when determining the remote endpoint:
+
+1. `url` argument supplied to the constructor.
+2. `RESONATE_URL` environment variable.
+3. `RESONATE_SCHEME`, `RESONATE_HOST`, and `RESONATE_PORT` environment variables.
+4. Built-in local development mode (no remote network).
+
+Similarly, authentication credentials resolve in this order:
+
+1. `auth` argument supplied to the constructor.
+2. `RESONATE_USERNAME` and `RESONATE_PASSWORD` environment variables.
+3. No authentication (anonymous requests).
+
+:::tip No URL means local mode (zero-dependency development)
+
+If neither an argument nor environment variable produces a URL, the client falls back to a local in-memory network.
+This is convenient for unit tests or quick experiments that do not require a Resonate server.
+
+:::
+
+#### `RESONATE_URL`
+
+Provides the full base URL (scheme, host, and port) for connecting to a remote Resonate server.
+Takes precedence over the individual scheme/host/port variables.
+
+Default is _unset_
+
+**Compose from a single URL:**
+
+```bash
+export RESONATE_URL="https://resonate.example.com"
+```
+
+```ts
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = new Resonate(); // picks up RESONATE_URL automatically
+```
+
+**Compose a URL from components:**
+
+```bash
+export RESONATE_SCHEME=https
+export RESONATE_HOST=resonate.example
+export RESONATE_PORT=8443
+```
+
+```ts
+const resonate = new Resonate();
+// resolves to https://resonate.example:8443
+```
+
+#### `RESONATE_SCHEME`
+
+Scheme to use when `RESONATE_URL` is unset and a host is supplied. Combine with `RESONATE_HOST` (required) and `RESONATE_PORT` (optional) to build the full URL. |
+
+Default is _http_.
+
+#### `RESONATE_HOST`
+
+Hostname or IP address of the remote Resonate server. Must be present to use the scheme/host/port fallback path.
+
+Default is _unset_.
+
+#### `RESONATE_PORT`
+
+Port number to use when building the URL from scheme/host/port. Ignored if `RESONATE_URL` is provided.
+
+Default is `8001`.
+
+#### `RESONATE_USERNAME`
+
+Username for HTTP basic authentication. When set (even without a password) it enables authenticated requests.
+
+Default is _unset_.
+
+#### `RESONATE_PASSWORD`
+
+Password paired with `RESONATE_USERNAME`. Defaults to an empty string when the username is set but no password is supplied.
+
+Default is an empty string.
+
+Example:
+
+```bash
+export RESONATE_USERNAME=my-user
+export RESONATE_PASSWORD=super-secret
+```
+
+```ts
+const resonate = new Resonate();
+// uses { username: "my-user", password: "super-secret" }
+```
+
+**Troubleshooting tips**
+
+- Prefer passing constructor arguments when bootstrapping in application code that owns configuration loading.
+  Environment variables are ideal for CLI usage, tests, or infrastructure-managed settings.
+- Always set `RESONATE_HOST` if you intend to rely on the scheme/host/port combination.
+  Without a host the client will treat the configuration as missing and default to local mode.
 
 ## Client APIs
 
