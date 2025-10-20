@@ -598,16 +598,57 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
 
 ### `.sleep()`
 
-Context's `.sleep()` method allows you to sleep inside a function.
-There is no limit to how long you can sleep — even if the original process crashes or is terminated, the sleep will continue and the function will resume in a new process.
-The sleep method accepts a number value in milliseconds.
+There is no limit to how long the function can sleep.
+
+This API accepts either a millisecond duration or an options object.
+The options object can specify a duration with the `for` property or an absolute wake-up time with the `until` property.
 
 ```ts
-resonate.register("foo", function* (ctx: Context, ...args: any[]) {
-  // ...
-  yield* ctx.sleep(5000); // sleep for 5 seconds
-  // do more stuff
-  // ...
+ctx.sleep(5_000); // wait 5 seconds
+ctx.sleep({ for: 5_000 }); // identical to passing the number
+ctx.sleep({ until: new Date() });
+```
+
+Passing a number or `for` value always measures the delay in milliseconds from "now".
+`until` expects a JavaScript `Date` instance representing the exact time when the workflow should resume.
+
+The options object is useful when you want to build the wake-up time conditionally before calling `sleep`.
+
+**Sleep for a fixed duration.**
+
+```ts
+import { Context, Resonate } from "@resonatehq/sdk";
+
+const resonate = Resonate.local();
+
+resonate.register("send-reminder", function* (ctx: Context, userId: string) {
+  // Pause for five seconds without blocking the worker
+  yield* ctx.sleep(5_000);
+
+  yield* ctx.rfc("notify-user", userId);
+});
+```
+
+**Sleep until a calendar time.**
+
+```ts
+import { Context, Resonate } from "@resonatehq/sdk";
+
+const resonate = Resonate.local();
+
+resonate.register("schedule-digest", function* (ctx: Context, userId: string) {
+  const nextEightAm = new Date();
+  nextEightAm.setHours(8, 0, 0, 0);
+
+  // If it is already past 8am today, schedule for tomorrow
+  if (nextEightAm.getTime() <= Date.now()) {
+    nextEightAm.setDate(nextEightAm.getDate() + 1);
+  }
+
+  // Resume exactly at 8am
+  yield* ctx.sleep({ until: nextEightAm });
+
+  yield* ctx.rfc("send-digest", userId);
 });
 ```
 
