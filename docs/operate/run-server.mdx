@@ -47,6 +47,43 @@ The output indicates that the server has HTTP endpoints available at port 8001, 
 These are the default ports and can be changed via configuration.
 The SDKs are all configured to use these defaults unless otherwise specified.
 
+## Run with Docker
+
+The Resonate Server repository contains a Dockerfile that you can use to build and run the server in a Docker container.
+You can also clone the repository and start the server using Docker Compose:
+
+```shell
+git clone https://github.com/resonatehq/resonate
+cd resonate
+docker-compose up
+```
+
+## Deploy to GCP Cloud Run
+
+To deploy an instance of the Resonate Server to Google Cloud Run, start by deploying a new service.
+Select "Deploy container" from the Cloud Run dashboard.
+
+![Deploy container](/img/cloud-run-dashboard.png)
+
+On the configuration screen, select "Deploy one revision from an existing container image".
+
+And then, in the "Container image URL" field, enter the following image URL:
+
+```
+resonatehqio/resonate
+```
+
+![Docker image URL](/img/docker-image-url.png)
+
+Set the "Container port" to "8001", which is the default port for the Resonate Server's HTTP API.
+
+And ensure that there is just 1 instance of the server running.
+Use "Manual scaling" and set "Number of instances" to "1".
+
+![Cloud Run instance settings](/img/cloud-run-service-scaling.png)
+
+You should be able to customize the rest of the settings as needed for your deployment.
+
 ## Build from source
 
 If you don't have Homebrew, we recommend building from source using Go.
@@ -70,7 +107,7 @@ Or, you can run it as an executable using the following command:
 ./resonate server
 ```
 
-## Custom configuration
+## Customize configuration
 
 The Resonate Server is highly configurable.
 
@@ -93,9 +130,9 @@ At the top level, the file supports five keys:
 - `metricsAddr`: Prometheus metrics bind address (default :9090).
 - `logLevel`: One of debug, info, warn, error (default info).
 
-Here is a `resonate.yml` file that explicitly sets every option to the server's build-in defaults.
+Here is a `resonate.yml` file that explicitly sets every option to the server's built-in defaults.
 Using this file is equivalent to starting Resonate with no configuration file.
-See the [config key reference](#config-key-reference) for details on each option.
+See the [config key reference](#config-key-reference) for details on each section.
 
 ```yml
 system:
