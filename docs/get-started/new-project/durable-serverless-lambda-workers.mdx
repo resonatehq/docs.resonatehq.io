@@ -1,0 +1,67 @@
+---
+id: durable-serverless-lambda-workers
+title: Durable serverless Lambda workers
+sidebar_label: Lambda workers
+description: Start a new project that runs a durable worker on AWS Lambda without losing in-flight progress.
+draft: true
+---
+
+Use Resonate to turn an AWS Lambda function into a reliable worker that spans cold starts and retries.
+
+Python example coming soon.
+
+import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
+import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="TypeScript SDK"
+    description="Durable serverless Lambda worker project example"
+    link="https://github.com/resonatehq-examples/example-durable-serverless-lambda-workers-ts"
+  />
+</CloneRepoGrid>
+
+## Problem
+
+Lambda functions are ephemeral and stateless, making it difficult to coordinate multi-step work or guarantee at-least-once completion when retries happen.
+
+Orchestration services add cost and complexity, while homegrown state machines are brittle and hard to evolve.
+
+## Solution
+
+Resonate externalizes workflow state and retries so your Lambda handler can stay simple. Each invocation resumes a durable workflow, allowing you to fan out tasks, await remote systems, and recover automatically after AWS restarts your function.
+
+The example project shows how to provision the Lambda, connect it to Resonate, and expose an API Gateway endpoint that feeds work into the workflow.
+
+## Quick example
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="typescript" >
+
+```typescript
+import { resonate } from "@resonatehq/server";
+import type { Context } from "@resonatehq/sdk";
+
+export function* lambdaWorker(ctx: Context, task: TaskPayload) {
+  const attempt = yield ctx.run(startExecution, task);
+
+  const outcome = yield ctx.run(waitForDependency, attempt.id);
+
+  yield ctx.run(finalizeTask, outcome);
+}
+
+resonate.register("lambdaWorker", lambdaWorker);
+```
+
+  </TabItem>
+
+</Tabs>

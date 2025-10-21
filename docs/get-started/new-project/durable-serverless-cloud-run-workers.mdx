@@ -1,0 +1,65 @@
+---
+id: durable-serverless-cloud-run-workers
+title: Durable serverless Cloud Run workers
+sidebar_label: Cloud Run workers
+description: Start a new project that deploys a durable Resonate worker to Google Cloud Run.
+---
+
+Run a background worker on Google Cloud Run that survives cold starts and instance restarts by leaning on Resonate's durable runtime.
+
+Python example coming soon.
+
+import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
+import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="TypeScript SDK"
+    description="Durable serverless Cloud Run worker project example"
+    link="https://github.com/resonatehq-examples/example-durable-serverless-cloud-run-workers-ts"
+  />
+</CloneRepoGrid>
+
+## Problem
+
+Cloud Run gives you automatic scale-to-zero and rapid horizontal scaling, but stateless containers make it hard to run long-lived business logic without relying on external schedulers or compensating transactions.
+
+You also have to handle retries yourself when the platform stops a container mid-workflow or when an upstream dependency hiccups.
+
+## Solution
+
+Resonate keeps the workflow state outside of the Cloud Run container so every invocation can pick up where the last one left off. That means you can embrace Cloud Run's serverless model without giving up durability or idempotency.
+
+Each container instance becomes a lightweight worker that reacts to events, resumes pending work, and fans out new tasks as needed.
+
+## Quick example
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="typescript" >
+
+```typescript
+import { Context, resonate } from "@resonatehq/server";
+
+export function* cloudRunWorker(ctx: Context, jobId: string) {
+  const job = yield ctx.get(jobId);
+
+  const result = yield ctx.run(processJob, job);
+
+  yield ctx.run(writeResult, jobId, result);
+}
+
+resonate.register("cloudRunWorker", cloudRunWorker);
+```
+
+  </TabItem>
+
+</Tabs>
