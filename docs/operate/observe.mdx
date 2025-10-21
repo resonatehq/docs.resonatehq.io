@@ -185,7 +185,7 @@ scrape_configs:
 The Resonate specific part is the `scrape_configs` section.
 
 Run Prometheus with the config file you just created, specifying port `9091` in the `--web.listen-address` to avoid port conflicts with the Resonate Server.
-You can customize the port that Resonate exports metrics to with the [Resonate Server config](/operate/run-server#custom-configuration).
+You can customize the port that Resonate exports metrics to with the [Resonate Server config](/operate/run-server#customize-configuration).
 
 ```shell
 ./prometheus --config.file=prometheus.yml --web.listen-address=:9091
