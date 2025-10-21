@@ -1,0 +1,68 @@
+---
+id: async-http-api-endpoints
+title: Async HTTP API endpoints
+sidebar_label: Async HTTP APIs
+description: Start a new project that turns HTTP endpoints into durable asynchronous workflows.
+---
+
+Transform synchronous HTTP requests into durable jobs so clients can fire-and-forget while still getting reliable completion updates.
+
+Python example coming soon.
+
+import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
+import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="TypeScript SDK"
+    description="Async HTTP API endpoints project example"
+    link="https://github.com/resonatehq-examples/example-async-http-api-endpoints-ts"
+  />
+</CloneRepoGrid>
+
+## Problem
+
+Traditional REST endpoints either block clients until work completes or require bespoke status polling code that can easily get out of sync.
+
+If a server crashes mid-request, clients have no reliable way to know whether work finished, failed, or needs to be retried.
+
+## Solution
+
+Resonate turns each inbound request into a durable workflow. The request handler enqueues work and immediately returns an identifier that clients can poll for status. Work execution becomes resilient to server restarts, retries, and long-running tasks.
+
+The example demonstrates how to expose submission and status endpoints, push long-running work into Resonate, and notify clients when it completes.
+
+## Quick example
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="typescript" >
+
+```typescript
+app.post("/jobs", async (req, res) => {
+  const run = await resonate.workflows.beginRun("asyncHttpWorkflow", req.body);
+  res.status(202).json({ runId: run.id });
+});
+
+export function* asyncHttpWorkflow(ctx: Context, payload: JobPayload) {
+  const result = yield ctx.run(doWork, payload);
+  yield ctx.run(notifyClient, result);
+}
+
+app.get("/jobs/:id", async (req, res) => {
+  const status = await resonate.runs.get(req.params.id);
+  res.json(status);
+});
+```
+
+  </TabItem>
+
+</Tabs>
