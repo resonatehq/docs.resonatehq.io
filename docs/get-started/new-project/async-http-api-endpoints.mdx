@@ -14,9 +14,9 @@ import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
 
 <CloneRepoGrid>
   <CloneRepoCard
-    sdk="TypeScript SDK"
+    sdk="Python SDK"
     description="Async HTTP API endpoints project example"
-    link="https://github.com/resonatehq-examples/example-async-http-api-endpoints-ts"
+    link="https://github.com/resonatehq-examples/example-async-http-api-py"
   />
 </CloneRepoGrid>
 
@@ -31,38 +31,3 @@ If a server crashes mid-request, clients have no reliable way to know whether wo
 Resonate turns each inbound request into a durable workflow. The request handler enqueues work and immediately returns an identifier that clients can poll for status. Work execution becomes resilient to server restarts, retries, and long-running tasks.
 
 The example demonstrates how to expose submission and status endpoints, push long-running work into Resonate, and notify clients when it completes.
-
-## Quick example
-
-import Tabs from "@theme/Tabs";
-import TabItem from "@theme/TabItem";
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="typescript"
-    values={[
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="typescript" >
-
-```typescript
-app.post("/jobs", async (req, res) => {
-  const run = await resonate.workflows.beginRun("asyncHttpWorkflow", req.body);
-  res.status(202).json({ runId: run.id });
-});
-
-export function* asyncHttpWorkflow(ctx: Context, payload: JobPayload) {
-  const result = yield ctx.run(doWork, payload);
-  yield ctx.run(notifyClient, result);
-}
-
-app.get("/jobs/:id", async (req, res) => {
-  const status = await resonate.runs.get(req.params.id);
-  res.json(status);
-});
-```
-
-  </TabItem>
-
-</Tabs>
