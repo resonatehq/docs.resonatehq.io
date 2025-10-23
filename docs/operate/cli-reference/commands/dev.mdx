@@ -1,0 +1,32 @@
+---
+id: dev
+title: CLI dev command
+sidebar_label: Dev
+description: Start the Resonate server with development defaults.
+tags:
+  - cli
+  - dev
+---
+
+The `dev` command is a convenience alias that starts the Resonate server with
+sensible defaults for local development.
+
+```shell
+resonate dev [flags]
+```
+
+Behind the scenes the alias expands to:
+
+```shell
+resonate serve --aio-store-sqlite-path ':memory:' --aio-store-postgres-query 'sslmode=disable'
+```
+
+This configuration boots the server with an in-memory SQLite store and disables
+PostgreSQL SSL verification so you can connect to local databases without
+additional configuration.
+
+## Flags
+
+`resonate dev` accepts the same flags as
+[`resonate serve`](./serve). Any overrides you provide will be merged with the
+development defaults shown above.

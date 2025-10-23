@@ -10,6 +10,12 @@ tags:
 
 The `serve` command starts the Resonate (Durable Promise) Server.
 
+:::tip Development shortcut
+Use [`resonate dev`](./dev) to launch the server with SQLite and other
+development-friendly defaults. The alias expands to
+`resonate serve --aio-store-sqlite-path ':memory:' --aio-store-postgres-query 'sslmode=disable'`.
+:::
+
 ```shell
 resonate serve [flags]
 ```
