@@ -43,6 +43,14 @@ Basic auth username
 
 These are flags that are specific to a command.
 
+### --arg
+
+Provides a positional argument when invoking a function.
+
+Used in:
+
+- [invoke](/operate/cli-reference/commands/invoke)
+
 ### --cron
 
 Schedule cron expression.
@@ -59,6 +67,14 @@ Used in:
 
 - [schedules create](/operate/cli-reference/commands/schedule#create)
 
+### --func
+
+Specifies the function name to invoke.
+
+Used in:
+
+- [invoke](/operate/cli-reference/commands/invoke)
+
 ### --idempotency-key
 
 An optional idempotency key to ensure idempotency in promise operations.
@@ -69,6 +85,14 @@ Used in:
 - [promises resolve](/operate/cli-reference/commands/promise#resolve)
 - [promises reject](/operate/cli-reference/commands/promise#reject)
 - [promises cancel](/operate/cli-reference/commands/promise#cancel)
+
+### --json-args
+
+Provides a JSON array of arguments when invoking a function.
+
+Used in:
+
+- [invoke](/operate/cli-reference/commands/invoke)
 
 ### --strict
 
@@ -92,11 +116,12 @@ Used in:
 
 ### --timeout
 
-Specifies the timeout duration for promises
+Specifies how long to wait before timing out an operation.
 
 Used in:
 
 - [promises create](/operate/cli-reference/commands/promise#create)
+- [invoke](/operate/cli-reference/commands/invoke)
 
 ### --promise-timeout
 
@@ -141,6 +166,14 @@ Assigns tags to promises or schedules.
 Used in:
 
 - [promises create](/operate/cli-reference/commands/promise#create)
+
+### --target
+
+Overrides the default invocation target when calling a function.
+
+Used in:
+
+- [invoke](/operate/cli-reference/commands/invoke)
 
 ### --promise-tag
 
