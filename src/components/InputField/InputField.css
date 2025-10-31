@@ -3,7 +3,7 @@
   padding-top: 1.2rem;
   margin-bottom: 1.2rem;
   font-size: 1.6rem;
-  border: 1px solid var(--ifm-color-primary);
+  border: 1px solid rgba(228, 231, 235, 0.25);
   border-radius: 0px;
   color: #ffffff;
   font-weight: bold;

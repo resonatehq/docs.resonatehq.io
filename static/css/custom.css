@@ -125,9 +125,7 @@ article a:hover {
 .menu {
   font-family: "Space Mono", monospace;
   background-color: var(--ifm-background-color);
-  border-width: 0 1px 0 0;
-  border-style: solid;
-  border-color: #b0b8c3;
+  border-right: 1px solid rgba(176, 184, 195, 0.25) !important;
 }
 
 .menu__link {
@@ -154,9 +152,7 @@ article a:hover {
 
 .navbar {
   background-color: var(--ifm-background-color);
-  border-width: 0px 0 1px 0;
-  border-style: solid;
-  border-color: #b0b8c3;
+  border-bottom: 1px solid rgba(176, 184, 195, 0.25);
   box-shadow: none !important;
 }
 
@@ -181,9 +177,7 @@ article a:hover {
 
 .footer {
   background-color: var(--ifm-background-color) !important;
-  border-width: 1px 0 0 0;
-  border-style: solid;
-  border-color: #b0b8c3;
+  border-top: 1px solid rgba(176, 184, 195, 0.25) !important;
   font-family: "Space Mono", monospace;
 }
 
@@ -198,16 +192,12 @@ article a:hover {
 
 .table-of-contents {
   font-family: "Space Mono", monospace;
-  border-width: 0 0 0 1px;
-  border-style: solid;
-  border-color: #b0b8c3;
+  border-left: 1px solid rgba(176, 184, 195, 0.25);
 }
 
 .pagination-nav__link {
   font-family: "Space Mono", monospace;
-  border-width: 1px;
-  border-color: #b0b8c3;
-  border-style: solid;
+  border: 1px solid rgba(176, 184, 195, 0.25);
   border-radius: 0 !important;
 }
 
@@ -217,9 +207,7 @@ pagination-nav__link:hover {
 
 .card {
   background-color: var(--ifm-background-color) !important;
-  border-width: 1px !important;
-  border-color: var(--ifm-color-primary) !important;
-  border-style: solid !important;
+  border: 1px solid rgba(228, 231, 235, 0.25) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
   text-decoration: none !important;
