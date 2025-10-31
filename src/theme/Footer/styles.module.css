@@ -1,6 +1,6 @@
 .footerWrapper {
   width: 100%;
-  border-top: 1px solid var(--ifm-color-primary);
+  border-top: 0.25px solid var(--ifm-color-primary);
 }
 
 .footerContainer {
@@ -34,7 +34,7 @@
 .linkBox {
   background-color: var(--ifm-background-color);
   color: #ffffff;
-  border: 1px solid var(--ifm-color-primary);
+  border: 0.25px solid var(--ifm-color-primary);
   padding: 1.5rem;
   text-align: center;
   text-decoration: none;
