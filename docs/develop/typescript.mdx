@@ -681,3 +681,42 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
   // ...
 });
 ```
+### `.panic()` and `.assert()`
+
+Context's `.panic()` and `.assert()` aborts the top level durable execution based on a condition.
+`.panic()` will abort if the condition is true. `.assert()` will abort if the condition is false.
+These methods are intended to be used for invariant violations, for normal operation errors it is recommended
+to throw an Exception.
+
+```ts
+resonate.register("foo", function* (ctx: Context) {
+  // ...
+  yield* ctx.panic(true, "Invariant violation");
+  // Code after this call will not be executed
+
+});
+```
+```ts
+resonate.register("foo", function* (ctx: Context) {
+  // ...
+  yield* ctx.panic(false, "Invariant violation");
+  // Code after this call will be executed as normal
+
+});
+```
+```ts
+resonate.register("foo", function* (ctx: Context) {
+  // ...
+  yield* ctx.assert(false, "Invariant violation");
+  // Code after this call will not be executed
+
+});
+```
+```ts
+resonate.register("foo", function* (ctx: Context) {
+  // ...
+  yield* ctx.assert(true, "Invariant violation");
+  // Code after this call will be executed as normal
+
+});
+```
