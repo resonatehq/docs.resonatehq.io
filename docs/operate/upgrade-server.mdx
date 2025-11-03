@@ -1,0 +1,27 @@
+---
+id: upgrade-server
+title: How to upgrade your Resonate Server
+sidebar_label: Upgrade a Server
+sidebar_position: 2
+---
+
+When you upgrade your Resonate Server, you are replacing the current binary with a new one.
+
+You will not need to touch or reconfigure your existing database.
+
+If a database schema migration is required, you will be notified by server logs when you start the new version.
+Migration instructions will be provided in the release notes.
+
+### Upgrade with brew
+
+If you installed the Resonate Server using Homebrew, you can upgrade it with the following commands:
+
+```shell
+brew update
+brew upgrade resonate
+```
+
+### Upgrade manually
+
+If you installed the Resonate Server manually by downloading the binary, you can upgrade it by downloading the latest version and replacing the existing binary.
+You can download the latest version of the Resonate Server from the [Releases](https://github.com/resonatehq/resonate/releases).
