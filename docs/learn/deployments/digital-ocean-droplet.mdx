@@ -1,0 +1,254 @@
+---
+id: digital-ocean-droplet
+title: Run a Server on a DigitalOcean Droplet
+sidebar_label: DigitalOcean Droplet
+description: Instructions for deploying a Resonate Server on a DigitalOcean Droplet.
+---
+
+In this tutorial, you’ll deploy a single Resonate Server on a DigitalOcean Droplet, secure it with TLS, and expose it so client applications can connect over HTTPS. The walkthrough mirrors the tone and pacing of the SDK tutorials—each section builds on the last, and you can stop once your goals are met.
+
+## Overview
+
+- Provision an Ubuntu-based Droplet and install the dependencies required for Resonate, Nginx, and Let’s Encrypt.
+- Download and configure the Resonate Server binary so it listens on internal ports you control.
+- Terminate TLS at Nginx and proxy HTTPS traffic to the Resonate Server.
+- Validate the deployment and connect from a client SDK.
+
+## Prerequisites
+
+- A DigitalOcean Droplet running Ubuntu 22.04 (or later) with root or sudo access.
+- A fully qualified domain name (e.g., `resonate-connect.cloud`) that resolves to the Droplet’s public IP.
+- [Certbot](https://certbot.eff.org/) is available in your region (Let’s Encrypt must be able to reach port 80 for validation).
+- Optional but recommended: the Droplet firewall configured to allow inbound `OpenSSH` and HTTPS traffic.
+
+## 1. Prepare the Droplet
+
+Start by refreshing the package index and pulling in the tooling you’ll need to manage TLS, the reverse proxy, and file downloads. Keeping the base image current avoids chasing bugs caused by outdated dependencies.
+
+```shell
+sudo apt update
+sudo apt install -y nginx certbot python3-certbot-nginx curl git unzip
+```
+
+If you’re using UFW, open only the ports you plan to expose so the Droplet isn’t reachable over unintended services, then enable the firewall to enforce those rules:
+
+```shell
+sudo ufw allow OpenSSH
+sudo ufw allow 'Nginx Full'
+sudo ufw enable
+```
+
+## 2. Issue TLS Certificates
+
+TLS certificates need to be in place before you expose the server publicly. Once DNS is resolving to the Droplet, request and install certificates with Certbot so visitors can connect securely:
+
+```shell
+sudo certbot --nginx -d resonate-connect.cloud
+```
+
+Replace `resonate-connect.cloud` with your domain. Certbot updates Nginx to use the new certificates and schedules automatic renewals.
+
+## 3. Install the Resonate Server
+
+Resonate publishes prebuilt binaries per architecture. Confirm the Droplet’s CPU type so you download the correct artifact and avoid mysterious “exec format” errors:
+
+```shell
+uname -m
+```
+
+- `x86_64` → download the `linux-amd64` build.
+- `aarch64` or `arm64` → download the `linux-arm64` build.
+
+Fetch the latest release from the [Resonate GitHub releases](https://github.com/resonatehq/resonate/releases) page:
+
+```shell
+cd /root
+wget https://github.com/resonatehq/resonate/releases/download/vX.Y.Z/resonate-linux-amd64.zip
+```
+
+Replace `vX.Y.Z` with the release you want to run and swap the filename if you’re targeting ARM. Unpack the archive and make the binary executable so systemd can launch it later:
+
+```shell
+unzip resonate-linux-amd64.zip
+chmod +x resonate
+./resonate --version
+```
+
+## 4. Configure Resonate
+
+Create `/root/resonate.yml` to define how the server listens, which URLs clients use, and which credentials gate access. Keeping this configuration explicit makes it easy to audit which services are exposed:
+
+```yaml
+metricsAddr: ":9103"
+
+system:
+  url: "https://resonate-connect.cloud:8001"
+
+api:
+  subsystems:
+    http:
+      config:
+        addr: ":18001"
+        auth:
+          bestest-app: KH0_nriLP8jM9vN6jHe8M3Op1Ep-daTh_gDZdrlD6WM
+
+    grpc:
+      config:
+        addr: ":51051"
+
+aio:
+  subsystems:
+    sender:
+      config:
+        plugins:
+          poll:
+            config:
+              addr: ":18002"
+              auth:
+                bestest-app: password
+```
+
+This configuration keeps the store (`:18001`) and poller (`:18002`) bound to localhost. Nginx terminates TLS on ports `8001` and `8002` and forwards traffic to these internal services.
+
+## 5. Create a systemd Service
+
+Daemonizing Resonate under systemd keeps it running across reboots, and systemd will restart the service if it exits unexpectedly. Add a unit file to formalize that lifecycle:
+
+```shell
+sudo tee /etc/systemd/system/resonate.service >/dev/null <<'EOF'
+[Unit]
+Description=Resonate Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root
+ExecStart=/root/resonate serve --config /root/resonate.yml
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+Enable the unit so it starts on boot, then start it immediately to verify the configuration:
+
+```shell
+sudo systemctl daemon-reload
+sudo systemctl enable --now resonate.service
+```
+
+Tail the logs to ensure the process binds to the expected ports and does not exit with configuration errors:
+
+```shell
+sudo journalctl -u resonate.service -f
+```
+
+## 6. Configure Nginx as a Reverse Proxy
+
+Nginx terminates TLS and forwards traffic to the internal Resonate ports. Start by creating a shared TLS snippet so future endpoints inherit the same certificate and cipher settings:
+
+```shell
+sudo tee /etc/nginx/snippets/ssl-common.conf >/dev/null <<'EOF'
+ssl_certificate /etc/letsencrypt/live/resonate-connect.cloud/fullchain.pem;
+ssl_certificate_key /etc/letsencrypt/live/resonate-connect.cloud/privkey.pem;
+include /etc/letsencrypt/options-ssl-nginx.conf;
+ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+EOF
+```
+
+Replace the domain with your own if necessary. Next, define the HTTPS entry points for the store and poller:
+
+```shell
+sudo tee /etc/nginx/sites-available/resonate-store.conf >/dev/null <<'EOF'
+server {
+    listen 8001 ssl http2;
+    server_name resonate-connect.cloud;
+    include /etc/nginx/snippets/ssl-common.conf;
+
+    location / {
+        proxy_pass http://127.0.0.1:18001;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_read_timeout 3600;
+    }
+}
+EOF
+```
+
+```shell
+sudo tee /etc/nginx/sites-available/resonate-msgsrc.conf >/dev/null <<'EOF'
+server {
+    listen 8002 ssl http2;
+    server_name resonate-connect.cloud;
+    include /etc/nginx/snippets/ssl-common.conf;
+
+    location / {
+        proxy_pass http://127.0.0.1:18002;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_read_timeout 3600;
+    }
+}
+EOF
+```
+
+Each server block terminates TLS on a public port, removes hop-by-hop headers that can interfere with streaming responses, and forwards traffic to the matching internal subsystem.
+
+Link the site files into `sites-enabled`, test the configuration so syntax issues don’t take Nginx down, and reload to apply the new listeners:
+
+```shell
+sudo ln -sf /etc/nginx/sites-available/resonate-store.conf /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/resonate-msgsrc.conf /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+## 7. Verify the Deployment
+
+Before wiring clients to the Droplet, confirm the service is running, the internal and external ports are listening, and HTTPS responds as expected:
+
+```shell
+sudo systemctl status resonate.service
+sudo lsof -i :18001
+sudo lsof -i :8001
+curl -k https://resonate-connect.cloud:8001/health
+```
+
+Update the ports and domain if you chose different values.
+
+## 8. Connect a Client Application
+
+Finally, update your application to point at the Droplet. Configuring the SDK with the public host, exposed ports, and credentials ensures calls route through Nginx and inherit the TLS protections you set up:
+
+```python
+from resonate import Resonate
+
+resonate = Resonate.remote(
+    group="my-app",
+    host="https://resonate-connect.cloud",
+    store_port="8001",
+    message_source_port="8002",
+)
+resonate.set_auth("bestest-app", "KH0_nriLP8jM9vN6jHe8M3Op1Ep-daTh_gDZdrlD6WM")
+```
+
+If you exposed additional subsystems, repeat the pattern for each port. Match the credentials to the values stored in `resonate.yml`.
+
+## Troubleshooting
+
+| Problem                          | Likely cause                          | Suggested fix                               |
+| -------------------------------- | ------------------------------------- | ------------------------------------------- |
+| `bind: address already in use`   | Another process owns the port         | Update the ports in `resonate.yml` and Nginx |
+| `Failed to start resonate.service` | Invalid config or missing binary     | Check `journalctl -u resonate.service` for errors |
+| `curl` fails with TLS errors     | Certbot certificate mismatch          | Re-run `certbot --nginx` for the correct domain |
+| `Invalid config path or permissions` | Unit cannot read files             | Verify `/root/resonate.yml` and binary permissions |
+| `nginx: [emerg] no ssl_certificate defined` | TLS snippet missing           | Ensure `/etc/nginx/snippets/ssl-common.conf` exists |
+| Client cannot connect            | Firewall or URL mismatch              | Confirm UFW allows ports 8001/8002 and verify the client host URL |
+
+## Conclusion
+
+You now have a production-style Resonate Server running behind Nginx with automated TLS, ready to serve external applications. From here you can harden the deployment with DigitalOcean firewalls, add observability using the metrics endpoint, or scale out with additional droplets behind a load balancer as your traffic grows.
