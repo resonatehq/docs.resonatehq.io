@@ -115,6 +115,24 @@ The default configuration uses the Resonate Server as the promise store and uses
 A Resonate Client can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
 The Poller is a great starting place however, as it will long-poll for messages from the Resonate Server without any additional setup.
 
+### Basic Auth
+
+Access to a Resonate Server can be protected using HTTP Basic Authentication.
+
+The Resonate Client supports HTTP Basic Authentication for connecting to a Resonate Server that has it enabled.
+
+To use Basic Auth, you can either set the `RESONATE_USERNAME` and `RESONATE_PASSWORD` environment variables, or pass the username and password directly to the Resonate Client constructor.
+
+```py
+from resonate import Resonate
+
+resonate = Resonate.remote(
+    #...
+    auth=("your-username", "your-password"),
+    #...
+)
+```
+
 ### Environment Variables
 
 Environment variables can be used to configure the Resonate Client.
