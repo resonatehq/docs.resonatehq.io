@@ -1,364 +1,826 @@
 ---
 id: index
-title: Resonate TypeScript SDK quickstart tutorial
-description: Get started with the Resonate TypeScript SDK by following this quickstart tutorial.
-sidebar_label: Website summarization app
+title: Build a durable website summarization AI agent in TypeScript with Resonate, Express, and Ollama
+description: Get started with the Resonate TypeScript SDK.
+sidebar_label: Summarization agent
 sidebar_position: 2
+last_update:
+  date: "07-01-2025"
 pagination_next: null
 pagination_prev: null
-last_update:
-  date: "10-28-2024"
-keywords:
-  - Resonate TypeScript SDK
-  - Distributed Async Await tutorial
-  - Function retries Resonate
-  - Retry rate limits TypeScript
-  - Resonate Server connection
-  - Platform-level failure recovery
-  - Resonate Application Node
-  - Promise inspection Resonate Server
-  - TypeScript quickstart tutorial
-  - Resonate SDK quickstart
 tags:
   - typescript
-  - sdk-guidance
-  - quickstart
-  - getting-started
+  - ai
+  - tutorial
+  - express
+  - web-scraping
+  - ollama
 ---
 
-:::caution A new release is in development
+In this tutorial, you’ll build a website summarization AI agent using the Resonate TypeScript SDK, Express, and Ollama.
 
-A new version of the Resonate TypeScript SDK is in development.
+By doing so, you’ll gain experience with Resonate’s implementation of the **Distributed Async Await** programming model and the core features of the TypeScript SDK.
 
-Upon release, this tutorial will be updated to reflect the new features and improvements.
+This tutorial follows the philosophy of _progressive disclosure_ and is broken into several parts, starting with a simple example and building on it step by step.
+Each part introduces new concepts.
+You can choose to stop at the end of any part of the tutorial and still have a working application.
 
-The new version is a breaking change from what is currently documented here.
+:::tip Final example application
+
+Want to jump straight to working with the final example application?
+[example-website-summarization-agent-ts](https://github.com/resonatehq-examples/example-website-summarization-agent-ts) repository.
 
 :::
 
-This tutorial introduces you to the Resonate TypeScript SDK by building a mock summarization service using Resonate.
-The first part of the tutorial showcases how Resonate provides Durable Execution for application-level failures using the SDK's local promise storage.
+In part 1, you will start with a single Worker and observe the SDK's ability to automatically retry application-level failures (failed function executions).
 
-Durable Execution for application-level failures means that you get promise resolution timeouts, transparent function execution retries, and retry rate limits without adding an additional supervisor service.
+:::tip What is a Worker?
 
-You will create an HTTP service with a single route handler.
-The handler will use `resonate.run()` to run the `downloadAndSummarize()` function.
-Resonate will manage the execution of these functions, ensuring that the result of `download()` is passed as input to `summarize()`.
+A Worker is a process that runs your application code (i.e. executes functions).
+This is similar to the concept of a "worker" or "worker node" in other Durable Execution platforms like Temporal, Restate, and DBOS.
 
-If any of the functions throw an error or reject a promise, Resonate will automatically retry the function execution.
+:::
+
+Then in part 2 you will connect your Worker to a Resonate Server to enable recovery from platform-level failures and see how a function execution can recover from a process crash (Durable Execution).
+
+In part 3 you will convert the invocation of the function on the Worker to an asynchronous Remote Procedure Call (Async RPC).
+After, in part 4 you will add a third step to your workflow that blocks the execution on input from a human-in-the-loop and unblock it from another process.
+Finally, in part 5 you will integrate a web scraper powered by Cheerio and an LLM powered by Ollama to bring your application to life.
+
+By the end of this tutorial you'll have a good understanding of the Resonate TypeScript SDK and how to build Distributed Async Await applications with it.
 
 ### Prerequisites
 
-This tutorial assumes that you have [NodeJS](https://nodejs.org/en) and [npm](https://www.npmjs.com/) installed.
+This tutorial assumes that you have [Node.js 20+](https://nodejs.org/en) and a package manager such as npm installed.
 
-## Part 1 Incremental adoption
-
-Create a project folder.
-
-```bash
-mkdir resonate-quickstart && cd resonate-quickstart
-```
-
-Install the dev dependencies.
-
-```bash
-npm init -y && npm install typescript @types/node --save-dev
-```
-
-Install the app dependencies.
-
-```bash
-npm install @resonatehq/sdk express @types/express
-```
-
-Create a file named **app.ts** and copy and paste the minimal distributed async/await application below:
-
-```ts
-import { Context } from "@resonatehq/sdk";
-
-// downloadAndSummarize is the top level function that awaits on the download and summarize functions.
-export async function downloadAndSummarize(ctx: Context, url: string) {
-  // Download the content from the provided URL
-  console.log("Downloading and summarizing content from", url);
-  let content = await ctx.run(download, url);
-
-  // Summarize the downloaded content
-  let summary = await ctx.run(summarize, content);
-
-  // Return the summary of the content
-  return summary;
-}
-
-// download simulates downloading a page from the internet.
-// This function has a 50% chance of failing.
-async function download(ctx: Context, url: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      // 50% chance to fail
-      if (Math.random() < 0.5) {
-        console.log("download failed");
-        reject("download failed");
-      } else {
-        console.log("download successful");
-        resolve("This is the text of the page");
-      }
-    }, 2500);
-  });
-}
-
-// summarize simulates summarizing the downloaded content
-// This function has a 50% chance of failing.
-async function summarize(ctx: Context, text: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      // 50% chance to fail
-      if (Math.random() < 0.5) {
-        console.log("summarization failed");
-        reject("summarization failed");
-      } else {
-        console.log("summarization successful");
-        resolve("This is a summary of the text");
-      }
-    }, 2500);
-  });
-}
-```
-
-The code that makes up `app.ts` is a simple mock application that simulates downloading a page from the internet and then summarizing the content of that page.
-It represents the "business logic" of the service.
-You have your `downloadAndSummarize()` main function that orchestrates the steps of your application (`download()` then `summarize()`).
-
-Both the `download()` and `summarize()` functions include a 2.5-second timeout to simulate the time required for downloading and summarizing content from a URL.
-These functions are invoked using `ctx.run`, which wraps the function call in a promise, adds it to the call graph, and introduces durability.
-
-In this example, `download()` and `summarize()` are mock functions designed to “fail” 50% of the time.
-When they return a “rejected” promise, Resonate automatically retries them until they succeed.
-
-Next, create a file named `gateway.ts` and paste in the following express server code that uses Resonate:
-
-```ts
-import express, { Request, Response } from "express";
-import { Resonate, Context } from "@resonatehq/sdk";
-import { downloadAndSummarize } from "./app";
-
-// Initialize a Resonate application.
-const resonate = new Resonate();
-
-// Register a function as a Resonate function
-resonate.register(
-  "downloadAndSummarize", // function name
-  downloadAndSummarize, // function pointer
-  resonate.options({ timeout: 20000 }) // set a total execution timeout of 20 seconds
-);
-
-// Start the Resonate application
-resonate.start();
-
-// Initialize an Express application.
-const app = express().use(express.json());
-
-// Register a function as an Express endpoint
-app.post("/summarize", async (req: Request, res: Response) => {
-  const url = req.body?.url;
-  try {
-    // Call the resonate function
-    let summary = await resonate.run(
-      "downloadAndSummarize", // function name
-      `summarize-${url}`, // promise ID
-      url // function argument
-    );
-    res.send(summary);
-  } catch (e) {
-    res.status(500).send("An error occurred.");
-  }
-});
-
-// Start the Express application
-app.listen(3000, () => {
-  console.log("Listening on port 3000");
-});
-```
-
-The `gateway.ts` file contains an Express server that listens on port 3000 and includes a single route handler that leverages Resonate to run the `downloadAndSummarize()` function.
-To set it up, you instantiate a Resonate object, register the top-level function via `resonate.run()`, call `resonate.start()`, and create an Express HTTP handler for the `/summarize` route before starting the server on port 3000.
-
-When calling `resonate.run()`, you must provide the function name, a unique identifier, and the function’s arguments.
-The identifier serves as the promise ID for the function execution.
-If you use the same identifier for multiple calls to `resonate.run()`, you will receive the result from the initial execution without re-running the function.
-To get a new result on each call, you need to supply a different promise ID.
-
-Lastly, make sure to update your `package.json` file to include the following scripts:
-
-```json
-{
-  "scripts": {
-    "dev": "npx tsx src/gateway.ts"
-  }
-}
-```
-
-To start your summarization service run `npm start`.
+You should also have the [Resonate CLI](https://github.com/resonatehq/cli) available.
+If you do not, install it now:
 
 ```shell
-npm run dev
+brew install resonatehq/tap/resonate
 ```
 
-Then, from another terminal send a `POST` request to the `/summarize` endpoint.
+This tutorial was written and tested with Resonate Server v0.7.13 and Resonate TypeScript SDK v0.6.3.
+
+Part 5 of this tutorial assumes you have [Ollama](https://ollama.com/) installed and model "llama3.1" running locally on your machine.
+
+## Automatic function retries
+
+In this part of the tutorial you'll create a worker that is error prone to see how Resonate automatically retries failed function executions.
+
+Start by scaffolding a new project.
+
+Navigate to the directory you want to scaffold your project in and run the following command:
 
 ```shell
-curl -X POST http://localhost:3000/summarize -H "Content-Type: application/json" -d '{"url": "http://example.com"}'
+resonate project create --name summarization-agent --template classic-hello-world-typescript-sdk
 ```
 
-Watch the log output of your service.
-There is a good chance that you will see either "download failed" or "summarization failed" or both one or more times.
+:::differentiator Zero-dependency development
 
-However, even if you see those failures logged, eventually you should get the text response, "This is a summary of the text", back to where you made POST request.
+The template you are using does not require a Resonate Server to run.
 
-After the request for example.com succeeds, try running it again.
-Notice how on subsequent requests with the same URL, Resonate does not start the executions again but returns the same root-level promise immediately.
-
-This is because the url makes up part of the root-level promise ID.
-The Resonate TypeScript SDK stores that promise locally and ensures that if the same ID is used in subsequent calls, the result of the execution associated with that promise is returned.
-
-However, if you restart the service or provide a different url, the service will execute the functions again.
-
-In the next part of the tutorial, you will connect to a Resonate Server which stores the promise remotely, so that even if your HTTP server crashes, the function executions will be able to eventually complete.
-
-## Part 2 Crash recovery
-
-Now it is time to connect your service to a Resonate Server to enable recovery from platform-level failures, otherwise known as Durable Execution.
-To simulate a platform-level failure, you will kill the HTTP server process in the middle of the execution of the `downloadAndSummarize()` function.
-
-Follow the steps in the [get started guide](/get-started) to install and run the server on your machine.
-
-By default, the Server runs on localhost port 8001.
-
-After the server is running, you can update your service code.
-
-There are three places where you need to update your code for this nex part of the tutorial.
-
-First, in your `gateway.ts` file, update the `new Resonate()` call and provide it with the URL of the server, in this case `http://localhost:8001`.
-
-```ts
-// Initialize a Resonate application.
-const resonate = new Resonate({ url: "http://localhost:8001" });
-```
-
-Then, extend the top-level promise resolution timeout to a full minute.
-
-```ts
-// Register a function as a Resonate function
-resonate.register(
-  "downloadAndSummarize", // function name
-  downloadAndSummarize, // function pointer
-  resonate.options({ timeout: 60000 }) // set a total execution timeout of 1 minute
-);
-```
-
-You are increasing the top-level promise resolution timeout to a full minute so that you have time to kill the service and bring it back up again.
-
-And finally, in your `app.ts` file add a 10 second sleep to the `downloadAndSummarize()` function between `download()` and `summarize()`.
-
-```ts
-export async function downloadAndSummarize(ctx: Context, url: string) {
-  console.log("Downloading and summarizing content from", url);
-
-  // Download the content from the provided URL
-  let content = await ctx.run(download, url);
-
-  // Sleep for 10 seconds
-  await ctx.sleep(10000);
-
-  // Summarize the downloaded content
-  let summary = await ctx.run(summarize, content);
-
-  // Return the summary of the content
-  return summary;
-}
-```
-
-You are adding a 10 second sleep so that you have time between the `download()` step and the `summarize()` step so that you have time to kill the service before the `summarize()` step starts.
-
-Now that you have your code updated, it is time to simulate a service outage.
-
-If you haven't already, restart your HTTP service with the updated code.
-
-```shell
-npm start
-```
-
-After your service is running with the updated code, send the `POST` request to your service.
-
-```shell
-curl -X POST http://localhost:3000/summarize -H "Content-Type: application/json" -d '{"url": "http://example.com"}'
-```
-
-Let it run it until you see that the log "download successful", then kill (Ctrl-c) the service.
-
-:::note
-
-Because you are using cURL from another terminal, you will get "received".
-In Part 1 of the tutorial, killing the HTTP service would have resulted in the loss of the state of the executions.
-However, because the service is connected to the Resonate Server, when you bring the service back up, the execution sequence continues from where it left off.
+Other "Durable Execution" platforms, such as Temporal, Restate, and DBOS, require your worker to connect to a server or database to get started.
+This is not the case with Resonate.
 
 :::
 
-Start the service again.
-Assuming that you stopped the service after the `download()` function ran, you should now see the `summarize()` function logs and the application complete its execution.
+You should now have a directory called “summarization-agent” with the following structure:
 
-Lets, look at the sequence diagram to understand what happened.
+```text
+summarization-agent
+  ├─ package.json
+  ├─ tsconfig.json
+  └─ src
+     └─ worker.ts
+```
 
-![Remote promise storage diagram with retries](/img/remote-storage-promise-with-retries.svg)
+Open `src/worker.ts` and replace its contents with the following code:
 
-In the diagram above, you can map function 1 to `downloadAndSummarize()`, function 2 to `download()`, and function 3 to `summarize()`.
-Notice how function 1 gets the result of function 2 from the Durable Promise after the process restarts.
-That is because the result of function 2 was stored in promise 2 before the process crashed.
-This effectively resumes the execution of function 1 from where it left off.
+```ts title="src/worker.ts"
+import { Context, Resonate } from "@resonatehq/sdk";
 
-Next, you will inspect the promise in the Resonate Server to see that it resolved successfully.
+const resonate = Resonate.local();
 
-You can inspect the promises stored in the Resonate Server via the Resonate CLI.
+export const downloadAndSummarize = resonate.register(
+  "download-and-summarize",
+  function* (ctx: Context, url: string) {
+    console.log("running download_and_summarize");
 
-```bash
-resonate promise get summarize-http://example.com
+    const content: string = yield* ctx.run(download, url);
+    const summary: string = yield* ctx.run(summarize, content);
+
+    return summary;
+  }
+);
+
+function download(_: Context, url: string): string {
+  console.log("running download");
+  return `content of ${url}`;
+}
+
+function summarize(_: Context, content: string): string {
+  console.log("running summarize");
+  return `summary of ${content}!`;
+}
+
+async function main() {
+  try {
+    const url = "https://example.com";
+    const handle = await downloadAndSummarize.beginRun(url, url);
+    console.log(await handle.result());
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+void main();
+```
+
+Update the `package.json` scripts so you can run the worker with a single command:
+
+```json title="package.json"
+{
+  "scripts": {
+    "worker": "tsx src/worker.ts"
+  }
+}
+```
+
+Install dependencies and run the worker.
+
+```shell
+npm install
+npm run worker
 ```
 
 You should see output similar to the following:
 
+```shell
+running download_and_summarize
+running download
+running summarize
+summary of content of https://example.com!
 ```
-Id:       summarize-http://example.com
-State:    RESOLVED
-Timeout:  9008909898871320
 
-Idempotency Key (create):    summarize-http://example.com
-Idempotency Key (complete):  summarize-http://example.com
+Now, lets add some code to steps `download()` and `summarize()` so they fail 50% of the time.
+
+Import the Resonate Context helpers and use `ctx.math.random()` to generate deterministic random numbers.
+
+```ts title="src/worker.ts" {4-6,16-34}
+import { Context, Resonate } from "@resonatehq/sdk";
+
+// ...
+
+function* download(ctx: Context, url: string) {
+  console.log("running download");
+  const roll = yield* ctx.math.random();
+  if (roll > 0.5) {
+    throw new Error("download encountered an error");
+  }
+  return `content of ${url}`;
+}
+
+function* summarize(ctx: Context, content: string) {
+  console.log("running summarize");
+  const roll = yield* ctx.math.random();
+  if (roll > 0.5) {
+    throw new Error("summarize encountered an error");
+  }
+  return `summary of ${content}!`;
+}
+```
+
+Now, each time you run the app, both `download()` and `summarize()` have a 50% chance of throwing an error.
+
+**Without Resonate**, raised errors would stop the execution and no more progress would be made.
+
+Consider if the app was written without Resonate, like this:
+
+```ts
+async function downloadAndSummarizeWithoutResonate(url: string) {
+  console.log("running download_and_summarize");
+  const content = await downloadWithoutResonate(url);
+  const summary = await summarizeWithoutResonate(content);
+  return summary;
+}
+
+async function downloadWithoutResonate(url: string) {
+  console.log("running download");
+  if (Math.random() > 0.5) {
+    throw new Error("download encountered an error");
+  }
+  return `content of ${url}`;
+}
+
+async function summarizeWithoutResonate(content: string) {
+  console.log("running summarize");
+  if (Math.random() > 0.5) {
+    throw new Error("summarize encountered an error");
+  }
+  return `summary of ${content}!`;
+}
+```
+
+If either `download()` or `summarize()` throw, the execution stops.
+
+**With Resonate** you will notice that even if there is a thrown error, the function retries until it succeeds, enabling `download_and_summarize()` to complete and return the summary.
+
+Run your app several times until you encounter an error, and then wait and watch.
+
+You should eventually see something like this:
+
+```shell
+running download_and_summarize
+running download
+[WARNING] [https://example.com] [https://example.com.1] Function download("https://example.com") failed with Error('download encountered an error') (retrying in 2.0s)
+running download
+running summarize
+[WARNING] [https://example.com] [https://example.com.2] Function summarize('content of https://example.com') failed with Error('summarize encountered an error') (retrying in 2.0s)
+running summarize
+summary of content of https://example.com!
+```
+
+You will notice that if an error is thrown, Resonate automatically retries executing the function.
+
+**Congratulations! You have just witnessed Resonate's automatic function retries in action!**
+
+By default, this will happen forever until the execution succeeds.
+
+You can adjust retry behaviour, timeouts, tags, and routing targets with `ctx.options()`.
+For example, to increase the top-level timeout to 60 seconds and route work to a specific worker group:
+
+```ts title="src/worker.ts" {11-18}
+export const downloadAndSummarize = resonate.register(
+  "download-and-summarize",
+  function* (ctx: Context, url: string) {
+    console.log("running download_and_summarize");
+
+    const content: string = yield* ctx.run(
+      download,
+      url,
+      ctx.options({ timeout: 60_000 })
+    );
+    const summary: string = yield* ctx.run(summarize, content);
+
+    return summary;
+  }
+);
+```
+
+The previous part of the tutorial showcased Resonate’s ability to automatically retry function executions when an error is thrown, and runs the top-level function to completion.
+
+But what if the process / worker crashes altogether in the middle of the execution?
+
+In the next part of the tutorial, we will connect the worker to a Resonate Server to enable recovery!
+
+## Crash recovery
+
+In this part of the tutorial you’ll connect your worker to a Resonate Server to enable recovery from process crashes (platform-level failures), effectively providing "Durable Execution".
+The Resonate Server acts as a supervisor and orchestrator for your worker, storing promises and sending messages.
+
+Run the following command in a separate terminal to start the Resonate Server:
+
+```shell
+resonate serve
+```
+
+After the server is running, update your worker code.
+
+There are two code updates you need to make for this part of the tutorial.
+
+1. Change the Local Store to a Remote Store so that the worker can recover from a process crash.
+2. Add a 10 second sleep between the workflow steps so you have time to simulate a process crash.
+
+First, instantiate Resonate in your worker with a Remote Store instead of a Local Store.
+
+```ts title="src/worker.ts" {3}
+const resonate = Resonate.remote();
+```
+
+:::tip Default Remote Store Configuration
+
+When you instantiate an instance of Resonate that connects to a remote store, the default connection settings will connect to a Resonate Server running on `http://localhost:8001`.
+Additionally, your worker will connect to the Resonate Server with a long poll connection to receive messages.
+
+:::
+
+Next, add a 10 second sleep to `download_and_summarize()` between the `download()` and `summarize()` steps.
+You don't need to import anything to do this.
+You can use the `sleep()` API provided by Resonate Context.
+
+```ts title="src/worker.ts" {9-11}
+export const downloadAndSummarize = resonate.register(
+  "download-and-summarize",
+  function* (ctx: Context, url: string) {
+    console.log("running download_and_summarize");
+    const content: string = yield* ctx.run(download, url);
+    // highlight-start
+    yield* ctx.sleep(10_000);
+    // highlight-end
+    const summary: string = yield* ctx.run(summarize, content);
+    return summary;
+  }
+);
+```
+
+Now try running your worker again.
+
+```shell
+npm run worker
+```
+
+You will see the following logs:
+
+```shell
+running download_and_summarize
+running download
+```
+
+After you see the log "running download", kill the process.
+
+It doesn't matter how long you wait, but when you are ready to continue, restart the worker.
+
+```shell
+npm run worker
+```
+
+Remember, each step is still going to fail 50% of the time, so you may see errors.
+
+Eventually you should see the logs continue where they left off:
+
+```shell
+running summarize
+summary of content of https://example.com!
+```
+
+Notice that you don't see the log "running download" after restarting the worker?
+That's because the Resonate Server stored the result of `download()` in a promise.
+When you restarted the worker after the crash, `download_and_summarize()` re-executed and the result of `download()` was retrieved from the promise.
+
+**Congratulations, you have just witnessed Durable Execution in action!**
+
+Don't change anything in the code and run the worker again.
+
+This time the only log you should see is the following:
+
+```shell
+summary of content of https://example.com!
+```
+
+That's because the Resonate Server stored the result of `download_and_summarize()` in a promise.
+
+If you look at the code where we invoke `download_and_summarize()`, you'll notice that we are using the url as the promise ID.
+
+```ts title="src/worker.ts" {21}
+const handle = await downloadAndSummarize.beginRun(url, url);
+```
+
+You can inspect the promise ID in the Resonate Server using the Resonate CLI.
+
+```shell
+resonate promise get https://example.com
+```
+
+You should see something like this:
+
+```shell
+Id:       https://example.com
+State:    RESOLVED
+Timeout:  1784400650144
+
+Idempotency Key (create):    https://example.com
+Idempotency Key (complete):  https://example.com
 
 Param:
   Headers:
+    resonate:format-ts:  {"func":"download-and-summarize","args":["https://example.com"],"version":1}
   Data:
-    {"func":"downloadAndSummarize","args":["http://example.com"]}
+    {"func":"download-and-summarize","args":["https://example.com"],"version":1}
 
 Value:
   Headers:
   Data:
-    "This is a summary of the text"
+    "summary of content of https://example.com!"
 
 Tags:
-  resonate:invocation:  true
+  resonate:invoke:  poll://any@worker
+  resonate:parent:  https://example.com
+  resonate:root:    https://example.com
+  resonate:scope:   global
 ```
 
-:::tip
+Promise IDs are unique identifiers in a Resonate Application, and you must specify the promise ID for top-level invocations.
+The promise IDs of `download()` and `summarize()` are generated automatically by default and Resonate will know not to re-invoke those functions if `download_and_summarize()` is invoked again with the same promise ID.
 
-Try out your app again with another url (to create a new promise with a different ID).
-Then, kill the HTTP service halfway through execution.
-Query for the promise in the Resonate Server and check out the status.
+If you are using the local store, the promise ID persists only as long as the process is alive.
+If you are using a remote promise store (Resonate Server), the promise ID persists indefinitely.
 
-You should see that the promise is marked `PENDING`.
+Change the promise ID to something else and run the worker again.
 
-Bring your HTTP service back up and and then query for the promise again.
+```ts title="src/worker.ts" {20}
+const url = "https://resonatehq.io";
+```
 
-It should be marked `RESOLVED`.
+You will see that `download_and_summarize()` executes again from the top.
+
+In the next part of the tutorial, you switch from using `.beginRun()` to using `.beginRpc()` and asynchronously invoke `download_and_summarize()` via an RPC (Remote Procedure Call).
+
+## Asynchronous RPC
+
+In this part of the tutorial, you will move the code that invokes `download_and_summarize()` to a separate process.
+
+Currently the code that invokes `download_and_summarize()` lives in the same file and process as the workflow itself.
+
+It looks like this:
+
+```ts title="src/worker.ts"
+const handle = await downloadAndSummarize.beginRun(url, url);
+console.log(await handle.result());
+```
+
+The `.beginRun()` method means "run this function right here".
+
+You will move the invocation of `download_and_summarize()` to a separate process and use Resonate's `.beginRpc()` method to invoke it.
+The `.beginRpc()` method means "invoke this function over there".
+
+Start by creating a new file `src/invoke.ts` and add the following code:
+
+```ts title="src/invoke.ts"
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = Resonate.remote({ group: "gateway" });
+
+async function main() {
+  try {
+    const url = "https://example.com";
+
+    const handle = await resonate.beginRpc(
+      `download-and-summarize-${url}`,
+      "download-and-summarize",
+      url,
+      resonate.options({ target: "poll://any@worker" })
+    );
+
+    console.log(await handle.result());
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+void main();
+```
+
+Update the `package.json` scripts so you can run the worker and the invocation script separately:
+
+```json title="package.json"
+{
+  "scripts": {
+    "worker": "tsx src/worker.ts",
+    "invoke": "tsx src/invoke.ts"
+  }
+}
+```
+
+Open two terminal windows.
+In the first terminal, run the worker:
+
+```shell
+npm run worker
+```
+
+In the second terminal, run the invocation script:
+
+```shell
+npm run invoke
+```
+
+You should see the invocation script block until the workflow completes, and then print the result.
+
+**Congratulations! You have just invoked a function in a different process using Resonate's Async RPC API!**
+
+## Human-in-the-loop
+
+Next, you'll add a human-in-the-loop approval step to the workflow.
+The workflow will pause after generating the summary and wait for an external signal that either approves or rejects it.
+
+Update the worker so that `download_and_summarize()` creates a promise and waits for it to resolve before returning the summary.
+
+```ts title="src/worker.ts" {12-28}
+export const downloadAndSummarize = resonate.register(
+  "download-and-summarize",
+  function* (ctx: Context, url: string) {
+    console.log("running download_and_summarize");
+    const content: string = yield* ctx.run(download, url);
+    yield* ctx.sleep(10_000);
+    const summary: string = yield* ctx.run(summarize, content);
+
+    const approval = yield* ctx.promise({
+      id: `${url}-approval`,
+      data: { summary },
+    });
+
+    const approved = (yield* approval) as boolean;
+
+    if (!approved) {
+      throw new Error("Summary rejected by reviewer");
+    }
+
+    return summary;
+  }
+);
+```
+
+Run the worker and the invocation script again.
+
+```shell
+npm run worker
+```
+
+```shell
+npm run invoke
+```
+
+The invocation script will block while the workflow waits for the approval promise to be resolved.
+
+Use the Resonate CLI to resolve the promise and unblock the workflow.
+
+```shell
+resonate promises resolve https://example.com-approval --data true
+```
+
+You should see the result of the `download_and_summarize()` workflow printed in the invocation script terminal.
+
+**Congratulations you have just created a human-in-the-loop workflow!**
+
+Now that we have the fundamental building blocks in place, let's make it into a real application.
+
+## Business logic
+
+In this part of the tutorial, you will add the rest of pieces that will convert this theoretical workflow into a real working application that downloads a webpage, summarizes it, and waits for confirmation from a human-in-the-loop.
+
+To do this you will:
+
+- Convert the invocation script into an Express application (HTTP Gateway) that handles two routes:
+  - `/summarize` to start the summarization workflow.
+  - `/confirm` to resolve the promise created in the workflow and pass data to the workflow.
+- Add a new step to the workflow that "sends an email" with the summary (this will just print the summary and links to confirm or reject it).
+- Add Cheerio to scrape the webpage content.
+- Add Ollama to summarize the content.
+
+Start by converting the invocation script into an Express application.
+
+Rename `src/invoke.ts` to `src/gateway.ts`.
+
+Install the additional dependencies:
+
+```shell
+npm install express node-fetch@3 cheerio
+```
+
+And change the code in `src/gateway.ts` to the following:
+
+```ts title="src/gateway.ts"
+import express, { Request, Response } from "express";
+import { Resonate } from "@resonatehq/sdk";
+import crypto from "node:crypto";
+
+const app = express();
+app.use(express.json());
+
+const resonate = Resonate.remote({ group: "gateway" });
+
+app.post("/summarize", async (req: Request, res: Response) => {
+  try {
+    const { url, email } = req.body ?? {};
+
+    if (!url || !email) {
+      return res.status(400).json({ error: "URL and email required" });
+    }
+
+    const usableId = clean(url);
+
+    await resonate.beginRpc(
+      `download-and-summarize-${usableId}`,
+      "download-and-summarize",
+      { url, email, usableId },
+      resonate.options({ target: "poll://any@worker" })
+    );
+
+    return res.status(202).json({ message: "Workflow started" });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Unable to start workflow" });
+  }
+});
+
+app.get("/confirm", async (req: Request, res: Response) => {
+  try {
+    const promiseId = req.query.promise_id as string | undefined;
+    const confirm = req.query.confirm as string | undefined;
+
+    if (!promiseId || confirm === undefined) {
+      return res.status(400).json({ error: "promise_id and confirm are required" });
+    }
+
+    await resonate.promises.resolve({ id: promiseId, data: confirm === "true" });
+
+    return res.status(200).json({ message: "Decision recorded" });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Unable to record decision" });
+  }
+});
+
+function clean(url: string) {
+  return crypto.createHash("sha256").update(url).digest("hex");
+}
+
+function main() {
+  app.listen(3000, () => {
+    console.log("Gateway listening on http://localhost:3000");
+  });
+}
+
+main();
+```
+
+Update the `package.json` scripts one more time so you can run the gateway alongside the worker:
+
+```json title="package.json"
+{
+  "scripts": {
+    "worker": "tsx src/worker.ts",
+    "gateway": "tsx src/gateway.ts"
+  }
+}
+```
+
+Next, enhance the worker to perform real work: fetching website content, summarizing it with Ollama, and sending "email" notifications with approval links.
+
+Install the additional worker dependencies (skip this if you already installed them for the gateway):
+
+```shell
+npm install node-fetch@3 cheerio
+```
+
+Update `src/worker.ts` to the following:
+
+```ts title="src/worker.ts"
+import { Context, Resonate } from "@resonatehq/sdk";
+import fetch from "node-fetch";
+import { load } from "cheerio";
+
+type WorkflowParams = {
+  url: string;
+  email: string;
+  usableId: string;
+};
+
+const resonate = Resonate.remote({ group: "worker" });
+
+export const downloadAndSummarize = resonate.register(
+  "download-and-summarize",
+  function* (ctx: Context, params: WorkflowParams) {
+    console.log("running download_and_summarize", params.url);
+
+    const htmlHandle = yield* ctx.beginRun(fetchHtml, params.url);
+    const html = (yield* htmlHandle) as string;
+
+    const cleaned = yield* ctx.run(extract, html);
+
+    const summaryHandle = yield* ctx.beginRun(generateSummary, cleaned);
+    const summary = (yield* summaryHandle) as string;
+
+    yield* ctx.run(sendEmail, params, summary);
+
+    const decisionPromise = yield* ctx.promise({
+      id: `${params.usableId}-approval`,
+      data: { summary, url: params.url, email: params.email },
+    });
+
+    const approved = (yield* decisionPromise) as boolean;
+
+    if (!approved) {
+      throw new Error("Summary rejected by reviewer");
+    }
+
+    return summary;
+  }
+);
+
+function extract(_: Context, html: string) {
+  console.log("running extract");
+  const $ = load(html);
+  return $("body")
+    .text()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function fetchHtml(_: Context, url: string): Promise<string> {
+  console.log("fetching page", url);
+  const response = await fetch(url, {
+    headers: { "User-Agent": "Resonate Summarizer" },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch page (${response.status})`);
+  }
+
+  return await response.text();
+}
+
+async function generateSummary(_: Context, text: string): Promise<string> {
+  console.log("calling Ollama for summary");
+  const response = await fetch("http://localhost:11434/api/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "llama3.1",
+      prompt: `Summarize the following webpage content:\n${text}`,
+      stream: false,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Ollama request failed (${response.status})`);
+  }
+
+  const json = (await response.json()) as { response: string };
+  return json.response;
+}
+
+function sendEmail(_: Context, params: WorkflowParams, summary: string) {
+  const approvalId = `${params.usableId}-approval`;
+  const confirmUrl = new URL("/confirm", "http://localhost:3000");
+  confirmUrl.searchParams.set("promise_id", approvalId);
+
+  const approveUrl = new URL(confirmUrl.toString());
+  approveUrl.searchParams.set("confirm", "true");
+
+  const rejectUrl = new URL(confirmUrl.toString());
+  rejectUrl.searchParams.set("confirm", "false");
+
+  console.log("--- email preview ---");
+  console.log(`To: ${params.email}`);
+  console.log(`Subject: Summary ready for ${params.url}`);
+  console.log(summary);
+  console.log(`Approve: ${approveUrl.toString()}`);
+  console.log(`Reject: ${rejectUrl.toString()}`);
+  console.log("----------------------");
+}
+
+function main() {
+  resonate.start();
+  console.log("Worker listening on poll://any@worker");
+  setInterval(() => {}, 1 << 30);
+}
+
+main();
+```
+
+:::tip Deterministic asynchronous helpers
+
+When using helpers like `ctx.beginRun(fetch, ...)`, Resonate records progress after each awaited operation.
+If the worker crashes mid-request, the workflow resumes without duplicating work.
 
 :::
 
-So, now you should have a good understanding of how to use the Resonate SDK and the Resonate Server to build a distributed async await applications!
+Now run the full application.
+
+1. Ensure the Resonate Server and Ollama are running (`ollama run llama3.1`).
+2. Start the worker: `npm run worker`.
+3. Start the gateway: `npm run gateway`.
+
+Send a request to kick off the workflow:
+
+```shell
+curl -X POST http://localhost:3000/summarize \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com", "email": "someone@example.com"}'
+```
+
+Watch the worker logs to see each step execute and the "email preview" output.
+
+Open the `Approve` link printed in the logs (or use curl) to confirm the summary:
+
+```shell
+curl "http://localhost:3000/confirm?promise_id=<approval-id>&confirm=true"
+```
+
+Once confirmed, the workflow completes and the promise resolves.
+
+If you reject the summary (`confirm=false`), the workflow throws an error and you can retry the request after making adjustments.
+
+At this point you have:
+
+- **Automatic retries:** Your workflow recovers from application-level errors automatically.
+- **Crash recovery:** Connecting to Resonate Server allows the workflow to resume after process crashes.
+- **Asynchronous Remote Procedure Calls (Async RPC):** You separated function invocation from execution, enabling workers to process tasks in other processes or machines.
+- **Human-in-the-loop coordination:** The workflow pauses until a human approves or rejects the summary.
+- **Real business logic:** You scrape real webpages, summarize them with Ollama, and expose the workflow via HTTP.
+
+From here you can continue iterating on the example, integrate a real email provider, or deploy the worker and gateway separately.
+
+Happy building with Resonate and TypeScript!
