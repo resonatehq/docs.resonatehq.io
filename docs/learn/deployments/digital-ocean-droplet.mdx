@@ -81,7 +81,7 @@ api:
       config:
         addr: ":18001"
         auth:
-          bestest-app: KH0_nriLP8jM9vN6jHe8M3Op1Ep-daTh_gDZdrlD6WM
+          your-username: your-password
 
     grpc:
       config:
@@ -96,7 +96,7 @@ aio:
             config:
               addr: ":18002"
               auth:
-                bestest-app: password
+                your-username: your-password
 ```
 
 This configuration keeps the store (`:18001`) and poller (`:18002`) bound to localhost. Nginx terminates TLS on ports `8001` and `8002` and forwards traffic to these internal services.
