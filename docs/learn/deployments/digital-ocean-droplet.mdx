@@ -8,16 +8,16 @@ description: Instructions for deploying a Resonate Server on a DigitalOcean Drop
 import Tabs from "@theme/Tabs";
 import TabItem from "@theme/TabItem";
 
-In this tutorial, you’ll deploy a single Resonate Server on a DigitalOcean Droplet, secure it with TLS, and expose it so client applications can connect over HTTPS. The walkthrough mirrors the tone and pacing of the SDK tutorials—each section builds on the last, and you can stop once your goals are met.
+In this tutorial, you’ll deploy a single Resonate Server on a DigitalOcean Droplet, secure it with TLS, and expose it so client applications can connect over HTTPS.
 
-## Overview
+You will:
 
 - Provision an Ubuntu-based Droplet and install the dependencies required for Resonate, Nginx, and Let’s Encrypt.
 - Download and configure the Resonate Server binary so it listens on internal ports you control.
 - Terminate TLS at Nginx and proxy HTTPS traffic to the Resonate Server.
 - Validate the deployment and connect from a client SDK.
 
-## Prerequisites
+### Prerequisites
 
 - A DigitalOcean Droplet running Ubuntu 22.04 (or later) with root or sudo access.
 - A fully qualified domain name (e.g., `your-domain.com`) that resolves to the Droplet’s public IP.
@@ -59,7 +59,8 @@ cd /root
 wget https://github.com/resonatehq/resonate/releases/download/vX.Y.Z/resonate-linux-amd64.zip
 ```
 
-Replace `vX.Y.Z` with the release you want to run and swap the filename if you’re targeting ARM. Unpack the archive and make the binary executable so systemd can launch it later:
+Replace `vX.Y.Z` with the release you want to run and swap the filename if you’re targeting ARM.
+Unpack the archive and make the binary executable so systemd can launch it later:
 
 ```shell
 unzip resonate-linux-amd64.zip
@@ -67,7 +68,8 @@ chmod +x resonate
 ./resonate --version
 ```
 
-Create `/root/resonate.yml` to define how the server listens, which URLs clients use, and which credentials gate access. Keeping this configuration explicit makes it easy to audit which services are exposed:
+Create `/root/resonate.yml` to define how the server listens, which URLs clients use, and which credentials gate access.
+Keeping this configuration explicit makes it easy to audit which services are exposed:
 
 ```yaml
 metricsAddr: ":9103"
@@ -99,11 +101,13 @@ aio:
                 your-username: your-password
 ```
 
-This configuration keeps the store (`:18001`) and poller (`:18002`) bound to localhost. Nginx terminates TLS on ports `8001` and `8002` and forwards traffic to these internal services.
+This configuration keeps the store (`:18001`) and poller (`:18002`) bound to localhost.
+Nginx terminates TLS on ports `8001` and `8002` and forwards traffic to these internal services.
 
 Next create a systemd Service unit to manage the Resonate Server process.
 
-Daemonizing Resonate under systemd keeps it running across reboots, and systemd will restart the service if it exits unexpectedly. Add a unit file to formalize that lifecycle:
+Daemonizing Resonate under systemd keeps it running across reboots, and systemd will restart the service if it exits unexpectedly.
+Add a unit file to formalize that lifecycle:
 
 ```shell
 sudo tee /etc/systemd/system/resonate.service >/dev/null <<'EOF'
@@ -217,9 +221,10 @@ curl -k https://your-domain.com:8001/health
 
 Update the ports and domain if you chose different values.
 
-## Connect a Client Application
+## Connect your application
 
-Finally, update your application to point at the Droplet. The examples below show how to target the public endpoints you just exposed and supply the same credentials you configured in `resonate.yml`.
+Finally, update your application to point at the Droplet.
+The examples below show how to target the public endpoints you just exposed and supply the same credentials you configured in `resonate.yml`.
 
 <Tabs
     groupId="sdk-language"
@@ -282,4 +287,4 @@ For TypeScript workers, set the `RESONATE_USERNAME` and `RESONATE_PASSWORD` envi
 
 ## Conclusion
 
-You now have a production-style Resonate Server running behind Nginx with automated TLS, ready to serve external applications. From here you can harden the deployment with DigitalOcean firewalls, add observability using the metrics endpoint, or scale out with additional droplets behind a load balancer as your traffic grows.
+You now have a production-style Resonate Server running behind Nginx with automated TLS, ready to serve external applications.
