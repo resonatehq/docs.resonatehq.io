@@ -1,5 +1,5 @@
 ---
-id: index
+id: website-summarization-agent
 title: Build a durable website summarization AI agent in TypeScript with Resonate, Express, and Ollama
 description: Get started with the Resonate TypeScript SDK.
 sidebar_label: Summarization agent
@@ -51,7 +51,7 @@ By the end of this tutorial you'll have a good understanding of the Resonate Typ
 
 ### Prerequisites
 
-This tutorial assumes that you have [Node.js 20+](https://nodejs.org/en) and a package manager such as npm installed.
+This tutorial assumes that you have [Bun 1.1+](https://bun.sh/) installed. Bun provides both the runtime and package manager used throughout the guide. If you need to install it, run `brew install oven-sh/bun/bun` (macOS) or follow the instructions on the Bun website.
 
 You should also have the [Resonate CLI](https://github.com/resonatehq/cli) available.
 If you do not, install it now:
@@ -150,8 +150,8 @@ Update the `package.json` scripts so you can run the worker with a single comman
 Install dependencies and run the worker.
 
 ```shell
-npm install
-npm run worker
+bun install
+bun run worker
 ```
 
 You should see output similar to the following:
@@ -167,7 +167,7 @@ Now, lets add some code to steps `download()` and `summarize()` so they fail 50%
 
 Import the Resonate Context helpers and use `ctx.math.random()` to generate deterministic random numbers.
 
-```ts title="src/worker.ts" {4-6,16-34}
+```ts title="src/worker.ts"
 import { Context, Resonate } from "@resonatehq/sdk";
 
 // ...
@@ -250,7 +250,7 @@ By default, this will happen forever until the execution succeeds.
 You can adjust retry behaviour, timeouts, tags, and routing targets with `ctx.options()`.
 For example, to increase the top-level timeout to 60 seconds and route work to a specific worker group:
 
-```ts title="src/worker.ts" {11-18}
+```ts title="src/worker.ts"
 export const downloadAndSummarize = resonate.register(
   "download-and-summarize",
   function* (ctx: Context, url: string) {
@@ -294,7 +294,7 @@ There are two code updates you need to make for this part of the tutorial.
 
 First, instantiate Resonate in your worker with a Remote Store instead of a Local Store.
 
-```ts title="src/worker.ts" {3}
+```ts title="src/worker.ts"
 const resonate = Resonate.remote();
 ```
 
@@ -309,15 +309,15 @@ Next, add a 10 second sleep to `download_and_summarize()` between the `download(
 You don't need to import anything to do this.
 You can use the `sleep()` API provided by Resonate Context.
 
-```ts title="src/worker.ts" {9-11}
+```ts title="src/worker.ts"
 export const downloadAndSummarize = resonate.register(
   "download-and-summarize",
   function* (ctx: Context, url: string) {
     console.log("running download_and_summarize");
     const content: string = yield* ctx.run(download, url);
-    // highlight-start
+
     yield* ctx.sleep(10_000);
-    // highlight-end
+
     const summary: string = yield* ctx.run(summarize, content);
     return summary;
   }
@@ -327,7 +327,7 @@ export const downloadAndSummarize = resonate.register(
 Now try running your worker again.
 
 ```shell
-npm run worker
+bun run worker
 ```
 
 You will see the following logs:
@@ -342,7 +342,7 @@ After you see the log "running download", kill the process.
 It doesn't matter how long you wait, but when you are ready to continue, restart the worker.
 
 ```shell
-npm run worker
+bun run worker
 ```
 
 Remember, each step is still going to fail 50% of the time, so you may see errors.
@@ -372,7 +372,7 @@ That's because the Resonate Server stored the result of `download_and_summarize(
 
 If you look at the code where we invoke `download_and_summarize()`, you'll notice that we are using the url as the promise ID.
 
-```ts title="src/worker.ts" {21}
+```ts title="src/worker.ts"
 const handle = await downloadAndSummarize.beginRun(url, url);
 ```
 
@@ -418,7 +418,7 @@ If you are using a remote promise store (Resonate Server), the promise ID persis
 
 Change the promise ID to something else and run the worker again.
 
-```ts title="src/worker.ts" {20}
+```ts title="src/worker.ts"
 const url = "https://resonatehq.io";
 ```
 
@@ -486,13 +486,13 @@ Open two terminal windows.
 In the first terminal, run the worker:
 
 ```shell
-npm run worker
+bun run worker
 ```
 
 In the second terminal, run the invocation script:
 
 ```shell
-npm run invoke
+bun run invoke
 ```
 
 You should see the invocation script block until the workflow completes, and then print the result.
@@ -506,7 +506,7 @@ The workflow will pause after generating the summary and wait for an external si
 
 Update the worker so that `download_and_summarize()` creates a promise and waits for it to resolve before returning the summary.
 
-```ts title="src/worker.ts" {12-28}
+```ts title="src/worker.ts"
 export const downloadAndSummarize = resonate.register(
   "download-and-summarize",
   function* (ctx: Context, url: string) {
@@ -534,11 +534,11 @@ export const downloadAndSummarize = resonate.register(
 Run the worker and the invocation script again.
 
 ```shell
-npm run worker
+bun run worker
 ```
 
 ```shell
-npm run invoke
+bun run invoke
 ```
 
 The invocation script will block while the workflow waits for the approval promise to be resolved.
@@ -575,7 +575,7 @@ Rename `src/invoke.ts` to `src/gateway.ts`.
 Install the additional dependencies:
 
 ```shell
-npm install express node-fetch@3 cheerio
+bun add express node-fetch@3 cheerio
 ```
 
 And change the code in `src/gateway.ts` to the following:
@@ -620,10 +620,15 @@ app.get("/confirm", async (req: Request, res: Response) => {
     const confirm = req.query.confirm as string | undefined;
 
     if (!promiseId || confirm === undefined) {
-      return res.status(400).json({ error: "promise_id and confirm are required" });
+      return res
+        .status(400)
+        .json({ error: "promise_id and confirm are required" });
     }
 
-    await resonate.promises.resolve({ id: promiseId, data: confirm === "true" });
+    await resonate.promises.resolve({
+      id: promiseId,
+      data: confirm === "true",
+    });
 
     return res.status(200).json({ message: "Decision recorded" });
   } catch (error) {
@@ -661,7 +666,7 @@ Next, enhance the worker to perform real work: fetching website content, summari
 Install the additional worker dependencies (skip this if you already installed them for the gateway):
 
 ```shell
-npm install node-fetch@3 cheerio
+bun add node-fetch@3 cheerio
 ```
 
 Update `src/worker.ts` to the following:
@@ -712,10 +717,7 @@ export const downloadAndSummarize = resonate.register(
 function extract(_: Context, html: string) {
   console.log("running extract");
   const $ = load(html);
-  return $("body")
-    .text()
-    .replace(/\s+/g, " ")
-    .trim();
+  return $("body").text().replace(/\s+/g, " ").trim();
 }
 
 async function fetchHtml(_: Context, url: string): Promise<string> {
@@ -780,9 +782,9 @@ function main() {
 main();
 ```
 
-:::tip Deterministic asynchronous helpers
+:::tip Deterministic asynchronous APIs
 
-When using helpers like `ctx.beginRun(fetch, ...)`, Resonate records progress after each awaited operation.
+When using APIs like `ctx.beginRun(<function_name>, ...)`, Resonate records progress after each awaited operation.
 If the worker crashes mid-request, the workflow resumes without duplicating work.
 
 :::
@@ -790,8 +792,8 @@ If the worker crashes mid-request, the workflow resumes without duplicating work
 Now run the full application.
 
 1. Ensure the Resonate Server and Ollama are running (`ollama run llama3.1`).
-2. Start the worker: `npm run worker`.
-3. Start the gateway: `npm run gateway`.
+2. Start the worker: `bun run worker`.
+3. Start the gateway: `bun run gateway`.
 
 Send a request to kick off the workflow:
 
