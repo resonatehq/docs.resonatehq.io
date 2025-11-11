@@ -85,7 +85,15 @@ resonate = Resonate.remote()
 
     <TabItem value="typescript">
 
-Coming soon...
+```ts
+import { Resonate } from "@resonatehq/sdk";
+
+// Local promise store: great for iterating locally.
+const localResonate = Resonate.local();
+
+// Remote promise store: connects to a Resonate Server (defaults to http://localhost:8001).
+const remoteResonate = Resonate.remote();
+```
 
     </TabItem>
 
@@ -141,6 +149,20 @@ resonate.register(foo)
 
     <TabItem value="typescript">
 
+```ts
+import { Context, Resonate } from "@resonatehq/sdk";
+
+const resonate = Resonate.local();
+
+export const foo = resonate.register(
+  "foo",
+  function* (ctx: Context, params: { value: string }) {
+    // Durable logic lives here.
+    return params.value.toUpperCase();
+  }
+);
+```
+
   </TabItem>
 
 </Tabs>
@@ -168,6 +190,21 @@ result = resonate.options(target="<transport_plugin>://<unique_id>@<group>/<id>"
     </TabItem>
 
     <TabItem value="typescript">
+
+```ts
+// Invoke the registered function in the same process
+const localHandle = await foo.beginRun("foo-run-1", { value: "hello" });
+const localResult = await localHandle.result();
+
+// Invoke the function on a remote worker group
+const remoteHandle = await resonate.beginRpc(
+  "foo-run-2",
+  "foo",
+  { value: "hello" },
+  resonate.options({ target: "poll://any@worker" })
+);
+const remoteResult = await remoteHandle.result();
+```
 
     </TabItem>
 
@@ -199,6 +236,31 @@ def foo(ctx, params):
     </TabItem>
 
     <TabItem value="typescript">
+
+```ts
+import { Context, Resonate } from "@resonatehq/sdk";
+
+const resonate = Resonate.local();
+
+class Database {
+  query(sql: string) {
+    // ...
+    return [];
+  }
+}
+
+const db = new Database();
+resonate.setDependency("db", db);
+
+export const foo = resonate.register(
+  "foo",
+  function* (ctx: Context) {
+    const connection = ctx.getDependency<Database>("db");
+    // Use the shared dependency inside the workflow.
+    return connection.query("SELECT 1");
+  }
+);
+```
 
     </TabItem>
 

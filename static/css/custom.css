@@ -74,7 +74,9 @@ code {
 
 .prism-code {
   border-radius: 0;
-  padding-left: 0;
+  background-color: #080a0e !important;
+  padding-left: 1.25rem !important;
+  border: 1px solid rgba(176, 184, 195, 0.25) !important;
 }
 
 article {
