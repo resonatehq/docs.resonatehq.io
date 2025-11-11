@@ -224,13 +224,34 @@ pagination-nav__link:hover {
   border-radius: 0;
 }
 
+.admonition {
+  background-color: var(--ifm-color-dark);
+  border: 1px solid rgba(176, 184, 195, 0.25) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+[class^="admonitionHeading_"] {
+  background-color: rgba(18, 22, 31, 0.92);
+  border-bottom: 1px solid rgba(176, 184, 195, 0.25);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem var(--ifm-pre-padding);
+}
+
+[class^="admonitionContent_"] {
+  padding: 1rem;
+}
 .alert--success {
   background-color: var(--ifm-color-dark);
+  border: 1px solid rgba(176, 184, 195, 0.25) !important;
   border-left: 0;
   color: var(--ifm-color-primary);
   border-radius: 0;
+  padding: 0 !important;
   box-shadow: none !important;
-  padding-left: 0;
 }
 
 .alert--differentiator {
