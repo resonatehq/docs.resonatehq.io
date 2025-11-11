@@ -35,7 +35,7 @@ The finished setup lets you kick off a long-running countdown that posts a messa
 
 Throughout the tutorial you will store the Resonate Server URL and Basic Auth credentials in environment variables:
 
-```bash
+```shell
 export RESONATE_SERVER_URL="https://<your-cloud-run-url>"
 export RESONATE_AUTH_USER="myuser"
 export RESONATE_AUTH_PASS="mypass"
@@ -62,7 +62,7 @@ You will need to make sure to expose port **8001** and enable Basic Auth.
 
 In your terminal, run the following command, replacing `<your-region>` with your desired GCP region (e.g., `us-central1`):
 
-```bash
+```shell
 gcloud run deploy resonate-server \
   --image=resonatehqio/resonate \
   --region=<your-region> \
@@ -114,18 +114,27 @@ Verify the public API
 
 Confirm the Resonate Server is reachable and honors Basic Auth.
 
-```bash
-curl -u  -i "$RESONATE_SERVER_URL/"
+```shell
+curl -u  -i "$RESONATE_SERVER_URL"
 ```
 
 Expect a `200 OK` response.
+
 A `401 Unauthorized` without credentials indicates auth is working.
+
+:::tip test the promises API
+
+If you curl or navigate to \<your-service-url\>/promises you should see an empty promises array `[]`, indicating the server is up and responding.
+
+```json
+{ "cursor": null, "promises": [] }
+```
+
+:::
 
 The Cloud Function will need to talk back to this endpoint; confirming connectivity now prevents later debugging surprises.
 
-You validated HTTPS routing, port mapping, and Basic Auth on your Cloud Run service.
-
-Next scaffold the countdown workflow that we will deploy as the serverless worker.
+Now that you validated HTTPS routing, port mapping, and Basic Auth on your Cloud Run service you will develop the countdown workflow that we will deploy as a serverless worker.
 
 ## Countdown workflow
 
@@ -133,7 +142,7 @@ Create a small Node.js project that registers a Resonate workflow called `countd
 
 Initialize a folder for the worker.
 
-```bash
+```shell
 mkdir countdown-worker && cd countdown-worker
 npm init -y
 npm install @resonatehq/sdk @resonatehq/gcp
@@ -201,7 +210,7 @@ You built the worker code that Cloud Run will execute each time the Resonate Ser
 Deploy the countdown worker as an HTTP-triggered Cloud Function (which internally runs on Cloud Run).
 You’ll pass the Resonate Server URL and Basic Auth credentials via environment variables.
 
-```bash
+```shell
 gcloud functions deploy countdown-worker \
   --gen2 \
   --region=<your-region> \
@@ -218,7 +227,7 @@ RESONATE_AUTH_PASS=$RESONATE_AUTH_PASS
 
 Once deployment finishes, note the **Function URL** and export it:
 
-```bash
+```shell
 export RESONATE_WORKER_URL="https://<function-url>"
 ```
 
@@ -230,7 +239,7 @@ You published the countdown worker as an HTTP endpoint that the Resonate Server 
 
 Start a long-running countdown from your terminal using the Resonate CLI. Each step sends a message to the target URL (such as an ntfy.sh topic) before sleeping.
 
-```bash
+```shell
 resonate invoke countdown-demo \
   --func countdown \
   --arg 5 \
