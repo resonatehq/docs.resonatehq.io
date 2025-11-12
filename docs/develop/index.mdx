@@ -35,6 +35,7 @@ Quick example:
 
 import Tabs from "@theme/Tabs";
 import TabItem from "@theme/TabItem";
+import MoreExamplesButton from "@site/src/components/MoreExamplesButton";
 
 <Tabs
     groupId="preferred-language"
@@ -50,7 +51,7 @@ import TabItem from "@theme/TabItem";
 uv add resonate-sdk
 ```
 
-[More examples](/develop/python#installation).
+<MoreExamplesButton href="/develop/python#installation" />
 
     </TabItem>
     <TabItem value="typescript">
@@ -59,7 +60,7 @@ uv add resonate-sdk
 bun add @resonatehq/sdk
 ```
 
-[More examples](/develop/typescript#installation).
+<MoreExamplesButton href="/develop/typescript#installation" />
 
     </TabItem>
 
@@ -97,7 +98,7 @@ from resonate import Resonate
 resonate = Resonate.local()
 ```
 
-[More examples](/develop/python#initialization).
+<MoreExamplesButton href="/develop/python#initialization" />
 
     </TabItem>
 
@@ -110,7 +111,7 @@ import { Resonate } from "@resonatehq/sdk";
 const resonate = Resonate.local();
 ```
 
-[More examples](/develop/typescript#initialization).
+<MoreExamplesButton href="/develop/typescript#initialization" />
 
     </TabItem>
 
@@ -160,7 +161,7 @@ def foo(context: Context, arg: str) -> str:
     return result
 ```
 
-[More examples](/develop/python#resonateregister).
+<MoreExamplesButton href="/develop/python#resonateregister" />
 
     </TabItem>
 
@@ -175,7 +176,7 @@ fooR = resonate.register("foo", (context: Context, arg: string): string => {
 });
 ```
 
-[More examples](/develop/typescript#register).
+<MoreExamplesButton href="/develop/typescript#register" />
 
     </TabItem>
 
@@ -223,7 +224,7 @@ def main():
     result = handle.result()
 ```
 
-[More examples](/develop/python#run).
+<MoreExamplesButton href="/develop/python#run" />
 
     </TabItem>
 
@@ -248,7 +249,7 @@ async function main() {
 }
 ```
 
-[More examples](/develop/typescript#run)
+<MoreExamplesButton href="/develop/typescript#run" />
 
     </TabItem>
 
@@ -299,7 +300,7 @@ def main():
     result = handle.result()
 ```
 
-[More examples](/develop/python#rpc).
+<MoreExamplesButton href="/develop/python#rpc" />
 
     </TabItem>
 
@@ -343,7 +344,7 @@ async function main() {
 }
 ```
 
-[More examples](/develop/typescript#rpc)
+<MoreExamplesButton href="/develop/typescript#rpc" />
 
     </TabItem>
 
@@ -403,7 +404,7 @@ resonate.promises.reject("promise-id")
 
 ```
 
-[More examples](/develop/python#promisescreate).
+<MoreExamplesButton href="/develop/python#promisescreate" />
 
     </TabItem>
 
@@ -431,7 +432,7 @@ await resonate.promises.resolve("promise-id");
 await resonate.promises.reject("promise-id");
 ```
 
-[More examples](/develop/typescript#promisescreate).
+<MoreExamplesButton href="/develop/typescript#promisescreate" />
 
     </TabItem>
 
@@ -501,7 +502,7 @@ Quick example:
 resonate.set_dependency("db", db_connection)
 ```
 
-[More examples](/develop/python#set_dependency).
+<MoreExamplesButton href="/develop/python#set_dependency" />
 
 </TabItem>
 
@@ -511,7 +512,7 @@ resonate.set_dependency("db", db_connection)
 resonate.setDependency("db", db_connection);
 ```
 
-[More examples](/develop/typescript#setdependency).
+<MoreExamplesButton href="/develop/typescript#setdependency" />
 
     </TabItem>
 
@@ -559,7 +560,7 @@ def bar(ctx: Context, arg: string):
     return result
 ```
 
-[More examples](/develop/python#run-1).
+<MoreExamplesButton href="/develop/python#run-1" />
 
     </TabItem>
 
@@ -582,7 +583,7 @@ function bar(ctx: Context, ...args: any[]) {
 }
 ```
 
-[More examples](/develop/typescript#run-1).
+<MoreExamplesButton href="/develop/typescript#run-1" />
 
     </TabItem>
 
@@ -631,7 +632,7 @@ def bar(ctx: Context, arg: str) -> str:
     return
 ```
 
-[More examples](/develop/python#rpc-1).
+<MoreExamplesButton href="/develop/python#rpc-1" />
 
     </TabItem>
 
@@ -666,7 +667,7 @@ resonate.register("bar", function (ctx: Context, ...args: any[]) {
 });
 ```
 
-[More examples](/develop/typescript#rpc-1).
+<MoreExamplesButton href="/develop/typescript#rpc-1" />
 
     </TabItem>
 
@@ -695,7 +696,7 @@ def foo(ctx, arg):
     # ...
 ```
 
-[More examples](/develop/python#get_dependency).
+<MoreExamplesButton href="/develop/python#get_dependency" />
 
     </TabItem>
 
@@ -710,7 +711,7 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
 });
 ```
 
-[More examples](/develop/typescript#getdependency).
+<MoreExamplesButton href="/develop/typescript#getdependency" />
 
 </TabItem>
 
@@ -739,7 +740,7 @@ def foo(ctx, arg):
     # ...
 ```
 
-[More examples](/develop/python#promise).
+<MoreExamplesButton href="/develop/python#promise" />
 
     </TabItem>
 
@@ -756,7 +757,7 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
 });
 ```
 
-[More examples](/develop/typescript#promise).
+<MoreExamplesButton href="/develop/typescript#promise" />
 
     </TabItem>
 
@@ -787,7 +788,7 @@ def foo(ctx, arg):
     # ...
 ```
 
-[More examples](/develop/python#sleep).
+<MoreExamplesButton href="/develop/python#sleep" />
 
     </TabItem>
 
@@ -801,7 +802,7 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
 });
 ```
 
-[More examples](/develop/typescript#sleep).
+<MoreExamplesButton href="/develop/typescript#sleep" />
 
     </TabItem>
 
@@ -832,7 +833,7 @@ def foo(ctx, arg):
     # ...
 ```
 
-[More examples](/develop/python#randomrandom).
+<MoreExamplesButton href="/develop/python#randomrandom" />
 
     </TabItem>
 
@@ -847,7 +848,7 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
 });
 ```
 
-[More examples](/develop/typescript#mathrandom).
+<MoreExamplesButton href="/develop/typescript#mathrandom" />
 
     </TabItem>
 
@@ -878,7 +879,7 @@ def foo(ctx, arg):
     # ...
 ```
 
-[More examples](/develop/python#timetime).
+<MoreExamplesButton href="/develop/python#timetime" />
 
     </TabItem>
 
@@ -893,7 +894,7 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
 });
 ```
 
-[More examples](/develop/typescript#datenow).
+<MoreExamplesButton href="/develop/typescript#datenow" />
 
     </TabItem>
 

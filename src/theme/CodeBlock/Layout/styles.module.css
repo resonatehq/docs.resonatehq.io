@@ -1,0 +1,48 @@
+.codeBlockHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem var(--ifm-pre-padding);
+  border-top: 1px solid rgba(176, 184, 195, 0.25);
+  border-right: 1px solid rgba(176, 184, 195, 0.25);
+  border-left: 1px solid rgba(176, 184, 195, 0.25);
+
+  background-color: rgba(18, 22, 31, 0.92);
+}
+
+.codeBlockTitle {
+  font-size: var(--ifm-code-font-size);
+  font-weight: 500;
+  color: var(--ifm-color-primary);
+  flex: 1 1 auto;
+  font-family: "Courier New", Courier, monospace;
+}
+
+.codeBlockTitleSpacer {
+  flex: 1 1 auto;
+}
+
+.codeBlockLanguage {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0d1117;
+  background-color: rgba(176, 184, 195, 0.85);
+  padding: 0.2rem 0.6rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.codeBlockContent {
+  position: relative;
+  /* rtl:ignore */
+  direction: ltr;
+  border-radius: inherit;
+}
+
+.codeBlockHeader + .codeBlockContent .codeBlock {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-top: 0;
+}

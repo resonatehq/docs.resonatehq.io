@@ -74,7 +74,9 @@ code {
 
 .prism-code {
   border-radius: 0;
-  padding-left: 0;
+  background-color: #080a0e !important;
+  padding-left: 1.25rem !important;
+  border: 1px solid rgba(176, 184, 195, 0.25) !important;
 }
 
 article {
@@ -139,6 +141,37 @@ article a:hover {
 .menu__link--active,
 .table-of-contents__link--active {
   color: var(--ifm-color-muted) !important;
+}
+
+.moreExamplesButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.1rem;
+  padding: 0.45rem 0.95rem;
+  border: 1px solid rgba(176, 184, 195, 0.25);
+  background-color: rgba(18, 22, 31, 0.92);
+  color: var(--ifm-color-primary);
+  text-decoration: none !important;
+  letter-spacing: 0.04em;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.moreExamplesButton::after {
+  content: \"→\";
+  font-size: 0.85rem;
+  color: var(--ifm-color-muted);
+}
+
+.moreExamplesButton:hover {
+  border-color: var(--ifm-color-muted);
+  color: var(--ifm-color-primary);
+}
+
+.moreExamplesButton:hover::after {
+  color: var(--ifm-color-primary);
 }
 
 .menu__caret {
@@ -222,13 +255,34 @@ pagination-nav__link:hover {
   border-radius: 0;
 }
 
+.admonition {
+  background-color: var(--ifm-color-dark);
+  border: 1px solid rgba(176, 184, 195, 0.25) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+[class^="admonitionHeading_"] {
+  background-color: rgba(18, 22, 31, 0.92);
+  border-bottom: 1px solid rgba(176, 184, 195, 0.25);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem var(--ifm-pre-padding);
+}
+
+[class^="admonitionContent_"] {
+  padding: 1rem;
+}
 .alert--success {
   background-color: var(--ifm-color-dark);
+  border: 1px solid rgba(176, 184, 195, 0.25) !important;
   border-left: 0;
   color: var(--ifm-color-primary);
   border-radius: 0;
+  padding: 0 !important;
   box-shadow: none !important;
-  padding-left: 0;
 }
 
 .alert--differentiator {

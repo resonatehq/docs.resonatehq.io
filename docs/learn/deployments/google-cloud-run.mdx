@@ -1,0 +1,336 @@
+---
+title: Deploy a Countdown Workflow to Google Cloud Run
+description: Provision a Resonate Server on Cloud Run, deploy a serverless countdown worker, and trigger long-running notifications.
+sidebar_label: Google Cloud Run
+last_update:
+  date: "11-10-2025"
+pagination_next: null
+pagination_prev: null
+tags:
+  - deployments
+  - google-cloud
+  - cloud-run
+  - serverless
+  - long-running-workflow
+  - tutorial
+---
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+In this tutorial you will create a countdown notification system using Resonate and ntfy.sh, deploying the components to Google Cloud Run and Cloud Functions.
+
+- deploy a **Resonate Server** to **Google Cloud Run with Basic Auth enabled.**.
+- subscribe to a ntfy.sh topic to receive countdown notifications.
+- develop the countdown workflow using the Resonate TypeScript SDK.
+- deploy the countdown workflow as a Cloud Function.
+- trigger a long-running countdown workflow using the Resonate CLI.
+
+The finished setup lets you kick off a long-running countdown that posts a message every few minutes, even though each Cloud Function execution is short-lived.
+
+### Prerequisites
+
+- A Google Cloud project with **Cloud Run**, **Cloud Functions (2nd gen)**, and **Secret Manager** enabled.
+- The **gcloud CLI** authenticated for your project.
+- The **Resonate CLI** (`brew install resonatehq/tap/resonate`).
+- Node.js 20+ locally (for bundling the Cloud Function).
+- Optional: An [ntfy.sh](https://ntfy.sh) topic or any webhook endpoint that should receive countdown messages.
+
+### System architecture
+
+You'll use the GCloud CLI to deploy a Resonate Server as a Cloud Run service and a countdown workflow as a Cloud Function (serverless worker)
+
+The Resonate CLI enables you to invoke the countdown workflow via the Resonate Server.
+
+![Architecture diagram showing Resonate Server on Cloud Run communicating with Cloud Function](/img/google-cloud-run-deployment-arch.png)
+
+The Resonate Server sends the invoke message to the Cloud Function, basically calling it like a webhook.
+The Cloud Function runs, storing state (checkpointing) via promises in the Resonate Server.
+Whenever the Cloud Function runs, it starts from the beginning of the workflow, replaying everything up to the current point, but using the stored state to skip over already-completed steps.
+
+As you will see below, Resonate makes it incredible straight forward to write a locially long-running worklow like this that can pause and resume without holding onto compute resources.
+
+## Deploy the Resonate Server
+
+To deploy the Resonate Server on Cloud Run you will create a new server within your project using the official Resonate container image (`resonatehqio/resonate`).
+You will need to make sure to expose port **8001** and enable Basic Auth.
+
+In your terminal, run the following command, replacing `<your-region>` with your desired GCP region (e.g., `us-central1`):
+
+Choose your own username and password for Basic Auth and replace `<your-resonate-server-username>` and `<your-resonate-server-password>` accordingly.
+Basic Auth means that the Resonate Server checks every incoming request for valid credentials before processing it.
+
+```shell
+gcloud run deploy resonate-server \
+  --image=resonatehqio/resonate \
+  --region=<your-region> \
+  --platform=managed \
+  --allow-unauthenticated \
+  --port=8001 \
+  --args="serve","--system-url","your-server-url","--api-http-auth","<your-resonate-server-username>=<your-resonate-server-password>" \
+  --scaling=1
+```
+
+```
+gcloud run deploy resonate-server \
+  --image=resonatehqio/resonate \
+  --region=northamerica-northeast1 \
+  --platform=managed \
+  --allow-unauthenticated \
+  --port=8001 \
+  --args="serve","--system-url","https://resonate-server-pg3jsgl5sq-nn.a.run.app","--api-http-auth","flossypurse=G00gl3Run" \
+  --scaling=1
+```
+
+You should see output containing the service URL.
+
+```shell
+Deploying container to Cloud Run service [resonate-server] in project [<your-project>] region [<your-region>]
+✓ Deploying... Done.
+  ✓ Creating Revision...
+  ✓ Routing traffic...
+  ✓ Setting IAM Policy...
+Done.
+Service [resonate-server] revision [<revision>] has been deployed and is serving 100 percent of traffic.
+Service URL: <your-service-url>
+```
+
+The Resonate Server now listens on port 8001 and will verify every request with Basic Auth.
+This gives you an immediately usable control plane that the Cloud Function (Serverless Worker) can call back into.
+
+:::tip Via the Console
+
+You can also deploy the Resonate Server using the Google Cloud Console:
+
+1. Open **Cloud Run → Create Service**.
+2. Choose **Deploy from existing container image** and set the **image URL** to `resonatehqio/resonate`.
+3. Under **Container port**, enter `8001`.
+4. Select **Manual Scaling** and set instances to 1.
+5. Allow unauthenticated invocations (Basic Auth will guard the API).
+6. Expand **Container, Variables & Secrets → Container args** and add:
+
+   ```
+   serve
+   --api-http-auth
+   ${RESONATE_USERNAME}=${RESONATE_PASSWORD}
+   ```
+
+7. Click **Create**, wait for the deployment, and copy the **Service URL** (HTTPS). Export it as `RESONATE_SERVER_URL`.
+
+:::
+
+Verify the public API
+
+Confirm the Resonate Server is reachable and honors Basic Auth.
+
+```shell
+curl -u  -i "$RESONATE_URL"
+```
+
+Expect a `200 OK` response.
+
+A `401 Unauthorized` without credentials indicates auth is working.
+
+:::tip test the promises API
+
+If you curl or navigate to \<your-service-url\>/promises you should see an empty promises array `[]`, indicating the server is up and responding.
+
+```json
+{ "cursor": null, "promises": [] }
+```
+
+:::
+
+The Cloud Function will need to talk back to this endpoint; confirming connectivity now prevents later debugging surprises.
+
+Now that you validated HTTPS routing, port mapping, and Basic Auth on your Cloud Run service you will develop the countdown workflow that we will deploy as a serverless worker.
+
+## Countdown workflow
+
+Optional - in the ntfy.sh console, subscribe to your topic name to receive countdown notifications.
+
+Use the topic url in your countdown workflow.
+
+Create a small Node.js project that registers a Resonate workflow called `countdown`, sends notifications (e.g., to ntfy.sh), and exposes an HTTP handler that Cloud Functions can run.
+
+Initialize a folder for the worker.
+
+```shell
+mkdir countdown-workflow && cd countdown-workflow
+npm init -y
+npm install @resonatehq/sdk @resonatehq/gcp
+```
+
+Create `index.js` and add the following code:
+
+```js title="index.js"
+import type { Request, Response } from "@google-cloud/functions-framework";
+import type { Context } from "@resonatehq/sdk";
+import { Resonate } from "@resonatehq/gcp";
+
+const resonate = new Resonate();
+
+export function* countdown(
+  ctx: Context,
+  startAt: number,
+  minutesBetween: number,
+  notifyURL: string
+) {
+  for (let i = startAt; i > 0; i--) {
+    yield* ctx.run(notify, notifyURL, `⏱️ Countdown: ${i}`);
+    yield* ctx.sleep(minutesBetween * 60 * 1000);
+  }
+  yield* ctx.run(notify, notifyURL, "🚀 Liftoff!");
+}
+
+resonate.register("countdown", countdown);
+
+async function notify(_: any, notifyURL: string, message: string) {
+  return fetch(notifyURL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: message,
+  });
+}
+
+export const handler = async (req: Request, res: Response) => {
+  return resonate.handlerHttp()(req, res);
+};
+```
+
+Ensure `package.json` declares the handler for Cloud Functions:
+
+```json title="package.json"
+{
+  "name": "countdown-workflow",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  }
+}
+```
+
+The Functions runtime automatically installs dependencies from `package.json` before deploying your handler.
+
+Resonate workflows are plain generator functions.
+Registering `countdown` and exposing the `handler` means Cloud Functions can receive webhook calls from the Resonate Server and resume the workflow exactly where it left off.
+
+You built the worker code that Cloud Run will execute each time the Resonate Server needs to advance the countdown.
+
+## Deploy the Cloud Function
+
+Deploy the countdown worker as an HTTP-triggered Cloud Function (which internally runs on Cloud Run).
+You’ll pass the Resonate Server URL and Basic Auth credentials via environment variables.
+
+```shell
+gcloud functions deploy countdown-workflow \
+  --gen2 \
+  --region=<your-region> \
+  --runtime=nodejs22 \
+  --source=. \
+  --entry-point=handler \
+  --trigger-http \
+  --allow-unauthenticated \
+  --set-env-vars=\
+RESONATE_URL=<your-resonate-server-url>,\
+RESONATE_USERNAME=<your-resonate-server-username>,\
+RESONATE_PASSWORD=<your-resonate-server-password>,\
+```
+
+```
+gcloud functions deploy countdown-workflow \
+  --gen2 \
+  --region=northamerica-northeast1 \
+  --runtime=nodejs22 \
+  --source=. \
+  --entry-point=handler \
+  --trigger-http \
+  --allow-unauthenticated \
+  --set-env-vars=\
+RESONATE_URL=https://resonate-server-680502349731.northamerica-northeast1.run.app,RESONATE_USERNAME=flossypurse,RESONATE_PASSWORD=G00gl3Run,\
+```
+
+gcloud functions deploy countdown-workflow \
+ --gen2 \
+ --region=northamerica-northeast1 \
+ --runtime=nodejs22 \
+ --source=. \
+ --entry-point=handler \
+ --trigger-http \
+ --allow-unauthenticated \
+ --set-env-vars=RESONATE_URL=https://resonate-server-pg3jsgl5sq-nn.a.run.app,RESONATE_USERNAME=flossypurse,RESONATE_PASSWORD=G00gl3Run
+
+If this is your first time deploying a Cloud Function in this project, you may be prompted to enable some services.
+Enter `Y` to continue to enable them when prompted.
+
+It then may take several minutes to build and deploy the function.
+
+You will see output similar to:
+
+```shell
+Preparing function...done.
+X Updating function (may take a while)...
+  ✓ [Build] Logs are available at ...
+    [Service]
+  . [ArtifactRegistry]
+  . [Healthcheck]
+  . [Triggercheck]
+Completed with warnings:
+  [INFO] A new revision will be deployed serving with 100% traffic.
+You can view your function in the Cloud Console here: ...
+
+buildConfig:
+...
+serviceConfig:
+  ...
+  uri: <this-is-the-url-you-need>
+state: ACTIVE
+updateTime: '2025-11-11T18:56:20.810738211Z'
+url: ...
+```
+
+Grab the `serviceConfig` `uri` value from the output.
+
+Once deployment finishes, note the **Function URL** and export it:
+
+```shell
+export RESONATE_WORKER_URL="https://<function-url>"
+```
+
+Cloud Functions Gen 2 share the same underlying infrastructure as Cloud Run, so Resonate can call back into your workflow over HTTPS just like any other webhook.
+
+You published the countdown worker as an HTTP endpoint that the Resonate Server can invoke whenever it needs to resume a workflow step.
+
+## Trigger a countdown
+
+Start a long-running countdown from your terminal using the Resonate CLI [invoke command](/operate/cli-reference/commands/invoke).
+The invoke command creates a new promise on the Resonate Server.
+Additionally, it causes the creation of a Task which your Cloud Function worker will claim, telling it to execute the countdown workflow.
+
+```shell
+resonate invoke countdown-workflow-1 \
+  --func countdown \
+  --arg 5 \
+  --arg 1 \
+  --arg https://ntfy.sh/countdown-notification \
+  --server https://resonate-server-pg3jsgl5sq-nn.a.run.app \
+  --target https://countdown-workflow-pg3jsgl5sq-nn.a.run.app \
+  --username flossypurse \
+  --password G00gl3Run
+```
+
+The previous command invokes the `countdown` function with three arguments, and corresponds the function invocation to the `countdown-workflow-1` promise on the Resonate Server.
+
+- `countdown-workflow-1`: unique promise ID.
+- `--func countdown`: which registered function to run.
+- `--arg 5`: countdown starts at 5.
+- `--arg 1`: wait 1 minute between notifications.
+- `--arg https://ntfy.sh/<your-topic>`: destination URL (replace with your ntfy topic or webhook).
+- `--server <resonate-server-url>`: the Resonate Server URL.
+- `--target <cloud-function-url>`: the Cloud Function URL. (this tells the Resonate Server where to send messages).
+
+Watch the ntfy topic to see `Countdown: 5`, `Countdown: 4`, …, `🚀 Liftoff!` roll in.
+You can use the promise ID to inspect the workflow via `resonate promises get countdown-workflow-1` or in the web browser at `https://<your-resonate-server>/promises?id=countdown-workflow-1`.
+
+Congratulations! You have a durable countdown application deployed to Google Cloud Run.
