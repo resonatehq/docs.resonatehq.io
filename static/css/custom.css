@@ -143,6 +143,37 @@ article a:hover {
   color: var(--ifm-color-muted) !important;
 }
 
+.moreExamplesButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.1rem;
+  padding: 0.45rem 0.95rem;
+  border: 1px solid rgba(176, 184, 195, 0.25);
+  background-color: rgba(18, 22, 31, 0.92);
+  color: var(--ifm-color-primary);
+  text-decoration: none !important;
+  letter-spacing: 0.04em;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.moreExamplesButton::after {
+  content: \"→\";
+  font-size: 0.85rem;
+  color: var(--ifm-color-muted);
+}
+
+.moreExamplesButton:hover {
+  border-color: var(--ifm-color-muted);
+  color: var(--ifm-color-primary);
+}
+
+.moreExamplesButton:hover::after {
+  color: var(--ifm-color-primary);
+}
+
 .menu__caret {
   border-radius: 0 !important;
   margin-right: 4px;
