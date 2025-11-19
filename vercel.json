@@ -21,6 +21,11 @@
       "permanent": true
     },
     {
+      "source": "/learn/typescript-sdk/website-summarization-app",
+      "destination": "/learn/typescript-sdk/website-summarization-agent",
+      "permanent": true
+    },
+    {
       "source": "/operate/server-architecture",
       "destination": "https://github.com/resonatehq/resonate/tree/main/docs",
       "permanent": true

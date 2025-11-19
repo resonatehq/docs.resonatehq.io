@@ -10,89 +10,78 @@ tags:
   - evaluate
 ---
 
-**Why adopt Resonate?**
+**What problem does Resonate solve?**
 
-Resonate offers a holistic programming model for building cloud applications.
+## Modern pain points
 
-Resonate is **dead simple**, **formally modeled**, and **deterministically tested** — the way software should be.
+Let's try to answer the question, "what problem does Resonate solve?", within the context of today's software development landscape.
 
-It aims to provide a delightful developer experience and intuitive features while supporting a wide range of application architectures, system-level design patterns, and use cases.
+Take a step back for a moment and consider the time we are living in.
 
-## Dead simple
+_Will AI replace software developers — or will it empower them?_
 
-**Dead simple** is Resonate HQ's motto.
+Resonate was made by developers for developers, knowing that Software Developers, Engineers, and Architects will continue to be the sensible decision makers on how to deliver the intended value of software.
+Sensible AI will help developers' not direct them.
+With that in mind, it's critical to continue to address developer pain points and improve developer experience.
 
-While there is a lot of complexity in distributed systems, Resonate aims to push that complexity into the platform and provide a simple API for developers to build distributed and durable applications.
+Because, developers do still experience a lot of pain with distributed applications.
+There is too much complexity that's crammed in at the application level.
+Practically, failure retry, crash recovery, idempotency, service discovery, load balancing, suspension, etc, are things that developers have to repeatedly think about and solve for.
 
-## Formally modeled
+More or less, the complexity and the pain, stem from a system's desire to be concurrent and distributed.
+_Why?_ So the system is scalable and reliable!
+Concurrency and distribution enable scalability and reliability.
+However, the more concurrency and distribution there is the more complex the code becomes.
+When the code becomes distributed and complex - the system becomes hard to build, hard to maintain, and hard to reason about.
 
-Resonate is an implementation of the [Distributed Async Await specification](https://distributed-async-await.io).
+Resonate addresses this pain holistically.
+Resonate pushes all that complexity (failure retry, crash recovery, idempotency, service discovery, load balancing, suspension, etc.) into the platform and provides developers with a simple set of APIs to use at the application level.
 
-Distributed Async Await is an open specification that enables a sequential programming model in any language, while providing execution recovery and resume semantics for distributed applications.
+_Using Resonate makes reliable and scalable applications dead simple to develop, dead simple to deploy, and dead simple to operate._
 
-The specification is formally modeled, meaning that it is based on formal methods and has been proven to be correct.
+**When to use Resonate?**
 
-## Deterministically tested
+## Systems engineering for ...
 
-Resonate components include built-in Deterministic Simulation Testing to ensure they behave as expected in all scenarios.
+_Use Resonate as soon as you realize you need or have a software system!_
 
-## Developer experience
+The [Distributed Async Await spec](https://distributed-async-await.io), and its underlying [Async RPC protocol](https://asynchronous-rpc.io), was intended to be a general-purpose programming and execution model for building reliable and scalable software systems.
+As an implementation of that spec, Resonate has successfully inherited that intended trait.
+For example...
 
-Developer experience encompasses all aspects of how developers interact with and use the tools, systems, and processes that enable software development.
-A great developer experience reduces friction, fosters productivity, and encourages innovation by making tools intuitive, efficient, and enjoyable to use.
-A few aspects that make Resonate's developer experience stand apart:
+- **Autonomous systems & agentic applications**: Dominik Tornow breaks it all down in his online book [Systems Engineering for Agentic Applications](https://systems-engineering-for-agentic-applications.resonatehq.io/)
+- **Function-as-a-Service**: Whether you are building a Function-as-a-Service (FaaS) platform, see [Building a Demo FaaS Platform with Resonate](https://journal.resonatehq.io/p/building-a-demo-faas-platform-with) or using one, see [GCP countdown workflow example application](https://github.com/resonatehq-examples/example-countdown-ts-gcp), Resonate's execution model makes it ideal for both.
+- **Financial systems**:Resonate is well-suited for building distributed financial systems that require strong consistency and reliability, explored in depth in the article [Maintaining Consistency in the absence of transactions](https://maintaining-consistency-in-distributed-financial-systems.resonatehq.io/).
 
-- Sequential programming model
-- Minimal primitives
-- Supports incremental adoption
-- Open source
+Resonate's programming model serves developers by offering a clean, simple, and reliable pattern for awaiting on things in your event loop, whether that is a function executing, a human verifying some work, or an AI agent taking the step next.
+This makes it great for basically anything relying on a system.
 
-## Use cases
+## Quality standards
 
-Use cases are specific scenarios or situations where a product, framework, or platform can be applied to solve a problem or meet a need.
+There are at least two things that we do that should paint a picture of our committment to quality.
 
-Resonate's capabilities and features make it well-suited for a wide range of use cases including, but not limited to:
+_First is formal modeling and formal verification._
 
-- Autonomous systems & agentic applications
-- Function-as-a-service platforms
-- Financial systems
-- E-commerce
-- Distributed data processing
-- Web applications
+Resonate is an implementation of the [Distributed Async Await specification](https://distributed-async-await.io), which relies on the [Asynchronous RPC protocol](https://asynchronous-rpc.io).
+These underlying specs have been and continue to undergo formal modeling exercises, which probe their correctness.
 
-## Application architectures
+_Second is simulation testing._
 
-Application architecture refers to the high-level structure and design of an application, including how its components interact, how data flows, and how it meets both functional and non-functional requirements.
+Each major component in Resonate, the Resonate Server and each of the SDKs, is subjected to Deterministic Simulation Testing (DST).
+This is of course on top of traditional unit testing and integration testing.
+DST identifies complex edge cases that may cause unexpected behavior in production, well before the code is ever released.
 
-Resonate can be used to build a wide range of application architectures including but not limited to:
+These two things set a foundation of quality that we build upon with every release.
 
-- Microservices
-- Monolithic applications
-- Serverless
-- Event-driven
-- Service-oriented
-- Actor model
+## Open everything
 
-## System-level patterns
+The underlying Async RPC protocol, the Distributed Async Await specification, and Resonate are all fully open source.
 
-System-level patterns govern how distributed systems handle workload distribution, fault tolerance, and scalability.
+Adopting Resonate does mean that you are adopting Distributed Async Await.
+But it doesn't mean you are locked into Resonate specifically.
 
-Resonate facilitates simple implementations of a wide range of system-level patterns, including but not limited to:
+Everything you need to fork or build your own is available to you.
 
-- Task processing
-- Fan-out/fan-in
-- Human-in-the-loop | [_See an example_](/get-started/new-project/human-in-the-loop)
-- Idempotent operations
-- Service discovery | [_See an example_](/get-started/new-project/load-balancing)
-- Load balancing | [_See an example_](/get-started/new-project/load-balancing)
-
-## Features
-
-Features are the functional capabilities or tools that a product, framework, or platform offers to enhance productivity, simplify workflows, or solve specific problems.
-
-Resonate offers a number of features that make it easy to build distributed applications, including:
-
-- Automatic function execution retries
-- Crash failure recovery
-- Scheduled executions
-- Transparent batching
+But, the deeper philosophy is in imagining a world where every service, API, and distributed component used Durable Promises and Async RPC.
+Different implementations of the Distributed Async Await spec could interoperate seamlessly.
+And developers stay in control with far less complexity.

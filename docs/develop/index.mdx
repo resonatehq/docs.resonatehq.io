@@ -47,7 +47,7 @@ import MoreExamplesButton from "@site/src/components/MoreExamplesButton";
 
     <TabItem value="python">
 
-```shell
+```shell title="Install via uv"
 uv add resonate-sdk
 ```
 
@@ -56,7 +56,7 @@ uv add resonate-sdk
     </TabItem>
     <TabItem value="typescript">
 
-```shell
+```shell title="Install via bun"
 bun add @resonatehq/sdk
 ```
 
@@ -91,7 +91,7 @@ Quick example:
 
     <TabItem value="python">
 
-```py
+```py title="client.py"
 from resonate import Resonate
 
 # Initialize a Resonate Client in local mode
@@ -104,7 +104,7 @@ resonate = Resonate.local()
 
     <TabItem value="typescript">
 
-```ts
+```ts title="client.ts"
 import { Resonate } from "@resonatehq/sdk";
 
 // Initialize a Resonate Client in local mode
@@ -154,7 +154,7 @@ Quick example:
 
 In Python, you can use the `@resonate.register` decorator to register a function:
 
-```py
+```py title="client.py"
 @resonate.register
 def foo(context: Context, arg: str) -> str:
     # ...
@@ -169,7 +169,7 @@ def foo(context: Context, arg: str) -> str:
 
 In TypeScript, you can use the `register` method to register a function:
 
-```ts
+```ts title="client.ts"
 fooR = resonate.register("foo", (context: Context, arg: string): string => {
   // ...
   return result;
@@ -206,8 +206,7 @@ Quick example:
 
     <TabItem value="python">
 
-```py
-# process x
+```py title="client.py"
 # foo() and main() are in the same process
 @resonate.register
 def foo(ctx: Context, arg: str) -> str:
@@ -230,8 +229,7 @@ def main():
 
     <TabItem value="typescript">
 
-```ts
-// process x
+```ts title="client.ts"
 // foo() and main() are in the same process
 const fooR = resonate.register("foo", (ctx: Context, arg: string): string => {
   // ...
@@ -277,14 +275,15 @@ Quick example:
 
     <TabItem value="python">
 
-```py
+```py title="worker.py"
 # foo is in process x
 @resonate.register
 def foo(context: Context, arg: str):
     # ...
     return result
+```
 
-
+```py title="client.py"
 # main is in process y
 def main():
     # synchronously invoke foo
@@ -306,13 +305,15 @@ def main():
 
     <TabItem value="typescript">
 
-```ts
+```ts title="worker.ts"
 // foo is in process x
 resonate.register("foo", (ctx: Context, arg: string) => {
   // ...
   return result;
 });
+```
 
+```ts title="client.ts"
 // main is in process y
 async function main() {
   try {
@@ -381,7 +382,7 @@ Quick examples:
 
     <TabItem value="python">
 
-```python
+```python title="client.py"
 # create a promise
 resonate.promises.create(
     id="promise-id",
@@ -401,7 +402,6 @@ resonate.promises.resolve("promise-id")
 
 # reject a promise
 resonate.promises.reject("promise-id")
-
 ```
 
 <MoreExamplesButton href="/develop/python#promisescreate" />
@@ -410,7 +410,7 @@ resonate.promises.reject("promise-id")
 
     <TabItem value="typescript">
 
-```ts
+```ts title="client.ts"
 // create a promise
 const p = await resonate.promises.create(
   "promise-id",
@@ -498,7 +498,7 @@ Quick example:
 
     <TabItem value="python" >
 
-```python
+```python title="worker.py"
 resonate.set_dependency("db", db_connection)
 ```
 
@@ -508,7 +508,7 @@ resonate.set_dependency("db", db_connection)
 
     <TabItem value="typescript">
 
-```ts
+```ts title="worker.ts"
 resonate.setDependency("db", db_connection);
 ```
 
@@ -543,7 +543,7 @@ This checkpoint makes it possible to replay the calling function with the result
 
     <TabItem value="python">
 
-```python
+```python title="worker.py"
 @resonate.register
 def foo(ctx: Context, arg: string):
 
@@ -566,7 +566,7 @@ def bar(ctx: Context, arg: string):
 
     <TabItem value="typescript">
 
-```ts
+```ts title="worker.ts"
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
   // synchronously call bar
   const result = yield* ctx.run(bar, ...args);
@@ -612,7 +612,7 @@ Quick example:
 
     <TabItem value="python">
 
-```py
+```py title="client.py"
 # process x
 @resonate.register
 def foo(ctx: Context, arg: str) -> str:
@@ -623,9 +623,9 @@ def foo(ctx: Context, arg: str) -> str:
     promise = yield ctx.begin_rpc("bar", arg)
     # do more stuff
     result = yield promise
+```
 
-
-# process y
+```py title="worker.py"
 @resonate.register
 def bar(ctx: Context, arg: str) -> str:
     # ...
