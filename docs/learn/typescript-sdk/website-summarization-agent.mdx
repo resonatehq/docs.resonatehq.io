@@ -91,13 +91,74 @@ You should now have a directory called “summarization-agent” with the follow
 summarization-agent
   ├─ package.json
   ├─ tsconfig.json
-  └─ src
-     └─ worker.ts
+  └─ index.ts
 ```
 
-Open `src/worker.ts` and replace its contents with the following code:
+The `index.ts` file should contain the following code:
 
-```ts title="src/worker.ts"
+```ts title="index.ts"
+import { Context, Resonate } from "@resonatehq/sdk";
+
+const resonate = Resonate.local();
+
+function baz(_: Context, greetee: string): string {
+  console.log("running baz");
+  return `Hello ${greetee} from baz!`;
+}
+
+function bar(_: Context, greetee: string): string {
+  console.log("running bar");
+  return `Hello ${greetee} from bar!`;
+}
+
+export const foo = resonate.register(
+  "foo",
+  function* (ctx: Context, greetee: string): Generator<string, string, string> {
+    console.log("running foo");
+    const fooGreeting = `Hello ${greetee} from foo!`;
+    const barGreeting = yield* ctx.run(bar, greetee);
+    const bazGreeting = yield* ctx.run(baz, greetee);
+    return `${fooGreeting} ${barGreeting} ${bazGreeting}`;
+  }
+);
+
+async function main() {
+  try {
+    const promiseId = "hello-world-example";
+    const result = await foo.run(promiseId, "World");
+    console.log(result);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+void main();
+```
+
+In this template, `foo()` takes a string argument (`greetee`) and passes it to `bar()` and `baz()`, each step creating part of the final greeting.
+The `resonate.register()` call turns `foo()` into a durable function that can be invoked with `.run()`, and awaiting `.run()` ensures `main()` pauses until the workflow finishes.
+Both `bar()` and `baz()` are invoked through the Resonate Context’s `run()` API, giving Resonate control over their execution.
+
+Install dependencies and run the worker.
+
+```shell
+bun install
+bun run index.ts
+```
+
+You should see output similar to the following:
+
+```shell
+running foo
+running bar
+running baz
+Hello World from foo! Hello World from bar! Hello World from baz!
+```
+
+Let's update the file and function names to better reflect the purpose of the use case.
+Change the file name from `index.ts` to `worker.ts` and update it to reflect the following code, changing `foo()` to `downloadAndSummarize()`, `bar()` to `download()`, and `baz()` to `summarize()`.:
+
+```ts title="worker.ts"
 import { Context, Resonate } from "@resonatehq/sdk";
 
 const resonate = Resonate.local();
@@ -137,37 +198,13 @@ async function main() {
 void main();
 ```
 
-Update the `package.json` scripts so you can run the worker with a single command:
-
-```json title="package.json"
-{
-  "scripts": {
-    "worker": "tsx src/worker.ts"
-  }
-}
-```
-
-Install dependencies and run the worker.
-
-```shell
-bun install
-bun run worker
-```
-
-You should see output similar to the following:
-
-```shell
-running download_and_summarize
-running download
-running summarize
-summary of content of https://example.com!
-```
+With these changes the worker now downloads the requested page and summarizes it, which sets up the rest of the tutorial.
 
 Now, lets add some code to steps `download()` and `summarize()` so they fail 50% of the time.
 
 Import the Resonate Context helpers and use `ctx.math.random()` to generate deterministic random numbers.
 
-```ts title="src/worker.ts"
+```ts title="worker.ts"
 import { Context, Resonate } from "@resonatehq/sdk";
 
 // ...
@@ -224,7 +261,7 @@ async function summarizeWithoutResonate(content: string) {
 
 If either `download()` or `summarize()` throw, the execution stops.
 
-**With Resonate** you will notice that even if there is a thrown error, the function retries until it succeeds, enabling `download_and_summarize()` to complete and return the summary.
+**With Resonate** you will notice that even if there is a thrown error, the function retries until it succeeds, enabling `downloadAndSummarize()` to complete and return the summary.
 
 Run your app several times until you encounter an error, and then wait and watch.
 
@@ -250,7 +287,7 @@ By default, this will happen forever until the execution succeeds.
 You can adjust retry behaviour, timeouts, tags, and routing targets with `ctx.options()`.
 For example, to increase the top-level timeout to 60 seconds and route work to a specific worker group:
 
-```ts title="src/worker.ts"
+```ts title="worker.ts"
 export const downloadAndSummarize = resonate.register(
   "download-and-summarize",
   function* (ctx: Context, url: string) {
@@ -294,8 +331,8 @@ There are two code updates you need to make for this part of the tutorial.
 
 First, instantiate Resonate in your worker with a Remote Store instead of a Local Store.
 
-```ts title="src/worker.ts"
-const resonate = Resonate.remote();
+```ts title="worker.ts"
+const resonate = new Resonate();
 ```
 
 :::tip Default Remote Store Configuration
@@ -305,11 +342,11 @@ Additionally, your worker will connect to the Resonate Server with a long poll c
 
 :::
 
-Next, add a 10 second sleep to `download_and_summarize()` between the `download()` and `summarize()` steps.
+Next, add a 10 second sleep to `downloadAndSummarize()` between the `download()` and `summarize()` steps.
 You don't need to import anything to do this.
 You can use the `sleep()` API provided by Resonate Context.
 
-```ts title="src/worker.ts"
+```ts title="worker.ts"
 export const downloadAndSummarize = resonate.register(
   "download-and-summarize",
   function* (ctx: Context, url: string) {
@@ -356,7 +393,7 @@ summary of content of https://example.com!
 
 Notice that you don't see the log "running download" after restarting the worker?
 That's because the Resonate Server stored the result of `download()` in a promise.
-When you restarted the worker after the crash, `download_and_summarize()` re-executed and the result of `download()` was retrieved from the promise.
+When you restarted the worker after the crash, `downloadAndSummarize()` re-executed and the result of `download()` was retrieved from the promise.
 
 **Congratulations, you have just witnessed Durable Execution in action!**
 
@@ -368,11 +405,11 @@ This time the only log you should see is the following:
 summary of content of https://example.com!
 ```
 
-That's because the Resonate Server stored the result of `download_and_summarize()` in a promise.
+That's because the Resonate Server stored the result of `downloadAndSummarize()` in a promise.
 
-If you look at the code where we invoke `download_and_summarize()`, you'll notice that we are using the url as the promise ID.
+If you look at the code where we invoke `downloadAndSummarize()`, you'll notice that we are using the url as the promise ID.
 
-```ts title="src/worker.ts"
+```ts title="worker.ts"
 const handle = await downloadAndSummarize.beginRun(url, url);
 ```
 
@@ -411,45 +448,45 @@ Tags:
 ```
 
 Promise IDs are unique identifiers in a Resonate Application, and you must specify the promise ID for top-level invocations.
-The promise IDs of `download()` and `summarize()` are generated automatically by default and Resonate will know not to re-invoke those functions if `download_and_summarize()` is invoked again with the same promise ID.
+The promise IDs of `download()` and `summarize()` are generated automatically by default and Resonate will know not to re-invoke those functions if `downloadAndSummarize()` is invoked again with the same promise ID.
 
 If you are using the local store, the promise ID persists only as long as the process is alive.
 If you are using a remote promise store (Resonate Server), the promise ID persists indefinitely.
 
 Change the promise ID to something else and run the worker again.
 
-```ts title="src/worker.ts"
+```ts title="worker.ts"
 const url = "https://resonatehq.io";
 ```
 
-You will see that `download_and_summarize()` executes again from the top.
+You will see that `downloadAndSummarize()` executes again from the top.
 
-In the next part of the tutorial, you switch from using `.beginRun()` to using `.beginRpc()` and asynchronously invoke `download_and_summarize()` via an RPC (Remote Procedure Call).
+In the next part of the tutorial, you switch from using `.beginRun()` to using `.beginRpc()` and asynchronously invoke `downloadAndSummarize()` via an RPC (Remote Procedure Call).
 
 ## Asynchronous RPC
 
-In this part of the tutorial, you will move the code that invokes `download_and_summarize()` to a separate process.
+In this part of the tutorial, you will move the code that invokes `downloadAndSummarize()` to a separate process.
 
-Currently the code that invokes `download_and_summarize()` lives in the same file and process as the workflow itself.
+Currently the code that invokes `downloadAndSummarize()` lives in the same file and process as the workflow itself.
 
 It looks like this:
 
-```ts title="src/worker.ts"
+```ts title="worker.ts"
 const handle = await downloadAndSummarize.beginRun(url, url);
 console.log(await handle.result());
 ```
 
 The `.beginRun()` method means "run this function right here".
 
-You will move the invocation of `download_and_summarize()` to a separate process and use Resonate's `.beginRpc()` method to invoke it.
+You will move the invocation of `downloadAndSummarize()` to a separate process and use Resonate's `.beginRpc()` method to invoke it.
 The `.beginRpc()` method means "invoke this function over there".
 
-Start by creating a new file `src/invoke.ts` and add the following code:
+Start by creating a new file `invoke.ts` and add the following code:
 
-```ts title="src/invoke.ts"
+```ts title="invoke.ts"
 import { Resonate } from "@resonatehq/sdk";
 
-const resonate = Resonate.remote({ group: "gateway" });
+const resonate = new Resonate({ group: "gateway" });
 
 async function main() {
   try {
@@ -471,28 +508,17 @@ async function main() {
 void main();
 ```
 
-Update the `package.json` scripts so you can run the worker and the invocation script separately:
-
-```json title="package.json"
-{
-  "scripts": {
-    "worker": "tsx src/worker.ts",
-    "invoke": "tsx src/invoke.ts"
-  }
-}
-```
-
 Open two terminal windows.
 In the first terminal, run the worker:
 
 ```shell
-bun run worker
+bun run worker.ts
 ```
 
 In the second terminal, run the invocation script:
 
 ```shell
-bun run invoke
+bun run invoke.ts
 ```
 
 You should see the invocation script block until the workflow completes, and then print the result.
@@ -504,9 +530,9 @@ You should see the invocation script block until the workflow completes, and the
 Next, you'll add a human-in-the-loop approval step to the workflow.
 The workflow will pause after generating the summary and wait for an external signal that either approves or rejects it.
 
-Update the worker so that `download_and_summarize()` creates a promise and waits for it to resolve before returning the summary.
+Update the worker so that `downloadAndSummarize()` creates a promise and waits for it to resolve before returning the summary.
 
-```ts title="src/worker.ts"
+```ts title="worker.ts"
 export const downloadAndSummarize = resonate.register(
   "download-and-summarize",
   function* (ctx: Context, url: string) {
@@ -534,11 +560,11 @@ export const downloadAndSummarize = resonate.register(
 Run the worker and the invocation script again.
 
 ```shell
-bun run worker
+bun run worker.ts
 ```
 
 ```shell
-bun run invoke
+bun run invoke.ts
 ```
 
 The invocation script will block while the workflow waits for the approval promise to be resolved.
@@ -549,7 +575,7 @@ Use the Resonate CLI to resolve the promise and unblock the workflow.
 resonate promises resolve https://example.com-approval --data true
 ```
 
-You should see the result of the `download_and_summarize()` workflow printed in the invocation script terminal.
+You should see the result of the `downloadAndSummarize()` workflow printed in the invocation script terminal.
 
 **Congratulations you have just created a human-in-the-loop workflow!**
 
@@ -570,7 +596,7 @@ To do this you will:
 
 Start by converting the invocation script into an Express application.
 
-Rename `src/invoke.ts` to `src/gateway.ts`.
+Rename `invoke.ts` to `gateway.ts`.
 
 Install the additional dependencies:
 
@@ -578,9 +604,9 @@ Install the additional dependencies:
 bun add express node-fetch@3 cheerio
 ```
 
-And change the code in `src/gateway.ts` to the following:
+And change the code in `gateway.ts` to the following:
 
-```ts title="src/gateway.ts"
+```ts title="gateway.ts"
 import express, { Request, Response } from "express";
 import { Resonate } from "@resonatehq/sdk";
 import crypto from "node:crypto";
@@ -588,7 +614,7 @@ import crypto from "node:crypto";
 const app = express();
 app.use(express.json());
 
-const resonate = Resonate.remote({ group: "gateway" });
+const resonate = new Resonate({ group: "gateway" });
 
 app.post("/summarize", async (req: Request, res: Response) => {
   try {
@@ -650,17 +676,6 @@ function main() {
 main();
 ```
 
-Update the `package.json` scripts one more time so you can run the gateway alongside the worker:
-
-```json title="package.json"
-{
-  "scripts": {
-    "worker": "tsx src/worker.ts",
-    "gateway": "tsx src/gateway.ts"
-  }
-}
-```
-
 Next, enhance the worker to perform real work: fetching website content, summarizing it with Ollama, and sending "email" notifications with approval links.
 
 Install the additional worker dependencies (skip this if you already installed them for the gateway):
@@ -669,9 +684,9 @@ Install the additional worker dependencies (skip this if you already installed t
 bun add node-fetch@3 cheerio
 ```
 
-Update `src/worker.ts` to the following:
+Update `worker.ts` to the following:
 
-```ts title="src/worker.ts"
+```ts title="worker.ts"
 import { Context, Resonate } from "@resonatehq/sdk";
 import fetch from "node-fetch";
 import { load } from "cheerio";
@@ -682,7 +697,7 @@ type WorkflowParams = {
   usableId: string;
 };
 
-const resonate = Resonate.remote({ group: "worker" });
+const resonate = new Resonate({ group: "worker" });
 
 export const downloadAndSummarize = resonate.register(
   "download-and-summarize",
