@@ -17,10 +17,9 @@ OK, so now that you know _why_ Resonate is useful, let's dive into _how_ it work
 ## Checkpoints and replays
 
 Have you heard the term "Durable Execution"?
-It is a newer term but the idea is not new.
-Basically it refers to the ability of an application to resume from where it left off after the hosting process has disappeared (i.e. crashed, restarted, etc.).
+It means that an application workflow/function can resume from where it left off after the hosting process has disappeared (i.e. crashed, restarted, etc.).
 
-The most practical way to achieve this, with a coherent sequential flow, is by checkpointing and replaying.
+The most practical way to achieve this, so that there is a coherent and sequential flow to code that the developer writes, is by checkpointing and replaying.
 
 That is one of the things Resonate does.
 Resonate checkpoints at steps in your application code, basically whenever you use a Resonate SDK API.

@@ -97,42 +97,43 @@ summarization-agent
 The `index.ts` file should contain the following code:
 
 ```ts title="index.ts"
-import { Context, Resonate } from "@resonatehq/sdk";
+import { Resonate } from "@resonatehq/sdk";
+import type { Context } from "@resonatehq/sdk";
 
-const resonate = Resonate.local();
+const resonate = new Resonate();
 
-function baz(_: Context, greetee: string): string {
+async function baz(_: Context, greetee: string): string {
   console.log("running baz");
   return `Hello ${greetee} from baz!`;
 }
 
-function bar(_: Context, greetee: string): string {
+async function bar(_: Context, greetee: string): string {
   console.log("running bar");
   return `Hello ${greetee} from bar!`;
 }
 
-export const foo = resonate.register(
-  "foo",
-  function* (ctx: Context, greetee: string): Generator<string, string, string> {
-    console.log("running foo");
-    const fooGreeting = `Hello ${greetee} from foo!`;
-    const barGreeting = yield* ctx.run(bar, greetee);
-    const bazGreeting = yield* ctx.run(baz, greetee);
-    return `${fooGreeting} ${barGreeting} ${bazGreeting}`;
-  }
-);
+function* foo(ctx: Context, greetee: string): Generator<any, string, any> {
+  console.log("running foo");
+  const fooGreeting = `Hello ${greetee} from foo!`;
+  const barGreeting = yield* ctx.run(bar, greetee);
+  const bazGreeting = yield* ctx.run(baz, greetee);
+  const greeting = `${fooGreeting} ${barGreeting} ${bazGreeting}`;
+  return greeting;
+}
+
+const fooR = resonate.register("foo", foo);
 
 async function main() {
   try {
-    const promiseId = "hello-world-example";
-    const result = await foo.run(promiseId, "World");
+    const result = await fooR.run("greeting-workflow", "World");
     console.log(result);
-  } catch (error) {
-    console.error(error);
+    resonate.stop();
+  } catch (e) {
+    console.log(e);
   }
 }
 
-void main();
+main();
 ```
 
 In this template, `foo()` takes a string argument (`greetee`) and passes it to `bar()` and `baz()`, each step creating part of the final greeting.
@@ -151,58 +152,80 @@ You should see output similar to the following:
 ```shell
 running foo
 running bar
+running foo
 running baz
+running foo
 Hello World from foo! Hello World from bar! Hello World from baz!
 ```
 
+:::tip Logs reveal the replay
+
+Notice how `foo()` is logged multiple times.
+This is because Resonate replays the execution of `foo()` to reconstruct its state after each yielded step (`bar()` and `baz()`).
+
+:::
+
 Let's update the file and function names to better reflect the purpose of the use case.
-Change the file name from `index.ts` to `worker.ts` and update it to reflect the following code, changing `foo()` to `downloadAndSummarize()`, `bar()` to `download()`, and `baz()` to `summarize()`.:
+Change the file name from `index.ts` to `worker.ts`
+
+```shell title="change file name"
+mv index.ts worker.ts
+```
+
+And update it to reflect the following code, changing `foo()` to `downloadAndSummarize()`, `bar()` to `download()`, and `baz()` to `summarize()`.:
+The `download()` function must accept a url string and return the content of the page as a string.
+The `summarize()` function must accept the content string and return a summary string.
 
 ```ts title="worker.ts"
-import { Context, Resonate } from "@resonatehq/sdk";
+import { Resonate } from "@resonatehq/sdk";
+import type { Context } from "@resonatehq/sdk";
 
-const resonate = Resonate.local();
+const resonate = new Resonate();
 
-export const downloadAndSummarize = resonate.register(
-  "download-and-summarize",
-  function* (ctx: Context, url: string) {
-    console.log("running download_and_summarize");
-
-    const content: string = yield* ctx.run(download, url);
-    const summary: string = yield* ctx.run(summarize, content);
-
-    return summary;
-  }
-);
-
-function download(_: Context, url: string): string {
+async function download(_: Context, url: string): string {
   console.log("running download");
   return `content of ${url}`;
 }
 
-function summarize(_: Context, content: string): string {
+async function summarize(_: Context, content: string): string {
   console.log("running summarize");
-  return `summary of ${content}!`;
+  return `summary of ${content}`;
 }
+
+function* downloadAndSummarize(
+  ctx: Context,
+  url: string
+): Generator<any, string, any> {
+  console.log("running downloadAndSummarize");
+  const content = yield* ctx.run(download, url);
+  const summary = yield* ctx.run(summarize, content);
+  return summary;
+}
+
+const workflow = resonate.register(
+  "download-and-summarize",
+  downloadAndSummarize
+);
 
 async function main() {
   try {
-    const url = "https://example.com";
-    const handle = await downloadAndSummarize.beginRun(url, url);
-    console.log(await handle.result());
-  } catch (error) {
-    console.error(error);
+    const result = await workflow.run("resonatehq.io", "https://resonatehq.io");
+    console.log(result);
+    resonate.stop();
+  } catch (e) {
+    console.log(e);
   }
 }
 
-void main();
+main();
 ```
 
-With these changes the worker now downloads the requested page and summarizes it, which sets up the rest of the tutorial.
+Now the workflow better reflects the intended functionality of downloading a webpage and summarizing its content.
 
-Now, lets add some code to steps `download()` and `summarize()` so they fail 50% of the time.
+Next, lets explore Resonate's automatic retries by adding some code to steps `download()` and `summarize()` so they fail 50% of the time.
 
-Import the Resonate Context helpers and use `ctx.math.random()` to generate deterministic random numbers.
+Import `Math` and use `Math.random()` to generate random numbers.
+Note that we don't want deterministic behaviour here, so we use `Math.random()` from the Resonate Context instead of `Math.random()`.
 
 ```ts title="worker.ts"
 import { Context, Resonate } from "@resonatehq/sdk";
@@ -268,41 +291,37 @@ Run your app several times until you encounter an error, and then wait and watch
 You should eventually see something like this:
 
 ```shell
-running download_and_summarize
+running downloadAndSummarize
 running download
-[WARNING] [https://example.com] [https://example.com.1] Function download("https://example.com") failed with Error('download encountered an error') (retrying in 2.0s)
-running download
+running downloadAndSummarize
 running summarize
-[WARNING] [https://example.com] [https://example.com.2] Function summarize('content of https://example.com') failed with Error('summarize encountered an error') (retrying in 2.0s)
+Runtime. Function 'summarize' failed with 'Error: summarize encountered an error' (retrying in 2 secs)
 running summarize
-summary of content of https://example.com!
+running downloadAndSummarize
+summary
 ```
 
-You will notice that if an error is thrown, Resonate automatically retries executing the function.
+You will notice that if an error is thrown, Resonate automatically retries function.
 
 **Congratulations! You have just witnessed Resonate's automatic function retries in action!**
 
 By default, this will happen forever until the execution succeeds.
 
 You can adjust retry behaviour, timeouts, tags, and routing targets with `ctx.options()`.
-For example, to increase the top-level timeout to 60 seconds and route work to a specific worker group:
+For example, to set a 60 second timeout on the overall time Resonate will attempt to try and execute the `download()` function.
 
 ```ts title="worker.ts"
-export const downloadAndSummarize = resonate.register(
-  "download-and-summarize",
-  function* (ctx: Context, url: string) {
-    console.log("running download_and_summarize");
+function* downloadAndSummarize(ctx: Context, url: string) {
+  console.log("running download_and_summarize");
+  const content: string = yield* ctx.run(
+    download,
+    url,
+    ctx.options({ timeout: 60_000 })
+  );
+  const summary: string = yield* ctx.run(summarize, content);
 
-    const content: string = yield* ctx.run(
-      download,
-      url,
-      ctx.options({ timeout: 60_000 })
-    );
-    const summary: string = yield* ctx.run(summarize, content);
-
-    return summary;
-  }
-);
+  return summary;
+}
 ```
 
 The previous part of the tutorial showcased Resonate’s ability to automatically retry function executions when an error is thrown, and runs the top-level function to completion.
@@ -319,77 +338,48 @@ The Resonate Server acts as a supervisor and orchestrator for your worker, stori
 Run the following command in a separate terminal to start the Resonate Server:
 
 ```shell
-resonate serve
+resonate dev
 ```
 
 After the server is running, update your worker code.
 
 There are two code updates you need to make for this part of the tutorial.
 
-1. Change the Local Store to a Remote Store so that the worker can recover from a process crash.
+1. Pass a custom configuration to `new Resonate()` that connects to the Resonate Server.
 2. Add a 10 second sleep between the workflow steps so you have time to simulate a process crash.
 
-First, instantiate Resonate in your worker with a Remote Store instead of a Local Store.
+First, create a config object with the Resonate Server's localhost URL.
 
 ```ts title="worker.ts"
-const resonate = new Resonate();
+const config = {
+  url: "http://localhost:8001", // url of the Resonate Server
+};
+const resonate = new Resonate(config);
 ```
-
-:::tip Default Remote Store Configuration
-
-When you instantiate an instance of Resonate that connects to a remote store, the default connection settings will connect to a Resonate Server running on `http://localhost:8001`.
-Additionally, your worker will connect to the Resonate Server with a long poll connection to receive messages.
-
-:::
 
 Next, add a 10 second sleep to `downloadAndSummarize()` between the `download()` and `summarize()` steps.
 You don't need to import anything to do this.
 You can use the `sleep()` API provided by Resonate Context.
 
 ```ts title="worker.ts"
-export const downloadAndSummarize = resonate.register(
-  "download-and-summarize",
-  function* (ctx: Context, url: string) {
-    console.log("running download_and_summarize");
-    const content: string = yield* ctx.run(download, url);
-
-    yield* ctx.sleep(10_000);
-
-    const summary: string = yield* ctx.run(summarize, content);
-    return summary;
-  }
-);
+function* downloadAndSummarize(
+  ctx: Context,
+  url: string
+): Generator<any, string, any> {
+  console.log("running downloadAndSummarize");
+  const content = yield* ctx.run(download, url);
+  yield* ctx.sleep(10_000);
+  const summary = yield* ctx.run(summarize, content);
+  return summary;
+}
 ```
 
-Now try running your worker again.
-
-```shell
-bun run worker
-```
-
-You will see the following logs:
-
-```shell
-running download_and_summarize
-running download
-```
-
-After you see the log "running download", kill the process.
+Run your worker again, and this time kill the process after you see the "download" step complete.
+Remember, each step is still going to fail 50% of the time, so you may see errors.
 
 It doesn't matter how long you wait, but when you are ready to continue, restart the worker.
 
-```shell
-bun run worker
-```
-
-Remember, each step is still going to fail 50% of the time, so you may see errors.
-
-Eventually you should see the logs continue where they left off:
-
-```shell
-running summarize
-summary of content of https://example.com!
-```
+Eventually you should see the logs continue where they left off.
 
 Notice that you don't see the log "running download" after restarting the worker?
 That's because the Resonate Server stored the result of `download()` in a promise.
@@ -402,123 +392,128 @@ Don't change anything in the code and run the worker again.
 This time the only log you should see is the following:
 
 ```shell
-summary of content of https://example.com!
+summary of content of https://resonatehq.io
 ```
 
 That's because the Resonate Server stored the result of `downloadAndSummarize()` in a promise.
 
-If you look at the code where we invoke `downloadAndSummarize()`, you'll notice that we are using the url as the promise ID.
+If you look at the code where we invoke `downloadAndSummarize()`, you'll notice that we are using `resonatehq.io` as the promise ID.
+And as long as the Resonate Server database exists, that promise ID will always resolve to the same result.
 
-```ts title="worker.ts"
-const handle = await downloadAndSummarize.beginRun(url, url);
-```
-
-You can inspect the promise ID in the Resonate Server using the Resonate CLI.
+You can inspect the promise using the Resonate CLI.
 
 ```shell
-resonate promise get https://example.com
+resonate promise get resonatehq.io
 ```
 
 You should see something like this:
 
 ```shell
-Id:       https://example.com
+Id:       resonatehq.io
 State:    RESOLVED
-Timeout:  1784400650144
+Timeout:  1763671234747
 
-Idempotency Key (create):    https://example.com
-Idempotency Key (complete):  https://example.com
+Idempotency Key (create):    resonatehq.io
+Idempotency Key (complete):  resonatehq.io
 
 Param:
   Headers:
-    resonate:format-ts:  {"func":"download-and-summarize","args":["https://example.com"],"version":1}
   Data:
-    {"func":"download-and-summarize","args":["https://example.com"],"version":1}
+    {"func":"download-and-summarize","args":[["https://resonatehq.io"]],"version":1}
 
 Value:
   Headers:
   Data:
-    "summary of content of https://example.com!"
+    "summary of content of https://resonatehq.io"
 
 Tags:
-  resonate:invoke:  poll://any@worker
-  resonate:parent:  https://example.com
-  resonate:root:    https://example.com
+  resonate:invoke:  poll://any@default/42e53d4dc39843b7bd9bce86d930b924
   resonate:scope:   global
 ```
 
 Promise IDs are unique identifiers in a Resonate Application, and you must specify the promise ID for top-level invocations.
 The promise IDs of `download()` and `summarize()` are generated automatically by default and Resonate will know not to re-invoke those functions if `downloadAndSummarize()` is invoked again with the same promise ID.
 
-If you are using the local store, the promise ID persists only as long as the process is alive.
-If you are using a remote promise store (Resonate Server), the promise ID persists indefinitely.
+If you are using in-memory storage, the promise ID persists only as long as the process is alive.
+If you are using a remote storage (Resonate Server), the promise ID persists indefinitely.
 
 Change the promise ID to something else and run the worker again.
 
-```ts title="worker.ts"
-const url = "https://resonatehq.io";
-```
-
 You will see that `downloadAndSummarize()` executes again from the top.
 
-In the next part of the tutorial, you switch from using `.beginRun()` to using `.beginRpc()` and asynchronously invoke `downloadAndSummarize()` via an RPC (Remote Procedure Call).
+In the next part of the tutorial, you switch from using `.run()` to using `.beginRpc()` and asynchronously invoke `downloadAndSummarize()` via an RPC (Remote Procedure Call).
 
 ## Asynchronous RPC
 
 In this part of the tutorial, you will move the code that invokes `downloadAndSummarize()` to a separate process.
 
-Currently the code that invokes `downloadAndSummarize()` lives in the same file and process as the workflow itself.
+Currently the code that invokes `downloadAndSummarize()` lives in the same place as the workflow itself and uses Resonate's Run API.
+The Run API means "run this function right here".
 
-It looks like this:
+To give the worker more of an "agentic" vibe, move the invocation of `downloadAndSummarize()` to a separate process and use Resonate's Begin RPC API instead.
+The Begin RPC API means "invoke this function over there".
 
-```ts title="worker.ts"
-const handle = await downloadAndSummarize.beginRun(url, url);
-console.log(await handle.result());
-```
+Create a new file `client.ts` and move the workflow "invocation code" to it.
+You will need to instantiate another Resonate client in `client.ts`.
+In the config, specify the same Resonate Server URL and a group name (e.g. "client")
 
-The `.beginRun()` method means "run this function right here".
-
-You will move the invocation of `downloadAndSummarize()` to a separate process and use Resonate's `.beginRpc()` method to invoke it.
-The `.beginRpc()` method means "invoke this function over there".
-
-Start by creating a new file `invoke.ts` and add the following code:
-
-```ts title="invoke.ts"
+```ts title="client.ts"
 import { Resonate } from "@resonatehq/sdk";
 
-const resonate = new Resonate({ group: "gateway" });
+const config = {
+  url: "https://localhost:8001", // url of the Resonate Server
+  group: "client", // group this process belongs to
+};
+const resonate = new Resonate(config);
 
 async function main() {
   try {
-    const url = "https://example.com";
-
+    const id = "resonatehq.io";
+    const url = "https://resonatehq.io";
+    const func = "download-and-summarize";
+    const options = { target: "poll://any@worker" };
     const handle = await resonate.beginRpc(
-      `download-and-summarize-${url}`,
-      "download-and-summarize",
+      id,
+      func,
       url,
-      resonate.options({ target: "poll://any@worker" })
+      resonate.options(options)
     );
-
     console.log(await handle.result());
+    resonate.stop();
   } catch (error) {
     console.error(error);
   }
 }
 
-void main();
+main();
 ```
 
-Open two terminal windows.
-In the first terminal, run the worker:
+In `worker.ts`, update the config to specify the group name (e.g. "worker").
+
+```ts title="worker.ts"
+const config = {
+  url: "http://localhost:8001", // url of the Resonate Server
+  group: "worker", // group this process belongs to
+};
+const resonate = new Resonate(config);
+```
+
+And remove the invocation code, i.e. the `main()` function.
+
+Before you run the code again, let's start with a fresh Resonate Server database, so you can see how easy it is to clear state during developent.
+Just kill the Resonate Server process and run `resonate dev` again.
+The `resonate dev` command starts the Resonate Server with an in-memory database that is cleared on each restart (perfect for development).
+
+Now run the worker in one terminal:
 
 ```shell
 bun run worker.ts
 ```
 
-In the second terminal, run the invocation script:
+And run the client in another terminal:
 
 ```shell
-bun run invoke.ts
+bun run client.ts
 ```
 
 You should see the invocation script block until the workflow completes, and then print the result.
