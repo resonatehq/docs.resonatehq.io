@@ -86,7 +86,7 @@ import { Resonate } from "@resonatehq/sdk";
 const resonate = Resonate.local();
 ```
 
-:::differentiator Dead Simple incremental adoption
+:::tip Dead Simple incremental adoption
 
 Temporal, Restate, and DBOS require a server or database to get started.
 
@@ -681,6 +681,7 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
   // ...
 });
 ```
+
 ### `.panic()` and `.assert()`
 
 Context's `.panic()` and `.assert()` aborts the top level durable execution based on a condition.
@@ -693,30 +694,29 @@ resonate.register("foo", function* (ctx: Context) {
   // ...
   yield* ctx.panic(true, "Invariant violation");
   // Code after this call will not be executed
-
 });
 ```
+
 ```ts
 resonate.register("foo", function* (ctx: Context) {
   // ...
   yield* ctx.panic(false, "Invariant violation");
   // Code after this call will be executed as normal
-
 });
 ```
+
 ```ts
 resonate.register("foo", function* (ctx: Context) {
   // ...
   yield* ctx.assert(false, "Invariant violation");
   // Code after this call will not be executed
-
 });
 ```
+
 ```ts
 resonate.register("foo", function* (ctx: Context) {
   // ...
   yield* ctx.assert(true, "Invariant violation");
   // Code after this call will be executed as normal
-
 });
 ```

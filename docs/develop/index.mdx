@@ -35,6 +35,7 @@ Quick example:
 
 import Tabs from "@theme/Tabs";
 import TabItem from "@theme/TabItem";
+import MoreExamplesButton from "@site/src/components/MoreExamplesButton";
 
 <Tabs
     groupId="preferred-language"
@@ -46,20 +47,20 @@ import TabItem from "@theme/TabItem";
 
     <TabItem value="python">
 
-```shell
+```shell title="Install via uv"
 uv add resonate-sdk
 ```
 
-[More examples](/develop/python#installation).
+<MoreExamplesButton href="/develop/python#installation" />
 
     </TabItem>
     <TabItem value="typescript">
 
-```shell
+```shell title="Install via bun"
 bun add @resonatehq/sdk
 ```
 
-[More examples](/develop/typescript#installation).
+<MoreExamplesButton href="/develop/typescript#installation" />
 
     </TabItem>
 
@@ -90,27 +91,27 @@ Quick example:
 
     <TabItem value="python">
 
-```py
+```py title="client.py"
 from resonate import Resonate
 
 # Initialize a Resonate Client in local mode
 resonate = Resonate.local()
 ```
 
-[More examples](/develop/python#initialization).
+<MoreExamplesButton href="/develop/python#initialization" />
 
     </TabItem>
 
     <TabItem value="typescript">
 
-```ts
+```ts title="client.ts"
 import { Resonate } from "@resonatehq/sdk";
 
 // Initialize a Resonate Client in local mode
 const resonate = Resonate.local();
 ```
 
-[More examples](/develop/typescript#initialization).
+<MoreExamplesButton href="/develop/typescript#initialization" />
 
     </TabItem>
 
@@ -153,14 +154,14 @@ Quick example:
 
 In Python, you can use the `@resonate.register` decorator to register a function:
 
-```py
+```py title="client.py"
 @resonate.register
 def foo(context: Context, arg: str) -> str:
     # ...
     return result
 ```
 
-[More examples](/develop/python#resonateregister).
+<MoreExamplesButton href="/develop/python#resonateregister" />
 
     </TabItem>
 
@@ -168,14 +169,14 @@ def foo(context: Context, arg: str) -> str:
 
 In TypeScript, you can use the `register` method to register a function:
 
-```ts
+```ts title="client.ts"
 fooR = resonate.register("foo", (context: Context, arg: string): string => {
   // ...
   return result;
 });
 ```
 
-[More examples](/develop/typescript#register).
+<MoreExamplesButton href="/develop/typescript#register" />
 
     </TabItem>
 
@@ -205,8 +206,7 @@ Quick example:
 
     <TabItem value="python">
 
-```py
-# process x
+```py title="client.py"
 # foo() and main() are in the same process
 @resonate.register
 def foo(ctx: Context, arg: str) -> str:
@@ -223,14 +223,13 @@ def main():
     result = handle.result()
 ```
 
-[More examples](/develop/python#run).
+<MoreExamplesButton href="/develop/python#run" />
 
     </TabItem>
 
     <TabItem value="typescript">
 
-```ts
-// process x
+```ts title="client.ts"
 // foo() and main() are in the same process
 const fooR = resonate.register("foo", (ctx: Context, arg: string): string => {
   // ...
@@ -248,7 +247,7 @@ async function main() {
 }
 ```
 
-[More examples](/develop/typescript#run)
+<MoreExamplesButton href="/develop/typescript#run" />
 
     </TabItem>
 
@@ -276,14 +275,15 @@ Quick example:
 
     <TabItem value="python">
 
-```py
+```py title="worker.py"
 # foo is in process x
 @resonate.register
 def foo(context: Context, arg: str):
     # ...
     return result
+```
 
-
+```py title="client.py"
 # main is in process y
 def main():
     # synchronously invoke foo
@@ -299,19 +299,21 @@ def main():
     result = handle.result()
 ```
 
-[More examples](/develop/python#rpc).
+<MoreExamplesButton href="/develop/python#rpc" />
 
     </TabItem>
 
     <TabItem value="typescript">
 
-```ts
+```ts title="worker.ts"
 // foo is in process x
 resonate.register("foo", (ctx: Context, arg: string) => {
   // ...
   return result;
 });
+```
 
+```ts title="client.ts"
 // main is in process y
 async function main() {
   try {
@@ -343,7 +345,7 @@ async function main() {
 }
 ```
 
-[More examples](/develop/typescript#rpc)
+<MoreExamplesButton href="/develop/typescript#rpc" />
 
     </TabItem>
 
@@ -380,7 +382,7 @@ Quick examples:
 
     <TabItem value="python">
 
-```python
+```python title="client.py"
 # create a promise
 resonate.promises.create(
     id="promise-id",
@@ -400,16 +402,15 @@ resonate.promises.resolve("promise-id")
 
 # reject a promise
 resonate.promises.reject("promise-id")
-
 ```
 
-[More examples](/develop/python#promisescreate).
+<MoreExamplesButton href="/develop/python#promisescreate" />
 
     </TabItem>
 
     <TabItem value="typescript">
 
-```ts
+```ts title="client.ts"
 // create a promise
 const p = await resonate.promises.create(
   "promise-id",
@@ -431,7 +432,7 @@ await resonate.promises.resolve("promise-id");
 await resonate.promises.reject("promise-id");
 ```
 
-[More examples](/develop/typescript#promisescreate).
+<MoreExamplesButton href="/develop/typescript#promisescreate" />
 
     </TabItem>
 
@@ -497,21 +498,21 @@ Quick example:
 
     <TabItem value="python" >
 
-```python
+```python title="worker.py"
 resonate.set_dependency("db", db_connection)
 ```
 
-[More examples](/develop/python#set_dependency).
+<MoreExamplesButton href="/develop/python#set_dependency" />
 
 </TabItem>
 
     <TabItem value="typescript">
 
-```ts
+```ts title="worker.ts"
 resonate.setDependency("db", db_connection);
 ```
 
-[More examples](/develop/typescript#setdependency).
+<MoreExamplesButton href="/develop/typescript#setdependency" />
 
     </TabItem>
 
@@ -542,7 +543,7 @@ This checkpoint makes it possible to replay the calling function with the result
 
     <TabItem value="python">
 
-```python
+```python title="worker.py"
 @resonate.register
 def foo(ctx: Context, arg: string):
 
@@ -559,13 +560,13 @@ def bar(ctx: Context, arg: string):
     return result
 ```
 
-[More examples](/develop/python#run-1).
+<MoreExamplesButton href="/develop/python#run-1" />
 
     </TabItem>
 
     <TabItem value="typescript">
 
-```ts
+```ts title="worker.ts"
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
   // synchronously call bar
   const result = yield* ctx.run(bar, ...args);
@@ -582,7 +583,7 @@ function bar(ctx: Context, ...args: any[]) {
 }
 ```
 
-[More examples](/develop/typescript#run-1).
+<MoreExamplesButton href="/develop/typescript#run-1" />
 
     </TabItem>
 
@@ -611,7 +612,7 @@ Quick example:
 
     <TabItem value="python">
 
-```py
+```py title="client.py"
 # process x
 @resonate.register
 def foo(ctx: Context, arg: str) -> str:
@@ -622,16 +623,16 @@ def foo(ctx: Context, arg: str) -> str:
     promise = yield ctx.begin_rpc("bar", arg)
     # do more stuff
     result = yield promise
+```
 
-
-# process y
+```py title="worker.py"
 @resonate.register
 def bar(ctx: Context, arg: str) -> str:
     # ...
     return
 ```
 
-[More examples](/develop/python#rpc-1).
+<MoreExamplesButton href="/develop/python#rpc-1" />
 
     </TabItem>
 
@@ -666,7 +667,7 @@ resonate.register("bar", function (ctx: Context, ...args: any[]) {
 });
 ```
 
-[More examples](/develop/typescript#rpc-1).
+<MoreExamplesButton href="/develop/typescript#rpc-1" />
 
     </TabItem>
 
@@ -695,7 +696,7 @@ def foo(ctx, arg):
     # ...
 ```
 
-[More examples](/develop/python#get_dependency).
+<MoreExamplesButton href="/develop/python#get_dependency" />
 
     </TabItem>
 
@@ -710,7 +711,7 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
 });
 ```
 
-[More examples](/develop/typescript#getdependency).
+<MoreExamplesButton href="/develop/typescript#getdependency" />
 
 </TabItem>
 
@@ -739,7 +740,7 @@ def foo(ctx, arg):
     # ...
 ```
 
-[More examples](/develop/python#promise).
+<MoreExamplesButton href="/develop/python#promise" />
 
     </TabItem>
 
@@ -756,7 +757,7 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
 });
 ```
 
-[More examples](/develop/typescript#promise).
+<MoreExamplesButton href="/develop/typescript#promise" />
 
     </TabItem>
 
@@ -787,7 +788,7 @@ def foo(ctx, arg):
     # ...
 ```
 
-[More examples](/develop/python#sleep).
+<MoreExamplesButton href="/develop/python#sleep" />
 
     </TabItem>
 
@@ -801,7 +802,7 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
 });
 ```
 
-[More examples](/develop/typescript#sleep).
+<MoreExamplesButton href="/develop/typescript#sleep" />
 
     </TabItem>
 
@@ -832,7 +833,7 @@ def foo(ctx, arg):
     # ...
 ```
 
-[More examples](/develop/python#randomrandom).
+<MoreExamplesButton href="/develop/python#randomrandom" />
 
     </TabItem>
 
@@ -847,7 +848,7 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
 });
 ```
 
-[More examples](/develop/typescript#mathrandom).
+<MoreExamplesButton href="/develop/typescript#mathrandom" />
 
     </TabItem>
 
@@ -878,7 +879,7 @@ def foo(ctx, arg):
     # ...
 ```
 
-[More examples](/develop/python#timetime).
+<MoreExamplesButton href="/develop/python#timetime" />
 
     </TabItem>
 
@@ -893,7 +894,7 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
 });
 ```
 
-[More examples](/develop/typescript#datenow).
+<MoreExamplesButton href="/develop/typescript#datenow" />
 
     </TabItem>
 
