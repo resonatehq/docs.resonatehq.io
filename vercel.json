@@ -21,8 +21,8 @@
       "permanent": true
     },
     {
-      "source": "/learn/typescript-sdk/website-summarization-app",
-      "destination": "/learn/typescript-sdk/website-summarization-agent",
+      "source": "/learn/typescript-sdk/website-summarization-app/:path*",
+      "destination": "/learn/typescript-sdk/website-summarization-agent/:path*",
       "permanent": true
     },
     {
