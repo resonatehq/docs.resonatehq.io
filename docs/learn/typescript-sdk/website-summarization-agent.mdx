@@ -224,30 +224,31 @@ Now the workflow better reflects the intended functionality of downloading a web
 
 Next, lets explore Resonate's automatic retries by adding some code to steps `download()` and `summarize()` so they fail 50% of the time.
 
-Import `Math` and use `Math.random()` to generate random numbers.
-Note that we don't want deterministic behaviour here, so we use `Math.random()` from the Resonate Context instead of `Math.random()`.
+Use `Math.random()` to generate the random numbers.
+Here we are intentionally making the functions non-deterministic to simulate transient failures.
+If you wanted deterministic number generation then you would use `ctx.Math.random()` instead.
 
 ```ts title="worker.ts"
 import { Context, Resonate } from "@resonatehq/sdk";
 
 // ...
 
-function* download(ctx: Context, url: string) {
+async function download(_: Context, url: string): Promise<string> {
   console.log("running download");
-  const roll = yield* ctx.math.random();
+  const roll = Math.random();
   if (roll > 0.5) {
     throw new Error("download encountered an error");
   }
   return `content of ${url}`;
 }
 
-function* summarize(ctx: Context, content: string) {
+async function summarize(_: Context, content: string): Promise<string> {
   console.log("running summarize");
-  const roll = yield* ctx.math.random();
+  const roll = Math.random();
   if (roll > 0.5) {
     throw new Error("summarize encountered an error");
   }
-  return `summary of ${content}!`;
+  return `summary of ${content}`;
 }
 ```
 
@@ -259,7 +260,7 @@ Consider if the app was written without Resonate, like this:
 
 ```ts
 async function downloadAndSummarizeWithoutResonate(url: string) {
-  console.log("running download_and_summarize");
+  console.log("running downloadAndSummarize");
   const content = await downloadWithoutResonate(url);
   const summary = await summarizeWithoutResonate(content);
   return summary;
@@ -285,6 +286,7 @@ async function summarizeWithoutResonate(content: string) {
 If either `download()` or `summarize()` throw, the execution stops.
 
 **With Resonate** you will notice that even if there is a thrown error, the function retries until it succeeds, enabling `downloadAndSummarize()` to complete and return the summary.
+This is a key feature for automatically dealing with transient issues you might encounter when calling external services, such as network timeouts, rate limits, or temporary unavailability.
 
 Run your app several times until you encounter an error, and then wait and watch.
 
@@ -312,7 +314,7 @@ For example, to set a 60 second timeout on the overall time Resonate will attemp
 
 ```ts title="worker.ts"
 function* downloadAndSummarize(ctx: Context, url: string) {
-  console.log("running download_and_summarize");
+  console.log("running downloadAndSummarize");
   const content: string = yield* ctx.run(
     download,
     url,
@@ -528,28 +530,30 @@ The workflow will pause after generating the summary and wait for an external si
 Update the worker so that `downloadAndSummarize()` creates a promise and waits for it to resolve before returning the summary.
 
 ```ts title="worker.ts"
-export const downloadAndSummarize = resonate.register(
-  "download-and-summarize",
-  function* (ctx: Context, url: string) {
-    console.log("running download_and_summarize");
-    const content: string = yield* ctx.run(download, url);
-    yield* ctx.sleep(10_000);
-    const summary: string = yield* ctx.run(summarize, content);
-
-    const approval = yield* ctx.promise({
-      id: `${url}-approval`,
-      data: { summary },
-    });
-
-    const approved = (yield* approval) as boolean;
-
-    if (!approved) {
-      throw new Error("Summary rejected by reviewer");
+function* downloadAndSummarize(
+  ctx: Context,
+  url: string
+): Generator<any, string, any> {
+  console.log("running downloadAndSummarize");
+  const content = yield* ctx.run(download, url);
+  while (true) {
+    const humanApproval = yield* ctx.promise();
+    const summary = yield* ctx.run(summarize, content);
+    console.log(`Generated summary: ${summary}`);
+    console.log(
+      `APPROVE: resonate promises resolve ${humanApproval.id} --data true`
+    );
+    console.log(
+      `REJECT: resonate promises resolve ${humanApproval.id} --data false`
+    );
+    const approval = yield* humanApproval as boolean;
+    if (approval) {
+      console.log("APPROVED");
+      return summary;
     }
-
-    return summary;
+    console.log("REJECTED, regenerating...");
   }
-);
+}
 ```
 
 Run the worker and the invocation script again.
@@ -562,15 +566,15 @@ bun run worker.ts
 bun run invoke.ts
 ```
 
-The invocation script will block while the workflow waits for the approval promise to be resolved.
+The client will block while the workflow waits for the approval promise to be resolved.
 
 Use the Resonate CLI to resolve the promise and unblock the workflow.
 
 ```shell
-resonate promises resolve https://example.com-approval --data true
+resonate promises resolve resonatehq.io.1 --data "{ true }"
 ```
 
-You should see the result of the `downloadAndSummarize()` workflow printed in the invocation script terminal.
+You should see the result of the `downloadAndSummarize()` workflow printed in the client terminal.
 
 **Congratulations you have just created a human-in-the-loop workflow!**
 
@@ -582,11 +586,11 @@ In this part of the tutorial, you will add the rest of pieces that will convert 
 
 To do this you will:
 
-- Convert the invocation script into an Express application (HTTP Gateway) that handles two routes:
+- Convert the client into an Express application (HTTP Gateway) that handles two routes:
   - `/summarize` to start the summarization workflow.
   - `/confirm` to resolve the promise created in the workflow and pass data to the workflow.
 - Add a new step to the workflow that "sends an email" with the summary (this will just print the summary and links to confirm or reject it).
-- Add Cheerio to scrape the webpage content.
+- Add Puppeteer and Cheerio to scrape the webpage content.
 - Add Ollama to summarize the content.
 
 Start by converting the invocation script into an Express application.
@@ -596,65 +600,37 @@ Rename `invoke.ts` to `gateway.ts`.
 Install the additional dependencies:
 
 ```shell
-bun add express node-fetch@3 cheerio
+bun add express cheerio puppeteer ollama
 ```
 
 And change the code in `gateway.ts` to the following:
 
 ```ts title="gateway.ts"
-import express, { Request, Response } from "express";
+import express from "express";
+import type { Request, Response } from "express";
 import { Resonate } from "@resonatehq/sdk";
 import crypto from "node:crypto";
+import assert from "assert";
 
 const app = express();
 app.use(express.json());
 
-const resonate = new Resonate({ group: "gateway" });
+const config = {
+  url: "http://localhost:8001", // url of the Resonate Server
+  group: "client", // group this process belongs to
+};
+const resonate = new Resonate(config);
 
 app.post("/summarize", async (req: Request, res: Response) => {
   try {
     const { url, email } = req.body ?? {};
-
-    if (!url || !email) {
-      return res.status(400).json({ error: "URL and email required" });
-    }
-
-    const usableId = clean(url);
-
-    await resonate.beginRpc(
-      `download-and-summarize-${usableId}`,
-      "download-and-summarize",
-      { url, email, usableId },
-      resonate.options({ target: "poll://any@worker" })
-    );
-
-    return res.status(202).json({ message: "Workflow started" });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: "Unable to start workflow" });
-  }
-});
-
-app.get("/confirm", async (req: Request, res: Response) => {
-  try {
-    const promiseId = req.query.promise_id as string | undefined;
-    const confirm = req.query.confirm as string | undefined;
-
-    if (!promiseId || confirm === undefined) {
-      return res
-        .status(400)
-        .json({ error: "promise_id and confirm are required" });
-    }
-
-    await resonate.promises.resolve({
-      id: promiseId,
-      data: confirm === "true",
-    });
-
-    return res.status(200).json({ message: "Decision recorded" });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ error: "Unable to record decision" });
+    const id = clean(url);
+    const func = "download-and-summarize";
+    const options = { target: "poll://any@worker" };
+    await resonate.beginRpc(id, func, url, email, resonate.options(options));
+    res.status(200).send("workflow started.");
+  } catch (e) {
+    console.error(e);
   }
 });
 
@@ -662,9 +638,23 @@ function clean(url: string) {
   return crypto.createHash("sha256").update(url).digest("hex");
 }
 
+app.get("/confirm", async (req: Request, res: Response) => {
+  try {
+    const promiseId = req.query.promiseId as string;
+    const confirm = req.query.confirm as string;
+    assert(promiseId, "promiseId is required");
+    assert(confirm, "confirm is required");
+    await resonate.promises.resolve(promiseId, { data: confirm });
+    res.status(200).send("promise resolved.");
+  } catch (e) {
+    console.error(e);
+    return res.status(500).send(e);
+  }
+});
+
 function main() {
   app.listen(3000, () => {
-    console.log("Gateway listening on http://localhost:3000");
+    console.log("Gateway listening on port 3000");
   });
 }
 
@@ -673,144 +663,113 @@ main();
 
 Next, enhance the worker to perform real work: fetching website content, summarizing it with Ollama, and sending "email" notifications with approval links.
 
-Install the additional worker dependencies (skip this if you already installed them for the gateway):
-
-```shell
-bun add node-fetch@3 cheerio
-```
-
 Update `worker.ts` to the following:
 
 ```ts title="worker.ts"
-import { Context, Resonate } from "@resonatehq/sdk";
-import fetch from "node-fetch";
+import { Resonate } from "@resonatehq/sdk";
+import type { Context } from "@resonatehq/sdk";
+import ollama from "ollama";
+import puppeteer from "puppeteer";
 import { load } from "cheerio";
 
-type WorkflowParams = {
-  url: string;
-  email: string;
-  usableId: string;
+const config = {
+  url: "http://localhost:8001",
+  group: "worker",
 };
+const resonate = new Resonate(config);
 
-const resonate = new Resonate({ group: "worker" });
-
-export const downloadAndSummarize = resonate.register(
-  "download-and-summarize",
-  function* (ctx: Context, params: WorkflowParams) {
-    console.log("running download_and_summarize", params.url);
-
-    const htmlHandle = yield* ctx.beginRun(fetchHtml, params.url);
-    const html = (yield* htmlHandle) as string;
-
-    const cleaned = yield* ctx.run(extract, html);
-
-    const summaryHandle = yield* ctx.beginRun(generateSummary, cleaned);
-    const summary = (yield* summaryHandle) as string;
-
-    yield* ctx.run(sendEmail, params, summary);
-
-    const decisionPromise = yield* ctx.promise({
-      id: `${params.usableId}-approval`,
-      data: { summary, url: params.url, email: params.email },
-    });
-
-    const approved = (yield* decisionPromise) as boolean;
-
-    if (!approved) {
-      throw new Error("Summary rejected by reviewer");
+async function download(_: Context, url: string): Promise<string> {
+  console.log("running download");
+  const browser = await puppeteer.launch({ headless: "new" });
+  const page = await browser.newPage();
+  try {
+    await page.goto(url, { waitUntil: "networkidle2" });
+    const html = await page.content();
+    const $ = load(html);
+    const selectorsToRemove = [
+      "script",
+      "style",
+      "noscript",
+      "iframe",
+      "svg",
+      "nav",
+      "header",
+      "footer",
+    ];
+    selectorsToRemove.forEach((selector) => $(selector).remove());
+    const text = $("body").text().replace(/\s+/g, " ").trim();
+    if (!text) {
+      throw new Error(`No readable content found on ${url}`);
     }
-
-    return summary;
+    return text;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to download content from ${url}: ${message}`);
+  } finally {
+    await browser.close();
   }
-);
-
-function extract(_: Context, html: string) {
-  console.log("running extract");
-  const $ = load(html);
-  return $("body").text().replace(/\s+/g, " ").trim();
 }
 
-async function fetchHtml(_: Context, url: string): Promise<string> {
-  console.log("fetching page", url);
-  const response = await fetch(url, {
-    headers: { "User-Agent": "Resonate Summarizer" },
+async function summarize(_: Context, content: string): Promise<string> {
+  console.log("running summarize");
+  const { response } = await ollama.generate({
+    model: "llama3.1",
+    prompt: `Summarize the following webpage content:\n${content}`,
   });
+  return response;
+}
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch page (${response.status})`);
+async function sendEmail(
+  _: Context,
+  summary: string,
+  email: string,
+  promiseId: string
+): Promise<void> {
+  console.log(`Sending email to ${email}`);
+  console.log(`SUMMARY:\n${summary}`);
+  console.log(
+    `APPROVAL LINK: http://localhost:5000/confirm?promiseId=${promiseId}&confirm=true`
+  );
+  console.log(
+    `REJECTION LINK: http://localhost:5000/confirm?promiseId=${promiseId}&confirm=false`
+  );
+}
+
+function* downloadAndSummarize(
+  ctx: Context,
+  url: string,
+  email: string
+): Generator<any, string, any> {
+  console.log("running downloadAndSummarize");
+  const content = yield* ctx.run(download, url);
+  while (true) {
+    const humanApproval = yield* ctx.promise();
+    const summary = yield* ctx.run(summarize, content);
+    yield* ctx.run(sendEmail, summary, email, humanApproval.id);
+    const approval = yield* humanApproval;
+    if (approval) {
+      console.log("APPROVED");
+      return summary;
+    }
+    console.log("REJECTED, regenerating...");
   }
-
-  return await response.text();
 }
 
-async function generateSummary(_: Context, text: string): Promise<string> {
-  console.log("calling Ollama for summary");
-  const response = await fetch("http://localhost:11434/api/generate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "llama3.1",
-      prompt: `Summarize the following webpage content:\n${text}`,
-      stream: false,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Ollama request failed (${response.status})`);
-  }
-
-  const json = (await response.json()) as { response: string };
-  return json.response;
-}
-
-function sendEmail(_: Context, params: WorkflowParams, summary: string) {
-  const approvalId = `${params.usableId}-approval`;
-  const confirmUrl = new URL("/confirm", "http://localhost:3000");
-  confirmUrl.searchParams.set("promise_id", approvalId);
-
-  const approveUrl = new URL(confirmUrl.toString());
-  approveUrl.searchParams.set("confirm", "true");
-
-  const rejectUrl = new URL(confirmUrl.toString());
-  rejectUrl.searchParams.set("confirm", "false");
-
-  console.log("--- email preview ---");
-  console.log(`To: ${params.email}`);
-  console.log(`Subject: Summary ready for ${params.url}`);
-  console.log(summary);
-  console.log(`Approve: ${approveUrl.toString()}`);
-  console.log(`Reject: ${rejectUrl.toString()}`);
-  console.log("----------------------");
-}
-
-function main() {
-  resonate.start();
-  console.log("Worker listening on poll://any@worker");
-  setInterval(() => {}, 1 << 30);
-}
-
-main();
+resonate.register("download-and-summarize", downloadAndSummarize);
 ```
-
-:::tip Deterministic asynchronous APIs
-
-When using APIs like `ctx.beginRun(<function_name>, ...)`, Resonate records progress after each awaited operation.
-If the worker crashes mid-request, the workflow resumes without duplicating work.
-
-:::
 
 Now run the full application.
 
-1. Ensure the Resonate Server and Ollama are running (`ollama run llama3.1`).
-2. Start the worker: `bun run worker`.
-3. Start the gateway: `bun run gateway`.
+1. Run a new Resonate Server (`resonate dev`) and make sure Ollama is running (`ollama run llama3.1`).
+2. Run the worker: `bun run worker.ts`.
+3. Run the gateway: `bun run gateway.ts`.
 
 Send a request to kick off the workflow:
 
 ```shell
-curl -X POST http://localhost:3000/summarize \
+curl -X POST http://localhost:5000/summarize \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com", "email": "someone@example.com"}'
+  -d '{"url": "https://resonatehq.io", "email": "someone@example.com"}'
 ```
 
 Watch the worker logs to see each step execute and the "email preview" output.
@@ -823,7 +782,7 @@ curl "http://localhost:3000/confirm?promise_id=<approval-id>&confirm=true"
 
 Once confirmed, the workflow completes and the promise resolves.
 
-If you reject the summary (`confirm=false`), the workflow throws an error and you can retry the request after making adjustments.
+If you reject the summary (`confirm=false`), the workflow retries the summary.
 
 At this point you have:
 
