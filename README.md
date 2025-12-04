@@ -1,6 +1,6 @@
 ![resonate documentation banner](./static/img/resonate-documentation.png)
 
-# Resonate open-source documentation repo
+# Resonate documentation
 
 ![Website Deploy](https://deploy-badge.vercel.app/?url=https://docs.resonatehq.io/&name=website)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)

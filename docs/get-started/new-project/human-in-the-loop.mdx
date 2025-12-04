@@ -5,9 +5,9 @@ sidebar_label: Human in the loop
 sidebar_position: 2
 ---
 
-![human-in-the-loop banner](/img/human-in-the-loop-graphic.png)
+![human-in-the-loop banner](/img/human-in-the-loop-banner.png)
 
-Start a new project using a human-in-the-loop (HITL) use case example.
+Start a new project that has an existing workflow that waits on input from a human.
 
 import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
 import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
@@ -45,12 +45,12 @@ import TabItem from "@theme/TabItem";
     defaultValue="typescript"
     values={[
         {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
     ]}>
 
     <TabItem value="typescript" >
 
-```typescript
-// process x
+```typescript title="worker/index.ts"
 function* foo(context: Context, workflowId: string): Generator<any, void, any> {
   // create a promise
   const blockingPromise = yield* context.promise();
@@ -62,8 +62,9 @@ function* foo(context: Context, workflowId: string): Generator<any, void, any> {
   console.log(`unblocked, promise resolved`);
   return;
 }
+```
 
-// process y
+```typescript title="gateway/index.ts"
 app.get("/unblock-workflow", async (req: Request, res: Response) => {
   // expose an endpoint to resolve the promise
   try {
