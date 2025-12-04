@@ -1,0 +1,78 @@
+---
+id: logs
+title: Resonate component logs
+description: Component log outputs can provide insight into the behavior of your application.
+sidebar_label: Logs
+sidebar_position: 1
+last_update:
+  date: "2025-12-03"
+tags:
+  - server
+  - sdk
+  - observability
+---
+
+## Server logs
+
+Resonate emits structured logs through Go’s `slog` package.
+When the Server starts, it installs a text handler that writes key/value records to standard output at the operator-selected minimum log level.
+
+### Configuring the log level
+
+Log levels: `debug`, `info`, `warn`, or `error`.
+
+You can set the log level via the `resonate.yml` configuration file.
+The default is `info` if the field is omitted.
+
+```yml
+logLevel: debug
+```
+
+You can also set the log level via the `--log-level` CLI flag when starting the server:
+
+```shell
+resonate serve --log-level debug
+```
+
+The CLI flag takes precedence over the configuration file.
+
+Resonate validates the string before applying it.
+An unrecognized value raises "failed to parse log level" and prevents startup.
+
+### Log levels and common messages
+
+#### Debug – detailed flow diagnostics
+
+Enabled with `logLevel: debug`.
+
+Useful for tracing queue activity or individual requests.
+
+- API queues: api:sqe:enqueue, api:sqe:dequeue, api:cqe:enqueue, and api:cqe:dequeue show requests moving through the API buffers with request IDs and payload metadata.
+- AIO queues: aio:sqe:enqueue, aio:cqe:enqueue, and aio:cqe:dequeue mirror queue flow inside asynchronous subsystems.
+- Scheduler lifecycle: scheduler:add and scheduler:rmv mark coroutine scheduling, including coroutine name and generated ID.
+- Per-request traces: HTTP middleware logs http method, URL, and status; the gRPC interceptor logs grpc method names and returned errors.
+
+#### Info – lifecycle and service announcements
+
+Emitted regardless of log level unless you choose warn/error, which suppress lower levels.
+
+- Startup of subsystems: starting http server, starting grpc server, and starting poll server announce listener addresses when the respective subsystems come online.
+- Metrics endpoint: starting metrics server indicates the Prometheus exporter is listening.
+- Controlled shutdowns: shutdown signal received, shutting down records the signal value before the server begins graceful cleanup.
+
+#### Warn – recoverable or throttling conditions
+
+Warnings surface when Resonate recovers automatically but an operator may want to intervene.
+
+- Capacity limits: scheduler queue full fires when coroutine capacity is exhausted, signaling the need to increase buffers or investigate load spikes.
+- Metrics shutdown issues: error stopping metrics server appears if the Prometheus endpoint does not close cleanly during shutdown.
+- Task processing quirks: Warnings such as failed to parse task, failed to parse promise, error decoding task, or failed to enqueue task highlight malformed data or transient delivery issues detected by background workers.
+- Router misses: failed to match promise is logged when no routing rule claims a new promise; Resonate continues by creating the promise without a task
+
+#### Error – actionable failures
+
+Error logs identify conditions that usually require operator action.
+
+- Critical startup failures: failed to start api, failed to start aio, or control loop failed abort the serve command and indicate fatal initialization issues.
+- Shutdown triggers: api error received, shutting down or aio error received, shutting down explain why an emergency shutdown began.
+- Data-layer problems: Errors such as failed to read promise propagate exceptions returned by the storage layer, including the triggering command for root-cause analysis.

@@ -11,17 +11,17 @@ This website is built using [Docusaurus 2](https://docusaurus.io/), a modern sta
 Install dependencies:
 
 ```shell
-npm install
+yarn
 ```
 
 Run the development server:
 
 ```shell
-npm run start
+yarn start
 ```
 
 **Before submitting a Pull Request, run a production build check.**
 
 ```shell
-npm run build
+yarn build
 ```
