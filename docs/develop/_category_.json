@@ -1,7 +1,7 @@
 {
   "label": "Develop",
   "position": 3,
-  "collapsed": true,
+  "collapsed": false,
   "collapsible": true,
   "link": {
     "type": "doc",

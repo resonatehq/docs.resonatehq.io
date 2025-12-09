@@ -1,0 +1,101 @@
+---
+id: traces
+title: Execution traces
+sidebar_label: Traces
+---
+
+The Resonate TypeScript SDK supports [OpenTelemetry](https://opentelemetry.io/) for tracing task execution, retries, and remote procedure calls (RPCs).
+This allows you to monitor and analyze the behavior of your distributed function executions using your existing telemetry infrastructure.
+
+Resonate exposes a lightweight tracing interface so you can plug in your own telemetry implementation.
+This document shows how to connect that interface to OpenTelemetry.
+
+:::tip How tracing works in the SDK
+
+The SDK accepts a `Tracer` when you create a `Resonate` client (including `Resonate.local()` or `Resonate.remote()`). That tracer is used to:
+
+- Start a span for every durable `run`/`rpc` invocation and each retry attempt.
+- Attach headers from `Span.encode()` to every network request the SDK makes so downstream workers can continue the trace.
+- Reconstruct a new span for incoming work with `Tracer.decode()` so callbacks and resumed tasks stay connected to the original trace.
+
+If you do not provide a tracer, the SDK uses a `NoopTracer` that performs no tracing.
+
+:::
+
+The `Tracer` and `Span` interfaces are minimal wrappers around span creation, status updates, and context propagation.
+Implement them with `@opentelemetry/api` to connect Resonate to your existing exporter and resource configuration.
+
+```ts title="tracer.ts"
+import {
+  context,
+  propagation,
+  trace,
+  SpanStatusCode,
+  type Span as OtelSpan,
+} from "@opentelemetry/api";
+import type { Span, Tracer } from "@resonatehq/sdk";
+
+class OpenTelemetrySpan implements Span {
+  constructor(private span: OtelSpan) {}
+
+  startSpan(id: string, startTime: number): Span {
+    const ctxWithParent = trace.setSpan(context.active(), this.span);
+    const child = trace
+      .getTracer("resonate")
+      .startSpan(id, { startTime: new Date(startTime) }, ctxWithParent);
+    return new OpenTelemetrySpan(child);
+  }
+
+  setAttribute(key: string, value: string | number | boolean) {
+    this.span.setAttribute(key, value);
+  }
+
+  setStatus(success: boolean, message?: string) {
+    this.span.setStatus({
+      code: success ? SpanStatusCode.OK : SpanStatusCode.ERROR,
+      message,
+    });
+  }
+
+  encode(): Record<string, string> {
+    const carrier: Record<string, string> = {};
+    propagation.inject(trace.setSpan(context.active(), this.span), carrier);
+    return carrier;
+  }
+
+  end(endTime: number) {
+    this.span.end(new Date(endTime));
+  }
+}
+
+class OpenTelemetryTracer implements Tracer {
+  startSpan(id: string, startTime: number): Span {
+    const span = trace
+      .getTracer("resonate")
+      .startSpan(id, { startTime: new Date(startTime) });
+    return new OpenTelemetrySpan(span);
+  }
+
+  decode(headers: Record<string, string>): Span {
+    const extracted = propagation.extract(context.active(), headers);
+    const span = trace
+      .getTracer("resonate")
+      .startSpan("resonate.resume", { startTime: Date.now() }, extracted);
+    return new OpenTelemetrySpan(span);
+  }
+}
+```
+
+With this tracer in place, construct the client as usual:
+
+```ts title="client.ts"
+import { Resonate } from "@resonatehq/sdk";
+import { OpenTelemetryTracer } from "./tracer";
+
+const resonate = Resonate.remote({
+  url: "https://resonate.example.com",
+  tracer: new OpenTelemetryTracer(),
+});
+```
+
+All spans created by the SDK will now flow through your OpenTelemetry pipeline with parent-child relationships maintained across workers via the injected headers.

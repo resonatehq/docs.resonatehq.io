@@ -1,39 +1,33 @@
 ---
-id: coming-from-temporal
-title: Coming from Temporal
-sidebar_label: Coming from Temporal
-sidebar_position: 3
-description: If you are coming from Temporal, this guide will help you understand the differences and similarities between Temporal and Resonate.
-last_update:
-  date: "08-13-2025"
-tags:
-  - evaluate
-  - comparison
+id: dbos
+title: Coming from DBOS
+sidebar_label: DBOS
+sidebar_position: 5
 ---
 
-**Are you coming from Temporal?**
+**Are you coming from DBOS?**
 
-This guide is meant to help you understand the differences and similarities between Temporal and Resonate.
+If so, this guide is meant to help you understand the differences and similarities between Resonate and DBOS.
 
 ## Durability
 
-One of Temporal’s core value propositions is Durable Execution.
-Essentially, Durable Execution is the ability for a function to recover in another process after a hard failure and resume from where it left off.
+A core value proposition of DBOS is its durable workflows.
+A durable workflow or Durable Execution is one that can recover in another process after a hard failure and resume from where it left off.
 
-Resonate also provides Durable Execution.
+Resonate also provides durable workflows (Durable Executions).
 
 In Resonate, if your process crashes, your function can recover and resume from where it left off in another process.
 
 ## Programming model
 
-If you have experience with Temporal, then you are familiar with thinking in terms of Workflows and Activities.
+If you have experience with DBOS, then you are familiar with thinking in terms of Workflows and Steps.
 
-Resonate does not have proprietary function types such as Workflows and Activities; it just uses functions.
+Resonate does not have proprietary function types such as Workflows and Steps – you just write functions.
 
 Resonate promotes a procedural programming model that enables you to compose functions indefinitely and recursively.
 
 Consider this factorial example.
-How might you implement it in Temporal?
+How might you implement it in DBOS?
 
 import Tabs from "@theme/Tabs";
 import TabItem from "@theme/TabItem";
@@ -67,7 +61,6 @@ def main():
 
     </TabItem>
 
-
     <TabItem value="typescript">
 
 See it in action: [example-recursive-factorial-ts](https://github.com/resonatehq-examples/example-recursive-factorial-ts)
@@ -96,7 +89,7 @@ async function main() {
 
 ## Zero-dependency development
 
-In Temporal, you always need a Temporal Service for your Worker to connect to, whether that is a local development instance or a production instance.
+With DBOS, your Worker or application must always connect to a Postgres database, whether it’s a local development or a production instance.
 
 Resonate offers a zero-dependency development experience, where a Worker (single node application) can run without connecting to a Resonate Server.
 
@@ -117,6 +110,7 @@ from resonate import Resonate
 resonate = Resonate.local()
 
 #...
+
 ```
 
     </TabItem>
@@ -137,7 +131,7 @@ const resonate = Resonate.local();
 
 ## Human-in-the-loop
 
-In Temporal, you can use Signals to unblock a Workflow Execution with input from a human.
+With DBOS, you can use a '@recv' function to block the Workflow and await input from a human.
 
 With Resonate, you can achieve the same effect by creating a Durable Promise that is not attached to any function execution, and then await on it.
 Then, you can resolve it from anywhere, optionally sending data into the function while doing so.
@@ -203,11 +197,11 @@ await resonate.promises.resolve({ id: promiseId, data: JSON.stringify(data) });
 
 ## Distributed execution
 
-In Temporal, you can run multiple Workers to handle the load of your application.
-You use Task Queue Names to identify which Workers should handle which Workflows and Activities.
+A major difference between Resonate and DBOS is that Resonate can orchestrate executions across multiple Workers while DBOS cannot.
+With Resonate, you can run multiple Workers in a group, and Resonate will automatically load-balance invocations across them.
 
-In Resonate, you can register workers in groups and send invocations to the groups.
-Resonate will automatically load balance the invocations across the Workers in the group.
+Consider the following Resonate example.
+How would you accomplish this using DBOS?
 
 <Tabs
     groupId="preferred-language"
@@ -276,60 +270,9 @@ async function main() {
 
 </Tabs>
 
-## Decentralized architecture
+DBOS is designed to ensure durability for a single instance of an application.
+When a DBOS application process crashes, an operator must restart the application for any in-progress functions/workflows to recover and resume.
 
-In Temporal, any given Workflow Execution is tied to a specific Temporal Service.
-This forces a star-like topology (centralized system) where all Workers in an application connect to a single Temporal Service.
+Resonate will automatically recover and resume in-progress functions/workflows in another Worker.
 
-Additionally, Temporal requires you to size your Temporal Service ahead of time to handle the load of all Workers in your application.
-If you size it incorrectly, you have to migrate to a new setup, which is a complex process.
-
-Resonate applications, on the other hand, can use multiple Resonate Servers to durably store data (Durable Promises), which can be added dynamically as the application scales.
-
-<Tabs
-    defaultValue="temporal"
-    values={[
-        {label: 'Temporal', value: 'temporal'},
-        {label: 'Resonate', value: 'resonate'},
-
-    ]}
->
-
-    <TabItem value="temporal">
-
-![Temporal architecture](/img/temporal-system-arch.svg)
-
-    </TabItem>
-
-    <TabItem value="resonate">
-
-![Resonate architecture](/img/resonate-system-arch.svg)
-
-    </TabItem>
-
-</Tabs>
-
-## System complexity
-
-The level of system complexity is perhaps the biggest difference between Resonate and Temporal.
-
-Resonate at its core believes in simplicity.
-
-This belief drives many of the design decisions in Resonate, and has resulted in a much smaller API surface than Temporal.
-
-This smaller API surface and desire for simplicity have also resulted in a much smaller set of components.
-
-For example, Temporal SDKs have tens of thousands of lines of code needed to manage the complexity of their implementation.
-Resonate SDKs, on the other hand, have but a few hundred lines of code.
-
-A Temporal Service is a complex system consisting of multiple individual components, each consisting of tens of thousands of lines of code, that need to be configured, deployed, and scaled independently.
-A Resonate Server, on the other hand, is a single binary that is easy to deploy. And the Resonate system can scale by just adding more Resonate Servers, each with an underlying database.
-
-Additionally, Temporal exposes many complex APIs to the developer which they are required to use for failure detection, load balancing, and more.
-Resonate's belief in simplicity means that much of this complexity is pushed into the platform and automatically handled for you.
-
-For example, Temporal requires the developer to work with at least 4 different timeouts to detect and handle Activity Execution failures.
-It also requires the developer to manually develop heartbeats in the Activity, and tune the performance of Workers.
-Whereas, Resonate exposes a single timeout to the developer for the resolution of the Durable Promise, and it automatically handles failure detection, heartbeating, and load balancing across Workers.
-
-Ultimately, as a developer, you will find many areas where Resonate has chosen to promote a specific model for the sake of simplicity, and to avoid indulging in what we believe to be unnecessary complexity.
+In essence, DBOS focuses on single-instance durability without addressing scalability, while Resonate holistically addresses the needs of modern distributed systems.
