@@ -1,0 +1,279 @@
+---
+id: quickstart
+title: Quickstart from scratch
+sidebar_label: Quickstart
+sidebar_position: 1
+tags:
+  - quickstart
+  - get-started
+---
+
+Minimal steps to get started with Resonate.
+
+## 1. Install Resonate
+
+Install the Resonate Server + CLI on your local machine.
+
+```shell title="Install with Homebrew"
+brew install resonatehq/tap/resonate
+```
+
+Run the Resonate Server
+
+```shell title="Start Resonate Server"
+resonate dev
+```
+
+## 2. Install the SDK
+
+Add the Resonate SDK to your project as a dependency.
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+<Tabs
+    groupId="language"
+    defaultValue="python"
+    values={[
+        { label: "Python", value: "python" },
+        { label: "TypeScript", value: "typescript" },
+    ]}
+>
+    <TabItem value="python">
+
+    <Tabs
+    groupId="prefferred-package-manager-py"
+    defaultValue="uv"
+    values={[
+        { label: "uv", value: "uv" },
+        { label: "pip", value: "pip" },
+        { label: "poetry", value: "poetry" },
+    ]}>
+
+    <TabItem value="uv">
+
+```shell title="Install with uv"
+uv add resonate-sdk
+```
+
+    </TabItem>
+
+    <TabItem value="pip">
+
+```shell title="Install with pip"
+pip install resonate-sdk
+```
+
+    </TabItem>
+
+    <TabItem value="poetry">
+
+```shell title="Install with poetry"
+poetry add resonate-sdk
+```
+
+    </TabItem>
+
+</Tabs>
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+<Tabs
+    groupId="preferred-package-manager-ts"
+    defaultValue="bun"
+    values={[
+        {label: 'Bun', value: 'bun'},
+        {label: 'npm', value: 'npm'},
+        {label: 'Yarn', value: 'yarn'},
+    ]}>
+
+    <TabItem value="bun">
+
+```shell title="Install with bun"
+bun add @resonatehq/sdk
+```
+
+    </TabItem>
+
+    <TabItem value="npm">
+
+```shell title="Install with npm"
+npm install @resonatehq/sdk
+```
+
+    </TabItem>
+
+    <TabItem value="yarn">
+
+```shell title="Install with yarn"
+yarn add @resonatehq/sdk
+```
+
+    </TabItem>
+
+</Tabs>
+
+    </TabItem>
+
+</Tabs>
+
+## 3. Register a function
+
+Register a `flow` function with Resonate and start a Worker process to execute it.
+
+<Tabs
+    groupId="language"
+    defaultValue="python"
+    values={[
+        { label: "Python", value: "python" },
+        { label: "TypeScript", value: "typescript" },
+    ]}
+>
+    <TabItem value="python">
+
+```python title="main.py"
+from resonate import Resonate, Context
+from typing import Generator, Any
+
+resonate = Resonate.remote()
+
+def step_1(_: Context, greetee: str) -> str:
+    print("running step 1")
+    return f"Hello {greetee} from step 1!"
+
+def step_2(_: Context, greetee: str) -> str:
+    print("running step 2")
+    return f"Hello {greetee} from step 2!"
+
+
+@resonate.register
+def flow(ctx: Context, greetee: str) -> Generator[str, Any, Any]:
+    print("running flow")
+    flow_greeting = f"Hello {greetee} from the main flow!"
+    step_1_greeting = yield ctx.run(step_1, greetee=greetee)
+    step_2_greeting = yield ctx.run(step_2, greetee=greetee)
+    greeting = f"{flow_greeting} {step_1_greeting} {step_2_greeting}"
+    return greeting
+
+resonate.start()
+```
+
+Run your Worker
+
+    <Tabs
+    groupId="prefferred-package-manager-py"
+    defaultValue="uv"
+    values={[
+        { label: "uv", value: "uv" },
+        { label: "pip", value: "pip" },
+        { label: "poetry", value: "poetry" },
+    ]}>
+
+        <TabItem value="uv">
+
+```shell title="Run with uv"
+uv run main.py
+```
+
+        </TabItem>
+
+    <TabItem value="pip">
+
+```shell title="Run with python"
+python main.py
+```
+
+        </TabItem>
+
+        <TabItem value="poetry">
+
+```shell title="Run with poetry"
+poetry run python main.py
+```
+
+        </TabItem>
+
+    </Tabs>
+
+    </TabItem>
+
+    <TabItem value="typescript">
+
+```typescript title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
+import type { Context } from "@resonatehq/sdk";
+
+const resonate = new Resonate({
+  url: "http://localhost:8001",
+  group: "worker",
+});
+
+async function step1(_: Context, greetee: string): Promise<string> {
+  console.log("running step 1");
+  return `Hello ${greetee} from step 1!`;
+}
+
+async function step2(_: Context, greetee: string): Promise<string> {
+  console.log("running step 2");
+  return `Hello ${greetee} from step 2!`;
+}
+
+function* flow(ctx: Context, greetee: string): Generator<any, string, any> {
+  console.log("running flow");
+  const flowGreeting = `Hello ${greetee} from flow!`;
+  const step1Greeting = yield* ctx.run(step1, greetee);
+  const step2Greeting = yield* ctx.run(step2, greetee);
+  const greeting = `${flowGreeting} ${step1Greeting} ${step2Greeting}`;
+  return greeting;
+}
+
+resonate.register("flow", flow);
+```
+
+    </TabItem>
+
+</Tabs>
+
+## 4. Invoke a function
+
+Invoke the `flow` function defined above.
+
+```shell title="Invoke flow"
+resonate invoke hello-world-greeting-flow --func flow --arg World --target poll://any@worker
+```
+
+## 5. Get the result
+
+Get the result of the invoked `flow` function using the promise ID.
+
+```shell title="Get the result of flow"
+resonate promises get hello-world-greeting-flow
+```
+
+You should see the following output:
+
+```shell title="resonate promises get output"
+Id:       hello-world-greeting-flow
+State:    RESOLVED
+Timeout:  1764970170102
+
+Idempotency Key (create):
+Idempotency Key (complete):  hello-world-greeting-flow
+
+Param:
+  Headers:
+  Data:
+    {"func":"flow","args":["World"],"version":1}
+
+Value:
+  Headers:
+  Data:
+    "Hello World from flow! Hello World from step 1! Hello World from step 2!"
+
+Tags:
+  resonate:invoke:  poll://any@workers
+```
+
+The Data field under Value contains the final greeting returned by the `flow` function.

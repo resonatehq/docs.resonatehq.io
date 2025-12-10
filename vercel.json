@@ -1,53 +1,13 @@
 {
   "redirects": [
     {
-      "source": "/concepts/:path*",
-      "destination": "/",
+      "source": "/evaluate/coming-from-temporal",
+      "destination": "/evaluate/coming-from/temporal",
       "permanent": true
     },
     {
-      "source": "/evaluate/faq",
-      "destination": "/evaluate",
-      "permanent": true
-    },
-    {
-      "source": "/operate/server-errors",
-      "destination": "/operate/errors",
-      "permanent": true
-    },
-    {
-      "source": "/learn/python-sdk/website-summarization-app",
-      "destination": "/learn/python-sdk/website-summarization-agent",
-      "permanent": true
-    },
-    {
-      "source": "/learn/typescript-sdk/website-summarization-app/:path*",
-      "destination": "/learn/typescript-sdk/website-summarization-agent/:path*",
-      "permanent": true
-    },
-    {
-      "source": "/operate/server-architecture",
-      "destination": "https://github.com/resonatehq/resonate/tree/main/docs",
-      "permanent": true
-    },
-    {
-      "source": "/operate/server-api",
-      "destination": "https://resonatehq.github.io/resonate/",
-      "permanent": true
-    },
-    {
-      "source": "/operate/kubernetes-server-deployment",
-      "destination": "operate/run-server",
-      "permanent": true
-    },
-    {
-      "source": "/operate/server-installation",
-      "destination": "/operate/run-server",
-      "permanent": true
-    },
-    {
-      "source": "/operate/server-observability",
-      "destination": "operate/observe",
+      "source": "/evaluate/coming-from-dbos",
+      "destination": "/evaluate/coming-from/dbos",
       "permanent": true
     }
   ]

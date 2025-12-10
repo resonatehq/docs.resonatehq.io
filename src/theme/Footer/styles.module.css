@@ -1,6 +1,6 @@
 .footerWrapper {
   width: 100%;
-  border-top: 1px solid rgba(228, 231, 235, 0.25);
+  border-top: 1px solid var(--resonate-border);
 }
 
 .footerContainer {
@@ -9,7 +9,7 @@
   padding: 2rem;
   margin: 0 auto;
   color: var(--ifm-footer-color);
-  background-color: var(--ifm-background-color);
+  background-color: var(--resonate-elevated);
 }
 
 .linkGrid {
@@ -32,9 +32,9 @@
 }
 
 .linkBox {
-  background-color: var(--ifm-background-color);
-  color: #ffffff;
-  border: 1px solid rgba(228, 231, 235, 0.25);
+  background-color: var(--resonate-elevated);
+  color: var(--resonate-link-color);
+  border: 1px solid var(--resonate-border);
   padding: 1.5rem;
   text-align: center;
   text-decoration: none;
@@ -56,7 +56,7 @@
 
 .linkBox:hover {
   border-color: var(--ifm-color-muted) !important;
-  color: var(--ifm-color-muted);
+  color: var(--resonate-link-hover);
   text-decoration: none !important;
 }
 

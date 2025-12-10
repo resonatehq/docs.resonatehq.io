@@ -6,25 +6,61 @@
 
 /* You can override the default Infima variables here. */
 :root {
-  --ifm-background-color: #080a0e !important;
-  --ifm-color-primary: #e4e7eb;
-  --ifm-color-dark: #080a0e;
-  --ifm-color-secondary: #1ee3cf;
-  --ifm-color-accent: #ff5e5b;
-  --ifm-color-muted: #94a3b8;
-  --ifm-color-primary-dark: #080a0e;
-  --ifm-color-primary-darker: #080a0e;
-  --ifm-color-primary-darkest: #080a0e;
-  --ifm-code-background: #ff5e5b !important;
+  --resonate-color-dark: #080a0e;
+  --resonate-color-primary: #e4e7eb;
+  --resonate-color-secondary: #1ee3cf;
+  --resonate-color-accent: #ff5e5b;
+  --resonate-color-muted: #94a3b8;
+  --resonate-color-white: #ffffff;
 
-  --ifm-color-primary-light: #b0b8c3;
-  --ifm-color-primary-lighter: #b0b8c3;
-  --ifm-color-primary-lightest: #b0b8c3;
+  --resonate-heading-color: var(--resonate-color-dark);
+  --resonate-link-color: var(--resonate-color-dark);
+  --resonate-link-hover: var(--resonate-color-secondary);
+
+  --ifm-background-color: var(--resonate-color-white);
+  --ifm-font-color-base: var(--resonate-color-dark);
+  --ifm-color-primary: var(--resonate-color-dark);
+  --ifm-color-secondary: var(--resonate-color-secondary);
+  --ifm-color-accent: var(--resonate-color-accent);
+  --ifm-color-muted: var(--resonate-color-muted);
+  --ifm-code-background: rgba(8, 10, 14, 0.06) !important;
+  --ifm-link-color: var(--resonate-link-color);
+  --ifm-link-hover-color: var(--resonate-link-hover);
+
+  --resonate-surface: #f5f6f8;
+  --resonate-elevated: var(--resonate-color-white);
+  --resonate-border: rgba(8, 10, 14, 0.08);
+  --resonate-code-surface: #f5f6f8;
+  --resonate-cta-surface: #f7f9fb;
+
   --docusaurus-announcement-bar-height: 3.5rem !important;
+}
+
+[data-theme="dark"] {
+  --resonate-heading-color: var(--resonate-color-white);
+  --resonate-link-color: var(--resonate-color-white);
+  --resonate-link-hover: var(--resonate-color-muted);
+
+  --ifm-background-color: var(--resonate-color-dark) !important;
+  --ifm-font-color-base: var(--resonate-color-primary);
+  --ifm-color-primary: var(--resonate-color-primary);
+  --ifm-color-primary-dark: var(--resonate-color-dark);
+  --ifm-color-primary-darker: var(--resonate-color-dark);
+  --ifm-color-primary-darkest: var(--resonate-color-dark);
+  --ifm-code-background: var(--resonate-color-secondary) !important;
+  --ifm-link-color: var(--resonate-link-color);
+  --ifm-link-hover-color: var(--resonate-link-hover);
+
+  --resonate-surface: rgba(12, 16, 24, 0.92);
+  --resonate-elevated: var(--resonate-color-dark);
+  --resonate-border: rgba(228, 231, 235, 0.25);
+  --resonate-code-surface: var(--resonate-color-dark);
+  --resonate-cta-surface: rgba(12, 16, 24, 0.92);
 }
 
 body {
   font-family: "Open Sans", sans-serif;
+  color: var(--ifm-font-color-base);
 }
 
 h1,
@@ -35,16 +71,13 @@ h5,
 h6 {
   font-family: "Open sans", sans-serif;
   font-weight: 500;
-  color: #ffffff !important;
+  color: var(--resonate-heading-color) !important;
 }
 
 h1 {
-  font-size: 3.5em;
-  letter-spacing: -1px;
+  font-size: 2.8em;
   font-weight: 700;
-  color: #080a0e !important;
-  background-color: #1ee3cf;
-  padding: 0.5rem;
+  color: var(--resonate-heading-color) !important;
 }
 
 code {
@@ -53,7 +86,7 @@ code {
   padding-left: 0.36rem;
   padding-right: 0.36rem;
   padding-top: 0.2rem;
-  padding-bottom: 0.29 rem;
+  padding-bottom: 0.29rem;
 }
 
 .alert code {
@@ -67,27 +100,23 @@ code {
 }
 
 [class^="codeBlockLines_"] {
-  background-color: #080a0e !important;
+  background-color: var(--resonate-code-surface) !important;
   border-radius: 0;
   padding-left: 0 !important;
 }
 
 .prism-code {
   border-radius: 0;
-  background-color: #080a0e !important;
+  background-color: var(--resonate-code-surface) !important;
   padding-left: 1.25rem !important;
-  border: 1px solid rgba(176, 184, 195, 0.25) !important;
+  border: 1px solid var(--resonate-border) !important;
 }
 
 article {
   font-family: "Open sans", sans-serif !important;
   font-size: 1.15em;
   font-weight: 400; /* var(--ifm-font-weight-light); */
-  color: #e4e7eb !important;
-}
-
-√ß .footer__link-separator {
-  visibility: hidden;
+  color: var(--ifm-font-color-base) !important;
 }
 
 .footer__link-item a:hover {
@@ -96,13 +125,13 @@ article {
 
 article a {
   text-decoration: underline;
-  color: #ffffff !important;
+  color: var(--resonate-link-color) !important;
   font-weight: 400;
 }
 
 article a:hover {
   text-decoration: underline;
-  color: var(--ifm-color-muted) !important;
+  color: var(--resonate-link-hover) !important;
 }
 
 .waiting-list-announcement {
@@ -126,21 +155,21 @@ article a:hover {
 
 .menu {
   font-family: "Space Mono", monospace;
-  background-color: var(--ifm-background-color);
-  border-right: 1px solid rgba(176, 184, 195, 0.25) !important;
+  background-color: var(--resonate-elevated);
+  border-right: 1px solid var(--resonate-border) !important;
 }
 
 .menu__link {
-  color: #ffffff !important;
+  color: var(--resonate-link-color) !important;
 }
 
 .menu__link:hover {
-  color: var(--ifm-color-muted) !important;
+  color: var(--resonate-link-hover) !important;
 }
 
 .menu__link--active,
 .table-of-contents__link--active {
-  color: var(--ifm-color-muted) !important;
+  color: var(--resonate-link-hover) !important;
 }
 
 .moreExamplesButton {
@@ -149,8 +178,8 @@ article a:hover {
   gap: 0.35rem;
   margin-top: 0.1rem;
   padding: 0.45rem 0.95rem;
-  border: 1px solid rgba(176, 184, 195, 0.25);
-  background-color: rgba(18, 22, 31, 0.92);
+  border: 1px solid var(--resonate-border);
+  background-color: var(--resonate-cta-surface);
   color: var(--ifm-color-primary);
   text-decoration: none !important;
   letter-spacing: 0.04em;
@@ -160,18 +189,18 @@ article a:hover {
 }
 
 .moreExamplesButton::after {
-  content: \"→\";
+  content: "→";
   font-size: 0.85rem;
-  color: var(--ifm-color-muted);
+  color: var(--resonate-link-hover);
 }
 
 .moreExamplesButton:hover {
-  border-color: var(--ifm-color-muted);
+  border-color: var(--resonate-link-hover);
   color: var(--ifm-color-primary);
 }
 
 .moreExamplesButton:hover::after {
-  color: var(--ifm-color-primary);
+  color: var(--resonate-link-hover);
 }
 
 .menu__caret {
@@ -180,12 +209,12 @@ article a:hover {
 }
 
 .tabs__item--active {
-  border-color: var(--ifm-color-accent) !important;
+  border-color: var(--resonate-color-secondary) !important;
 }
 
 .navbar {
-  background-color: var(--ifm-background-color);
-  border-bottom: 1px solid rgba(176, 184, 195, 0.25);
+  background-color: var(--resonate-elevated);
+  border-bottom: 1px solid var(--resonate-border);
   box-shadow: none !important;
 }
 
@@ -194,11 +223,11 @@ article a:hover {
 }
 .navbar__link {
   font-family: "Space Mono", monospace;
-  color: var(--ifm-color-secondary) !important;
+  color: var(--resonate-link-color) !important;
 }
 
 .navbar__link:hover {
-  color: var(--ifm-color-muted) !important;
+  color: var(--resonate-link-hover) !important;
 }
 
 .navbar__link i,
@@ -209,8 +238,8 @@ article a:hover {
 }
 
 .footer {
-  background-color: var(--ifm-background-color) !important;
-  border-top: 1px solid rgba(176, 184, 195, 0.25) !important;
+  background-color: var(--resonate-elevated) !important;
+  border-top: 1px solid var(--resonate-border) !important;
   font-family: "Space Mono", monospace;
 }
 
@@ -225,12 +254,12 @@ article a:hover {
 
 .table-of-contents {
   font-family: "Space Mono", monospace;
-  border-left: 1px solid rgba(176, 184, 195, 0.25);
+  border-left: 1px solid var(--resonate-border);
 }
 
 .pagination-nav__link {
   font-family: "Space Mono", monospace;
-  border: 1px solid rgba(176, 184, 195, 0.25);
+  border: 1px solid var(--resonate-border);
   border-radius: 0 !important;
 }
 
@@ -239,8 +268,8 @@ pagination-nav__link:hover {
 }
 
 .card {
-  background-color: var(--ifm-background-color) !important;
-  border: 1px solid rgba(228, 231, 235, 0.25) !important;
+  background-color: var(--resonate-elevated) !important;
+  border: 1px solid var(--resonate-border) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
   text-decoration: none !important;
@@ -256,16 +285,16 @@ pagination-nav__link:hover {
 }
 
 .admonition {
-  background-color: var(--ifm-color-dark);
-  border: 1px solid rgba(176, 184, 195, 0.25) !important;
+  background-color: var(--resonate-elevated);
+  border: 1px solid var(--resonate-border) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
   padding: 0 !important;
 }
 
 [class^="admonitionHeading_"] {
-  background-color: rgba(18, 22, 31, 0.92);
-  border-bottom: 1px solid rgba(176, 184, 195, 0.25);
+  background-color: var(--resonate-surface);
+  border-bottom: 1px solid var(--resonate-border);
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -276,8 +305,8 @@ pagination-nav__link:hover {
   padding: 1rem;
 }
 .alert--success {
-  background-color: var(--ifm-color-dark);
-  border: 1px solid rgba(176, 184, 195, 0.25) !important;
+  background-color: var(--resonate-elevated);
+  border: 1px solid var(--resonate-border) !important;
   border-left: 0;
   color: var(--ifm-color-primary);
   border-radius: 0;
@@ -286,7 +315,7 @@ pagination-nav__link:hover {
 }
 
 .alert--differentiator {
-  background-color: var(--ifm-color-dark);
+  background-color: var(--resonate-elevated);
   color: var(--ifm-color-primary);
   border-radius: 0;
   box-shadow: none !important;

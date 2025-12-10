@@ -1,13 +1,16 @@
 import React from 'react';
 import clsx from 'clsx';
 import {useCodeBlockContext} from '@docusaurus/theme-common/internal';
-import {usePrismTheme} from '@docusaurus/theme-common';
+import {useColorMode, usePrismTheme} from '@docusaurus/theme-common';
 import {Highlight} from 'prism-react-renderer';
 import Line from '@theme/CodeBlock/Line';
 import styles from './styles.module.css';
 
 const {themes} = require('prism-react-renderer');
-const fallbackPrismTheme = themes.vsDark;
+const fallbackPrismThemes = {
+  light: themes.vsLight,
+  dark: themes.vsDark,
+};
 // TODO Docusaurus v4: remove useless forwardRef
 const Pre = React.forwardRef((props, ref) => {
   return (
@@ -43,12 +46,26 @@ function Code(props) {
 }
 export default function CodeBlockContent({className: classNameProp}) {
   const {metadata, wordWrap} = useCodeBlockContext();
+  let colorMode = 'light';
+  try {
+    ({colorMode} = useColorMode());
+  } catch (error) {
+    if (!(error instanceof Error) || !/ColorModeProvider/.test(error.message)) {
+      throw error;
+    }
+    if (
+      typeof document !== 'undefined' &&
+      document.documentElement.getAttribute('data-theme') === 'dark'
+    ) {
+      colorMode = 'dark';
+    }
+  }
   let prismTheme;
   try {
     prismTheme = usePrismTheme();
   } catch (error) {
     if (error instanceof Error && /ColorModeProvider/.test(error.message)) {
-      prismTheme = fallbackPrismTheme;
+      prismTheme = fallbackPrismThemes[colorMode === 'dark' ? 'dark' : 'light'];
     } else {
       throw error;
     }
@@ -56,7 +73,11 @@ export default function CodeBlockContent({className: classNameProp}) {
 
   const {code, language, lineNumbersStart, lineClassNames} = metadata;
   return (
-    <Highlight theme={prismTheme} code={code} language={language}>
+    <Highlight
+      key={colorMode}
+      theme={prismTheme}
+      code={code}
+      language={language}>
       {({className, style, tokens: lines, getLineProps, getTokenProps}) => (
         <Pre
           ref={wordWrap.codeBlockRef}
