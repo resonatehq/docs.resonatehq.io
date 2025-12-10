@@ -147,14 +147,14 @@ const config: Config = {
 
   themeConfig: {
     prism: {
-      theme: prismThemes.vsDark,
+      theme: prismThemes.vsLight,
       darkTheme: prismThemes.vsDark,
     },
     image: "img/echo-teal.svg", // used for link previews
     colorMode: {
-      defaultMode: "dark",
-      disableSwitch: true,
-      respectPrefersColorScheme: false,
+      defaultMode: "light",
+      disableSwitch: false,
+      respectPrefersColorScheme: true,
     },
     navbar: {
       title: "Resonate",

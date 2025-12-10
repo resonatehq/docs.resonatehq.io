@@ -1,11 +1,11 @@
 .home-page-category {
   height: 16rem;
-  border: 1px solid rgba(228, 231, 235, 0.25);
+  border: 1px solid var(--resonate-border);
   padding: 1rem;
   margin: 1rem 0;
-  background-color: var(--ifm-color-dark);
-  color: white;
-  transition: transform 0.2s;
+  background-color: var(--resonate-elevated);
+  color: var(--ifm-font-color-base);
+  transition: transform 0.2s, color 0.2s ease, border-color 0.2s ease;
   text-decoration: none;
 }
 
@@ -18,8 +18,8 @@
 }
 
 .home-page-category:hover {
-  color: var(--ifm-color-muted);
-  border-color: var(--ifm-color-muted);
+  color: var(--resonate-link-hover);
+  border-color: var(--resonate-link-hover);
 }
 
 .home-page-category-title {
@@ -28,5 +28,9 @@
 }
 
 .home-page-category-description {
-  color: var(--ifm-color-muted);
+  color: #333333;
+}
+
+[data-theme="dark"] .home-page-category-description {
+  color: var(--resonate-color-muted);
 }

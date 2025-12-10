@@ -4,11 +4,11 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 0.6rem var(--ifm-pre-padding);
-  border-top: 1px solid rgba(176, 184, 195, 0.25);
-  border-right: 1px solid rgba(176, 184, 195, 0.25);
-  border-left: 1px solid rgba(176, 184, 195, 0.25);
+  border-top: 1px solid var(--resonate-border);
+  border-right: 1px solid var(--resonate-border);
+  border-left: 1px solid var(--resonate-border);
 
-  background-color: rgba(18, 22, 31, 0.92);
+  background-color: var(--resonate-surface);
 }
 
 .codeBlockTitle {
@@ -27,8 +27,8 @@
   font-size: 0.7rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #0d1117;
-  background-color: rgba(176, 184, 195, 0.85);
+  color: var(--resonate-link-color);
+  background-color: var(--resonate-elevated);
   padding: 0.2rem 0.6rem;
   font-weight: 600;
   white-space: nowrap;

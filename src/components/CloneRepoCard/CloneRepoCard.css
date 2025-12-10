@@ -1,15 +1,17 @@
 .clone-repo-card {
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  border: 1px solid var(--resonate-border);
   padding: 1rem;
   margin: 1rem 0;
-  background-color: var(--ifm-color-dark);
-  color: white;
+  background-color: var(--resonate-elevated);
+  color: var(--ifm-font-color-base);
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
-  transition: transform 0.2s;
+  transition: transform 0.2s, color 0.2s ease, border-color 0.2s ease;
 }
 
 .clone-repo-card:hover {
   transform: scale(1.02);
+  color: var(--resonate-link-hover);
+  border-color: var(--resonate-link-hover);
 }
 
 .clone-repo-card-sdk {
@@ -25,14 +27,14 @@
   display: inline-block;
   margin-top: 0.5rem;
   padding: 0.5rem 1rem;
-  background-color: var(--ifm-color-secondary);
+  background-color: var(--resonate-color-secondary);
   text-decoration: none;
   font-weight: bold;
-  color: var(--ifm-color-dark) !important;
+  color: var(--resonate-color-dark) !important;
 }
 
 .clone-button:hover {
   background-color: var(--ifm-color-muted);
-  color: white !important;
+  color: var(--resonate-color-dark) !important;
   text-decoration: none !important;
 }
