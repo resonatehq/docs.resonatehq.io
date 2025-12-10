@@ -1,0 +1,133 @@
+---
+id: serverless-workers
+title: Deploy using a serverless (FaaS) worker shim
+description: Deploy with a serverless worker shim such as Cloudflare, AWS Lambda, GCP Functions, etc.
+sidebar_label: Serverless Workers
+sidebar_position: 3
+toc_max_heading_level: 4
+last_update:
+  date: "2025-12-10"
+tags:
+  - operate
+  - serverless
+  - workers
+  - faas
+  - deployment
+---
+
+Currently only the TypeScript SDK supports serverless worker shims.
+
+## What is a serverless worker shim?
+
+A serverless worker shim, also referred to as a binding, is a lightweight adapter that allows Resonate Workers to run in serverless (FaaS) environments such as Cloudflare Workers, AWS Lambda, Google Cloud Functions, etc.
+The shim handles the communication between the Resonate SDK and the serverless platform, allowing you to run long-running workflows in ephemeral serverless functions with relative ease.
+
+## Supported platforms
+
+The following serverless platforms are supported with official Resonate worker shims:
+
+### AWS Lambda
+
+[Amazon Lambda worker shim | **TypeScript**](https://github.com/resonatehq/resonate-faas-aws-ts)
+
+**Quick example:**
+
+```shell title="Install the shim package"
+npm install @resonatehq/aws
+```
+
+Instead of importing Resonate from the SDK package, import it from the AWS shim package.
+
+```ts title="index.ts"
+import { Resonate } from "@resonatehq/aws";
+import { countdown } from "./count";
+
+const resonate = new Resonate();
+
+resonate.register("countdown", countdown);
+
+export const handler = resonate.httpHandler();
+```
+
+### Cloudflare Workers
+
+[Cloudflare Workers worker shim | **TypeScript**](https://github.com/resonatehq/resonate-faas-cloudflare-ts)
+
+**Quick example:**
+
+```shell title="Install the shim package"
+npm install @resonatehq/cloudflare
+```
+
+Instead of importing Resonate from the SDK package, import it from the Cloudflare shim package.
+
+```ts title="index.ts"
+import { Resonate } from "@resonatehq/cloudflare";
+import { countdown } from "./count";
+
+const resonate = new Resonate();
+
+resonate.register("countdown", countdown);
+
+export default resonate.handlerHttp();
+```
+
+Ready to use example apps:
+
+- [Durable Counter with Cloudflare Workers | TypeScript](https://github.com/resonatehq-examples/example-countdown-cloudflare-ts)
+- [Deep Research Agent with Cloudflare Workers | TypeScript](https://github.com/resonatehq-examples/example-openai-deep-research-agent-cloudflare-ts)
+
+### Google Cloud Functions
+
+[Google Cloud Functions worker shim | **TypeScript**](https://github.com/resonatehq/resonate-faas-gcp-ts)
+
+**Quick example:**
+
+```shell title="Install the shim package"
+npm install @resonatehq/gcp
+```
+
+Instead of importing Resonate from the SDK package, import it from the GCP shim package.
+
+```ts title="index.ts"
+import { Resonate } from "@resonatehq/gcp";
+import { countdown } from "./count";
+
+const resonate = new Resonate();
+
+resonate.register("countdown", countdown);
+
+export const handler = resonate.handlerHttp();
+```
+
+Ready to use example apps:
+
+- [Durable Counter with GCP Functions | TypeScript](https://github.com/resonatehq-examples/example-countdown-gcp-ts)
+- [Deep Research Agent with GCP Functions | TypeScript](https://github.com/resonatehq-examples/example-openai-deep-research-agent-gcp-ts)
+
+### Supabase Edge Functions
+
+[Supabase Edge Functions worker shim | **TypeScript**](https://github.com/resonatehq/resonate-faas-supabase-ts)
+
+**Quick example:**
+
+```shell title="Install the shim package"
+npm install @resonatehq/supabase
+```
+
+Instead of importing Resonate from the SDK package, import it from the Supabase shim package.
+
+```ts title="index.ts"
+import { Resonate } from "@resonatehq/supabase";
+import { countdown } from "./count";
+
+const resonate = new Resonate();
+resonate.register("countdown", countdown);
+
+resonate.httpHandler();
+```
+
+Ready to use example apps:
+
+- [Durable Counter with Supabase Edge Functions | TypeScript](https://github.com/resonatehq-examples/example-countdown-supabase-ts)
+- [Deep Research Agent with Supabase Edge Functions | TypeScript](https://github.com/resonatehq-examples/example-openai-deep-research-agent-supabase-ts)

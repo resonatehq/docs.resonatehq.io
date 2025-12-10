@@ -1,7 +1,7 @@
 ---
 id: scaffold-from-template
-title: Start a new project with Resonate
-sidebar_label: Scaffold from template
+title: Scaffold a new project with the CLI
+sidebar_label: Scaffold with CLI
 sidebar_position: 1
 toc_max_heading_level: 4
 last_update:
@@ -252,14 +252,11 @@ class Database {
 const db = new Database();
 resonate.setDependency("db", db);
 
-export const foo = resonate.register(
-  "foo",
-  function* (ctx: Context) {
-    const connection = ctx.getDependency<Database>("db");
-    // Use the shared dependency inside the workflow.
-    return connection.query("SELECT 1");
-  }
-);
+export const foo = resonate.register("foo", function* (ctx: Context) {
+  const connection = ctx.getDependency<Database>("db");
+  // Use the shared dependency inside the workflow.
+  return connection.query("SELECT 1");
+});
 ```
 
     </TabItem>

@@ -9,6 +9,11 @@
       "source": "/evaluate/coming-from-dbos",
       "destination": "/evaluate/coming-from/dbos",
       "permanent": true
+    },
+    {
+      "source": "/get-started/new-project/ai-agent-loops",
+      "destination": "/get-started/new-project/deep-research-agent",
+      "permanent": true
     }
   ]
 }
