@@ -12,7 +12,12 @@
     },
     {
       "source": "/get-started/new-project/ai-agent-loops",
-      "destination": "/get-started/new-project/deep-research-agent",
+      "destination": "/get-started/project-templates/deep-research-agent",
+      "permanent": true
+    },
+    {
+      "source": "/get-started/new-project/:path*",
+      "destination": "/get-started/project-templates/:path*",
       "permanent": true
     }
   ]
