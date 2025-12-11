@@ -1,13 +1,11 @@
-![resonate documentation banner](./static/img/resonate-documentation.png)
+![resonate documentation banner](./static/img/resonate-documentation-banner.png)
 
 # Resonate documentation
 
+These docs are served to [https://docs.resonatehq.io](https://docs.resonatehq.io)
+
 ![Website Deploy](https://deploy-badge.vercel.app/?url=https://docs.resonatehq.io/&name=website)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-
-## About this repository
-
-This repo contains Resonate documentation and the website framework that is served to [https://docs.resonatehq.io](https://docs.resonatehq.io)
 
 ### [How to contribute to Resonate documentation](./CONTRIBUTING.md)
 
