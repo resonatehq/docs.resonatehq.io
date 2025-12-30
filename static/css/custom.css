@@ -6,7 +6,7 @@
 
 /* You can override the default Infima variables here. */
 :root {
-  --resonate-color-dark: #080a0e;
+  --resonate-color-dark: #353f58;
   --resonate-color-primary: #e4e7eb;
   --resonate-color-secondary: #1ee3cf;
   --resonate-color-accent: #ff5e5b;
@@ -23,7 +23,7 @@
   --ifm-color-secondary: var(--resonate-color-secondary);
   --ifm-color-accent: var(--resonate-color-accent);
   --ifm-color-muted: var(--resonate-color-muted);
-  --ifm-code-background: rgba(8, 10, 14, 0.06) !important;
+  --ifm-code-background: rgba(53, 63, 88, 0.06) !important;
   --ifm-link-color: var(--resonate-link-color);
   --ifm-link-hover-color: var(--resonate-link-hover);
 
@@ -37,11 +37,13 @@
 }
 
 [data-theme="dark"] {
+  --resonate-color-black: #080a0e;
+
   --resonate-heading-color: var(--resonate-color-white);
   --resonate-link-color: var(--resonate-color-white);
   --resonate-link-hover: var(--resonate-color-muted);
 
-  --ifm-background-color: var(--resonate-color-dark) !important;
+  --ifm-background-color: var(--resonate-color-black) !important;
   --ifm-font-color-base: var(--resonate-color-primary);
   --ifm-color-primary: var(--resonate-color-primary);
   --ifm-color-primary-dark: var(--resonate-color-dark);
@@ -52,36 +54,24 @@
   --ifm-link-hover-color: var(--resonate-link-hover);
 
   --resonate-surface: rgba(12, 16, 24, 0.92);
-  --resonate-elevated: var(--resonate-color-dark);
+  --resonate-elevated: var(--resonate-color-black);
   --resonate-border: rgba(228, 231, 235, 0.25);
-  --resonate-code-surface: var(--resonate-color-dark);
+  --resonate-code-surface: var(--resonate-color-black);
   --resonate-cta-surface: rgba(12, 16, 24, 0.92);
 }
 
-body {
-  font-family: "Open Sans", sans-serif;
-  color: var(--ifm-font-color-base);
-}
-
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: "Open sans", sans-serif;
-  font-weight: 500;
+/* Headings */
+h1, h2, h3, h4, h5, h6 {
   color: var(--resonate-heading-color) !important;
 }
 
 h1 {
   font-size: 2.8em;
-  font-weight: 700;
-  color: var(--resonate-heading-color) !important;
 }
 
+/* Code */
 code {
-  color: #080a0e !important;
+  color: #353f58 !important;
   border-radius: 0;
   padding-left: 0.36rem;
   padding-right: 0.36rem;
@@ -91,12 +81,12 @@ code {
 
 .alert code {
   background-color: var(--ifm-color-accent);
-  color: #080a0e !important;
+  color: #353f58 !important;
   border-radius: 0;
   padding-left: 0.36rem;
   padding-right: 0.36rem;
   padding-top: 0.2rem;
-  padding-bottom: 0.29 rem;
+  padding-bottom: 0.29rem;
 }
 
 [class^="codeBlockLines_"] {
@@ -112,10 +102,9 @@ code {
   border: 1px solid var(--resonate-border) !important;
 }
 
+/* Article */
 article {
-  font-family: "Open sans", sans-serif !important;
   font-size: 1.15em;
-  font-weight: 400; /* var(--ifm-font-weight-light); */
   color: var(--ifm-font-color-base) !important;
 }
 
@@ -126,7 +115,6 @@ article {
 article a {
   text-decoration: underline;
   color: var(--resonate-link-color) !important;
-  font-weight: 400;
 }
 
 article a:hover {
@@ -134,17 +122,16 @@ article a:hover {
   color: var(--resonate-link-hover) !important;
 }
 
+/* Announcement */
 .waiting-list-announcement {
   width: 100%;
   color: white;
   text-align: center;
   font-size: 1.3em;
-  font-weight: light !important;
   text-decoration: none;
-  font-family: "Space Mono", monospace;
-  color: white;
 }
 
+/* CTA Links */
 .cta-link {
   text-decoration: none !important;
 }
@@ -153,25 +140,7 @@ article a:hover {
   text-decoration: underline !important;
 }
 
-.menu {
-  font-family: "Space Mono", monospace;
-  background-color: var(--resonate-elevated);
-  border-right: 1px solid var(--resonate-border) !important;
-}
-
-.menu__link {
-  color: var(--resonate-link-color) !important;
-}
-
-.menu__link:hover {
-  color: var(--resonate-link-hover) !important;
-}
-
-.menu__link--active,
-.table-of-contents__link--active {
-  color: var(--resonate-link-hover) !important;
-}
-
+/* More Examples Button */
 .moreExamplesButton {
   display: inline-flex;
   align-items: center;
@@ -184,7 +153,6 @@ article a:hover {
   text-decoration: none !important;
   letter-spacing: 0.04em;
   font-size: 1rem;
-  font-weight: 600;
   transition: border-color 0.2s ease, color 0.2s ease;
 }
 
@@ -203,15 +171,13 @@ article a:hover {
   color: var(--resonate-link-hover);
 }
 
-.menu__caret {
-  border-radius: 0 !important;
-  margin-right: 4px;
-}
 
+/* Tabs */
 .tabs__item--active {
   border-color: var(--resonate-color-secondary) !important;
 }
 
+/* Navbar */
 .navbar {
   background-color: var(--resonate-elevated);
   border-bottom: 1px solid var(--resonate-border);
@@ -221,8 +187,8 @@ article a:hover {
 .navbar_icon {
   vertical-align: middle;
 }
+
 .navbar__link {
-  font-family: "Space Mono", monospace;
   color: var(--resonate-link-color) !important;
 }
 
@@ -232,41 +198,42 @@ article a:hover {
 
 .navbar__link i,
 .footer__link-item i {
-  font-size: 1.5em !important; /* Adjust icon size */
-  vertical-align: middle; /* Align with text */
-  line-height: 1; /* Ensure proper vertical centering */
-}
-
-.footer {
-  background-color: var(--resonate-elevated) !important;
-  border-top: 1px solid var(--resonate-border) !important;
-  font-family: "Space Mono", monospace;
+  font-size: 1.5em !important;
+  vertical-align: middle;
+  line-height: 1;
 }
 
 .navbar-icon {
   max-height: 20px;
 }
 
-.breadcrumbs__link {
-  font-family: "Space Mono", monospace;
+.navbar__search-input {
   border-radius: 0;
 }
 
-.table-of-contents {
-  font-family: "Space Mono", monospace;
-  border-left: 1px solid var(--resonate-border);
+/* Footer */
+.footer {
+  background-color: var(--resonate-elevated) !important;
+  border-top: 1px solid var(--resonate-border) !important;
 }
 
+/* Breadcrumbs */
+.breadcrumbs__link {
+  border-radius: 0;
+}
+
+
+/* Pagination */
 .pagination-nav__link {
-  font-family: "Space Mono", monospace;
   border: 1px solid var(--resonate-border);
   border-radius: 0 !important;
 }
 
-pagination-nav__link:hover {
+.pagination-nav__link:hover {
   border-color: var(--ifm-color-muted) !important;
 }
 
+/* Cards */
 .card {
   background-color: var(--resonate-elevated) !important;
   border: 1px solid var(--resonate-border) !important;
@@ -280,10 +247,7 @@ pagination-nav__link:hover {
   border-color: var(--ifm-color-muted) !important;
 }
 
-.navbar__search-input {
-  border-radius: 0;
-}
-
+/* Admonitions */
 .admonition {
   background-color: var(--resonate-elevated);
   border: 1px solid var(--resonate-border) !important;
@@ -304,6 +268,8 @@ pagination-nav__link:hover {
 [class^="admonitionContent_"] {
   padding: 1rem;
 }
+
+/* Alerts */
 .alert--success {
   background-color: var(--resonate-elevated);
   border: 1px solid var(--resonate-border) !important;
