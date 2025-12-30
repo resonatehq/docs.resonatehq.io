@@ -297,3 +297,7 @@ article a:hover {
   color: var(--ifm-color-primary) !important;
   text-decoration-color: var(--ifm-color-primary) !important;
 }
+
+.spooky {
+  font-family: "Rubik Wet Paint", cursive;
+}

@@ -2,7 +2,7 @@
   "label": "Get started",
   "position": 2,
   "collapsed": false,
-  "collapsible": true,
+  "collapsible": false,
   "link": {
     "type": "doc",
     "id": "get-started/index"

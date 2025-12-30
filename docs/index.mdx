@@ -1,23 +1,37 @@
 ---
 id: index
 slug: /
-title: Resonate documentation
-description: Resonate - reliablility, scalability, and a delightful developer experience.
+title: Resonate Documentation
+description: Resonate - reliablility, scalability—and a delightful developer experience.
 sidebar_label: Home
 sidebar_position: 1
+hide_title: true
 last_update:
   date: "03-13-2025"
 ---
 
 ![Resonate documentation banner](/img/resonate-documentation-banner.png)
 
-## What is Resonate?
+Resonate is a <span className="spooky">dead simple</span> durable execution framework for building reliable and scalable cloud applications with a delightful developer experience. Build agents, workflows, pipelines, and services without thinking about retries or recovery. Resonate handles the hard parts of distributed systems—you focus on your application logic.
 
-Resonate provides developers with a holistic programming model for building reliable and scalable cloud applications.
+Complex problems, simple code. Write functions that scale across dozens or hundreds of machines and run for hours, days, weeks, or months, in just a few lines of code. 
 
-With Resonate you can develop reliable and scalable agentic systems, microservices, event-driven systems, data pipelines, long-running workflows, web services, backgrounds jobs, and more — But without stressing over crash recovery, function retries, idempotency guarantees, human-in-the-loop semantics, and other complexities that come with building distributed systems.
+```typescript title="countdown.ts"
+import type { Context } from "@resonatehq/sdk";
 
-Resonate APIs offer the quality of life improvements that developers have been yearning for.
+export function* countdown(
+  context: Context,
+  count: number,
+  delay: number
+) {
+  for (let i = count-1; i >= 0; i--) {
+    // send notification
+    yield* ctx.run(notify, `Countdown: ${i}`);
+    // sleep
+    yield* ctx.sleep(delay * 60 * 1000);
+  }
+}
+```
 
 import HomePageGrid from "@site/src/components/HomePageGrid/HomePageGrid";
 import HomePageCategory from "@site/src/components/HomePageCategory/HomePageCategory";

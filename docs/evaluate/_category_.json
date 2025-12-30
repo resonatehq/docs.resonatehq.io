@@ -1,8 +1,8 @@
 {
   "label": "Evaluate",
-  "position": 2,
+  "position": 3,
   "collapsed": true,
-  "collapsible": true,
+  "collapsible": false,
   "link": {
     "type": "doc",
     "id": "evaluate/index"

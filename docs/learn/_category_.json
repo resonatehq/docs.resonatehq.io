@@ -1,8 +1,8 @@
 {
   "label": "Learn",
-  "position": 5,
+  "position": 6,
   "collapsed": true,
-  "collapsible": true,
+  "collapsible": false,
   "link": {
     "type": "doc",
     "id": "learn/index"
