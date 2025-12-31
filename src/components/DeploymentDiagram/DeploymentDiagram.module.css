@@ -1,0 +1,145 @@
+.container {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin: 2rem 0;
+  padding: 1.5rem;
+  background: var(--ifm-background-surface-color, #f9fafb);
+  border: 1px solid var(--ifm-color-emphasis-200, #e5e7eb);
+  border-radius: 8px;
+}
+
+.column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--ifm-color-primary);
+  margin-bottom: 0.25rem;
+}
+
+.subtitle {
+  font-size: 0.85rem;
+  color: var(--ifm-color-emphasis-600, #6b7280);
+  margin-bottom: 1rem;
+}
+
+.stack {
+  --layer-height: 36px;
+  --layer-gap: 20px;
+  --boundary-padding: 8px;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--layer-gap);
+  padding: var(--boundary-padding);
+}
+
+.layer {
+  background: var(--ifm-color-primary);
+  color: white;
+  padding: 0.5rem 1.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  min-width: 100px;
+  height: var(--layer-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+}
+
+/* Boundaries are positioned behind the layers */
+.boundaryFull {
+  position: absolute;
+  inset: 0;
+  border: 2px dashed var(--ifm-color-emphasis-400, #9ca3af);
+  border-radius: 6px;
+  z-index: 0;
+}
+
+/* Top boundary - wraps first layer */
+.boundaryTop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--boundary-padding) + var(--layer-height) + var(--boundary-padding));
+  border: 2px dashed var(--ifm-color-emphasis-400, #9ca3af);
+  border-radius: 6px;
+  z-index: 0;
+}
+
+/* Middle boundary - wraps second layer */
+.boundaryMiddle {
+  position: absolute;
+  top: calc(var(--boundary-padding) + var(--layer-height) + var(--layer-gap) - var(--boundary-padding));
+  left: 0;
+  right: 0;
+  height: calc(var(--boundary-padding) + var(--layer-height) + var(--boundary-padding));
+  border: 2px dashed var(--ifm-color-emphasis-400, #9ca3af);
+  border-radius: 6px;
+  z-index: 0;
+}
+
+/* Bottom boundary - wraps third layer only */
+.boundaryBottom1 {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--boundary-padding) + var(--layer-height) + var(--boundary-padding));
+  border: 2px dashed var(--ifm-color-emphasis-400, #9ca3af);
+  border-radius: 6px;
+  z-index: 0;
+}
+
+/* Bottom boundary - wraps second and third layers */
+.boundaryBottom2 {
+  position: absolute;
+  top: calc(var(--boundary-padding) + var(--layer-height) + var(--layer-gap) - var(--boundary-padding));
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border: 2px dashed var(--ifm-color-emphasis-400, #9ca3af);
+  border-radius: 6px;
+  z-index: 0;
+}
+
+.command {
+  margin-top: 1rem;
+}
+
+.command code {
+  background: var(--ifm-color-emphasis-100, #f3f4f6);
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: var(--ifm-color-emphasis-700, #374151);
+}
+
+@media (max-width: 768px) {
+  .container {
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  .column {
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--ifm-color-emphasis-200, #e5e7eb);
+  }
+
+  .column:last-child {
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+}
