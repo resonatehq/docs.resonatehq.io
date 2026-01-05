@@ -19,6 +19,16 @@
       "source": "/get-started/new-project/:path*",
       "destination": "/get-started/project-templates/:path*",
       "permanent": true
+    },
+    {
+      "source": "/concepts/durable-promise",
+      "destination": "https://www.distributed-async-await.io/specification/programming-model/durable-promise-specification",
+      "permanent": true
+    },
+    {
+      "source": "/get-started/project-templates/:path*",
+      "destination": "/get-started/examples/:path*",
+      "permanent": true
     }
   ]
 }

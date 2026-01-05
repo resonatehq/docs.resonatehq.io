@@ -1,10 +1,10 @@
 {
   "label": "Examples",
-  "position": 6,
+  "position": 3,
   "collapsed": true,
   "collapsible": true,
   "link": {
     "type": "doc",
-    "id": "examples/index"
+    "id": "get-started/examples/index"
   }
 }
