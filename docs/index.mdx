@@ -16,19 +16,28 @@ Resonate is a <span className="spooky">dead simple</span> durable execution fram
 
 Complex problems, simple code. Write functions that scale across dozens or hundreds of machines and run for hours, days, weeks, or months, in just a few lines of code. 
 
-```typescript title="countdown.ts"
-import type { Context } from "@resonatehq/sdk";
+```typescript
+// An AI agent that recursively spawns subagents
+function* agent(context: Context, prompt: string) {
+  const messages = [{ role: "user", content: prompt }];
+  // The agent loop
+  while (true) {
+    const response = yield* context.run(think, messages);
+    messages.push(response);
 
-export function* countdown(
-  context: Context,
-  count: number,
-  delay: number
-) {
-  for (let i = count-1; i >= 0; i--) {
-    // send notification
-    yield* ctx.run(notify, `Countdown: ${i}`);
-    // sleep
-    yield* ctx.sleep(delay * 60 * 1000);
+    if (response.subprompts) {
+      // Spawn concurrent subagents
+      const futures = [];
+      for (const subprompt of response.subprompts) {
+        futures.push(yield* context.beginRpc(agent, subprompt));
+      }
+      // Collect results
+      for (const future of futures) {
+        messages.push({ role: "tool", content: yield* future });
+      }
+    } else {
+      return response.content;
+    }
   }
 }
 ```
