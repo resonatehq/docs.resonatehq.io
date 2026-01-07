@@ -1,28 +1,25 @@
 ---
 id: typescript
-title: TypeScript SDK API guidance
+title: Skill Guide | Resonate TypeScript SDK
 description: APIs that stay simple, even when your use cases aren’t
 sidebar_label: TypeScript SDK
 last_update:
-  date: "08-18-2025"
-pagination_next: null
-pagination_prev: null
+  date: "01-06-2026"
 tags:
   - typescript
-  - sdk-guidance
+  - skill-guide
+  - resonate-sdk
 ---
 
-Welcome to the Resonate Typescript SDK guide!
-This SDK makes it possible to write Distributed Async Await applications with Typescript.
-This guide covers installation and features that the SDK offers.
+Whether you are a human or an AI agent, this skill guide will help you develop applications using the Resonate TypeScript SDK.
+Though this _is_ a skill guide, and not a detailed API reference and you will still likely need to refer to the detailed [Resonate TypeScript SDK API reference](https://resonatehq.github.io/resonate-sdk-ts/) for type definitions, defaults, and other technical details.
 
-:::tip API reference
+This skill sheet assumes that you already know Resonate is a good fit for your use case.
+If you are unsure, please refer to [When to use Resonate to build apps](/evaluate/why-resonate#systems-engineering-for-).
 
-Looking for the API reference?
-
-The Resonate TypeScript SDK API reference is available [here](https://resonatehq.github.io/resonate-sdk-ts/).
-
-:::
+It's important to think about the potential architecture of your application as it ties to your use case.
+This can determine which APIs and options you will use for function activations.
+If you have a use case in mind, but haven't built with Resonate before, we recommend reviewing some of the common patterns in our [example applications](/get-started/examples).
 
 ## Installation
 
@@ -44,7 +41,7 @@ import TabItem from "@theme/TabItem";
 
     <TabItem value="bun">
 
-```shell
+```shell title="Install with Bun"
 bun add @resonatehq/sdk
 ```
 
@@ -52,7 +49,7 @@ bun add @resonatehq/sdk
 
     <TabItem value="npm">
 
-```shell
+```shell title="Install with npm"
 npm install @resonatehq/sdk
 ```
 
@@ -60,7 +57,7 @@ npm install @resonatehq/sdk
 
     <TabItem value="yarn">
 
-```shell
+```shell title="Install with Yarn"
 yarn add @resonatehq/sdk
 ```
 
@@ -68,56 +65,99 @@ yarn add @resonatehq/sdk
 
 </Tabs>
 
+Once installed, you can import the Resonate SDK into your TypeScript files, and start using the Resonate Client.
+
 ## Initialization
 
 **How to initialize a Resonate Client.**
 
-There are two ways to initialize Resonate, local and remote.
+Initializing a Resonate Client gives you the APIs needed to register, activate, and await on functions.
 
-**Local initialization = zero-dependency development**
+```ts title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
 
-Local initialization means that Resonate uses local memory for promise storage.
+const resonate = new Resonate();
+```
+
+- A Resonate Client can connect to either an in-memory local store and message source (best for development), or a remote store and message sources (best for moving out of development).
+- You can only have one Resonate Client per process.
+- A Resonate Client can only be used in the Ephemeral World to register and activate functions, it cannot be used inside Durable Functions.
+  Use the Context APIs for function activations inside Durable Functions.
+
+Upon initialization, the Resonate Client will look for [environment variables](#environment-variables) and/or use the options passed to it.
+
+For example, to specify a Resonate Server and process group, pass the url and group in the options.
+
+```ts title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = new Resonate({
+  // ...
+  url: "https://localhost:8001", // Resonate Server URL
+  group: "worker-group-a", // Process group name
+  // ...
+});
+```
+
+For a comprehensive list of Resonate Client defaults, see [https://resonatehq.github.io/resonate-sdk-ts/classes/Resonate.html#constructor](https://resonatehq.github.io/resonate-sdk-ts/classes/Resonate.html#constructor).
+
+### Zero-dependency development
+
+Unlike other Durable Execution offerings, apart from installing the SDK itself, Resonate enables you to get started without any additional dependencies.
+This is because Resonate can run in a local development mode that uses in-memory storage for promises and tasks.
 
 This is ideal for getting started quickly or for integrating Resonate into an existing application without relying on dependencies.
 
-```ts
+Resonate will automatically operate in "local development mode" when no URL is provided via constructor options or [environment variables](#environment-variables).
+
+```ts title="index.ts"
 import { Resonate } from "@resonatehq/sdk";
 
-const resonate = Resonate.local();
+const resonate = new Resonate();
 ```
 
-:::tip Dead Simple incremental adoption
+Local development mode can be suitable for awhile.
+However, when you want to run multiple worker processes, persist state across restarts, or share work between machines, you will need to connect to a Resonate Server.
+See the [Quickstart guide] or [How to run a Resonate Server](/operate/run-server) for guidance on getting a server up and running.
 
-Temporal, Restate, and DBOS require a server or database to get started.
+### Auth
 
-Resonate enables you to get started with a local worker that stores promises in memory, no server or database required.
-This makes it easy to incrementally adopt Resonate into your existing TypeScript application.
-:::
+When constructing a Resonate Client, you can provide authentication credentials for making requests to a Resonate Server.
 
-**Remote initialization**
-
-Remote initialization means that promises are stored remotely, and that the Resonate Client receives messages from a remote source.
-This is how Resonate enables Durable Async RPC for building distributed applications that are reliable and scalable.
-
-The quickest way to get started with Remote initialization is to connect to a locally running instance of a Resonate Server.
-
-```ts
+```ts title="index.ts"
 import { Resonate } from "@resonatehq/sdk";
 
-// default connection to local development server
-const resonate = Resonate.remote();
-
-// connection to a custom endpoint
-const resonate = Resonate.remote({ url: "https://my-resonate.com" });
-
-// declaring which group it is part of
-const resonate = Resonate.remote({ group: "worker-group-x" });
+const resonate = new Resonate({
+  url: "https://localhost:8001",
+  auth: {
+    username: "my-username",
+    password: "my-password",
+  },
+});
 ```
 
-The default configuration uses the Resonate Server as the promise store and uses an HTTP Long Poller as the message transport to receive messages directly from the Resonate Server.
+See [How to customize Resonate Server configurations](/operate/run-server#customize-configuration) to learn how to set up authentication on the server side.
 
-A Resonate Client can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
-The Poller is a great starting place however, as it will long-poll for messages from the Resonate Server without any additional setup.
+### Message sources
+
+A Resonate Client needs to be able to receive messages to know what to work on next.
+
+HTTP Long Polling the Resonate Server directly is the default way a Resonate Client is configured to receives messages.
+That is, if you do not specify specific message transport plugins, the Resonate Client will use the built-in Poller transport.
+
+You do not have to do anything special to enable this transport.
+
+```ts title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = new Resonate({
+  url: "https://localhost:8001", // HTTP Poller transport is used here by default
+});
+```
+
+However, A Resonate Client can receive messages from many different transports, such as HTTP, Kafka, RabbitMQ, etc...
+
+To configure different message transports, see [How to configure message transports](#).
 
 ### Environment Variables
 
@@ -182,45 +222,44 @@ const resonate = new Resonate();
 
 #### `RESONATE_SCHEME`
 
-Scheme to use when `RESONATE_URL` is unset and a host is supplied. Combine with `RESONATE_HOST` (required) and `RESONATE_PORT` (optional) to build the full URL. |
-
-Default is _http_.
+- Scheme to use when `RESONATE_URL` is unset and a host is supplied.
+  Combine with `RESONATE_HOST` (required) and `RESONATE_PORT` (optional) to build the full URL.
+- Default is _http_.
 
 #### `RESONATE_HOST`
 
-Hostname or IP address of the remote Resonate server. Must be present to use the scheme/host/port fallback path.
-
-Default is _unset_.
+- Hostname or IP address of the remote Resonate server.
+  Must be present to use the scheme/host/port fallback path.
+- Default is _unset_.
 
 #### `RESONATE_PORT`
 
-Port number to use when building the URL from scheme/host/port. Ignored if `RESONATE_URL` is provided.
-
-Default is `8001`.
+- Port number to use when building the URL from scheme/host/port.
+  Ignored if `RESONATE_URL` is provided.
+- Default is `8001`.
 
 #### `RESONATE_USERNAME`
 
-Username for HTTP basic authentication. When set (even without a password) it enables authenticated requests.
-
-Default is _unset_.
+- Username for HTTP basic authentication.
+  When set (even without a password) it enables authenticated requests.
+- Default is _unset_.
 
 #### `RESONATE_PASSWORD`
 
-Password paired with `RESONATE_USERNAME`. Defaults to an empty string when the username is set but no password is supplied.
+- Password paired with `RESONATE_USERNAME`.
+  Defaults to an empty string when the username is set but no password is supplied.
+- Default is an empty string.
+- Example:
 
-Default is an empty string.
+  ```bash
+  export RESONATE_USERNAME=my-user
+  export RESONATE_PASSWORD=super-secret
+  ```
 
-Example:
-
-```bash
-export RESONATE_USERNAME=my-user
-export RESONATE_PASSWORD=super-secret
-```
-
-```ts
-const resonate = new Resonate();
-// uses { username: "my-user", password: "super-secret" }
-```
+  ```ts
+  const resonate = new Resonate();
+  // uses { username: "my-user", password: "super-secret" }
+  ```
 
 **Troubleshooting tips**
 
@@ -231,8 +270,6 @@ const resonate = new Resonate();
 
 ## Client APIs
 
-Registration
-
 **How to register a function with Resonate in the TypeScript SDK.**
 
 ### `.register()`
@@ -242,6 +279,7 @@ function foo(ctx: Context, ...args: any[]) {
   // ...
   return result;
 }
+
 resonate.register(foo);
 
 // or alternatively

@@ -18,18 +18,23 @@ First install the Server on your machine.
 
 ## Install with Homebrew
 
-You can download and install the Resonate Server using Homebrew with the following commands:
+You can install the latest Resonate Server version with Homebrew via:
 
 ```shell
 brew install resonatehq/tap/resonate
 ```
 
-This previous example installs the latest release.
-You can see all available releases and associated release artifacts on the [releases page](https://github.com/resonatehq/resonate/releases).
+All available releases and associated release artifacts are available on [Github](https://github.com/resonatehq/resonate/releases).
 
-Once installed, you can start the server with:
+Once installed, you can start the server with an in-memory store by running:
 
-```shell
+```shell title="Run using an in-memory store"
+resonate dev
+```
+
+Or, you can run the server with the default SQLite store by running:
+
+```shell title="Run using the default SQLite store"
 resonate serve
 ```
 
@@ -45,7 +50,6 @@ time=2025-09-09T20:54:31.351-06:00 level=INFO msg="starting metrics server" addr
 The output indicates that the server has HTTP endpoints available at port 8001, a polling endpoint at port 8002, a gRPC endpoint at port 50051, and a metrics endpoint at port 9090.
 
 These are the default ports and can be changed via configuration.
-The SDKs are all configured to use these defaults unless otherwise specified.
 
 ## Run with Docker
 
