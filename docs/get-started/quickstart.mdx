@@ -1,12 +1,18 @@
 ---
 id: quickstart
 title: Quickstart
+description: Install the server and SDK and run your first Resonate workflow.
 sidebar_label: Quickstart
 sidebar_position: 1
+tags:
+  - get-started
+  - quickstart
 ---
 
 import Tabs from "@theme/Tabs";
 import TabItem from "@theme/TabItem";
+
+![quickstart banner](/img/quickstart-banner.png)
 
 ## Install the Resonate Server & CLI
 
@@ -67,6 +73,8 @@ const resonate = new Resonate({ url: "http://localhost:8001" });
 // Register the function
 resonate.register(countdown);
 ```
+
+[Working example](https://github.com/resonatehq-examples/example-quickstart-ts)
 
 </TabItem>
 
@@ -185,5 +193,5 @@ Now try killing the worker mid-countdown and restarting. **The countdown picks u
 ## Next steps
 
 - [Learn how Resonate works](/evaluate/how-it-works)
-- [Explore project templates](/get-started/project-templates)
+- [Explore examples](/get-started/examples)
 - [Build a real application](/learn)
