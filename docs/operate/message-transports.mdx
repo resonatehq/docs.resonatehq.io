@@ -1,0 +1,74 @@
+---
+id: message-transports
+title: Message transport plugins
+description: How to configure different message transports for Resonate Clients and Servers
+sidebar_label: Message transports
+sidebar_position: 5
+tags:
+  - message-transports
+  - plugins
+  - operate
+  - communication
+---
+
+Resonate supports tranport plugins for message communication between Clients and Servers.
+
+### Kafka server plugin
+
+What does it do?
+
+This plugin enables the server to put messages (containing task information) onto Kafka topics for consumption by SDK Clients using the SDK's Kafka transport plugin.
+
+Where to find it?
+
+The Kafka transport plugin is currently behind a build tag.
+If your binary does not already include it, rebuild with the `kafka` (or `all`) build tag:
+
+```shell
+go build -tags kafka -o resonate
+```
+
+Enable the plugin at runtime with the Kafka flags:
+
+```shell
+./resonate serve --aio-kafka-enable \
+  --aio-kafka-brokers localhost:9092 \
+  --aio-kafka-timeout 30s
+```
+
+Or, config keys: `aio.plugins.kafka.enabled`, `aio.plugins.kafka.config`.
+
+### Kafka SDK plugin
+
+What does it do?
+
+This plugin enables SDK Clients to consume messages from Kafka topics produced by the Resonate server's Kafka transport plugin.
+
+Where to find it?
+
+- [resonatehq/resonate-transport-kafka-ts](https://github.com/resonatehq/resonate-transport-kafka-ts)
+
+### SQS server plugin
+
+What does it do?
+
+This plugin enables the server to put messages (containing task information) onto AWS SQS queues for consumption by SDK Clients using the SDK's SQS transport plugin.
+
+Where to find it?
+
+This transport is behind a build tag.
+If your binary does not already include it, rebuild with the `sqs`, `aws`, or `all` build tag:
+
+```shell
+go build -tags sqs -o resonate
+```
+
+Enable it with the SQS flags:
+
+```shell
+./resonate serve --aio-sqs-enable \
+  --aio-sqs-timeout 30s \
+  --aio-sqs-workers 1
+```
+
+Or, config keys: `aio.plugins.sqs.enabled`, `aio.plugins.sqs.config`.

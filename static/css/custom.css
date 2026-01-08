@@ -19,6 +19,7 @@
 
   --ifm-background-color: var(--resonate-color-white);
   --ifm-font-color-base: var(--resonate-color-dark);
+  --ifm-font-family-base: "Open Sans", system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
   --ifm-color-primary: var(--resonate-color-dark);
   --ifm-color-secondary: var(--resonate-color-secondary);
   --ifm-color-accent: var(--resonate-color-accent);

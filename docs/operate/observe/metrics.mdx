@@ -1,10 +1,9 @@
 ---
 id: metrics
 title: Resonate component metrics
+description: Prometheus metrics exposed by the Resonate server.
 sidebar_label: Metrics
 sidebar_position: 2
-last_update:
-  date: "2025-12-03"
 tags:
   - server
   - observability
@@ -12,54 +11,77 @@ tags:
 
 The Resonate server exposes a metrics endpoint `:9090/metrics` that is compatible with Prometheus.
 
-The following metrics are available:
-
-```shell
-# HELP aio_connection number of aio subsystem connections
-# TYPE aio_connection gauge
-aio_connection{type="sender:poll"} 0
-# HELP aio_in_flight_submissions number of in flight aio submissions
-# TYPE aio_in_flight_submissions gauge
-aio_in_flight_submissions{type="store"} 0
-# HELP aio_total_submissions total number of aio submissions
-# TYPE aio_total_submissions counter
-aio_total_submissions{status="success",type="store"} 0
-# HELP aio_worker_count number of aio subsystem workers
-# TYPE aio_worker_count gauge
-aio_worker_count{type="router"} 0
-aio_worker_count{type="sender"} 0
-aio_worker_count{type="sender:http"} 0
-aio_worker_count{type="sender:poll"} 0
-aio_worker_count{type="store:sqlite"} 0
-# HELP aio_worker_in_flight_submissions number of in flight aio submissions
-# TYPE aio_worker_in_flight_submissions gauge
-aio_worker_in_flight_submissions{type="router",worker="0"} 0
-aio_worker_in_flight_submissions{type="sender",worker="0"} 0
-aio_worker_in_flight_submissions{type="sender:http",worker="0"} 0
-aio_worker_in_flight_submissions{type="sender:poll",worker="0"} 0
-aio_worker_in_flight_submissions{type="store:sqlite",worker="0"} 0
-# HELP coroutines_in_flight number of in flight coroutines
-# TYPE coroutines_in_flight gauge
-coroutines_in_flight{type="EnqueueTasks"} 0
-coroutines_in_flight{type="SchedulePromises"} 0
-coroutines_in_flight{type="TimeoutLocks"} 0
-coroutines_in_flight{type="TimeoutPromises"} 0
-coroutines_in_flight{type="TimeoutTasks"} 0
-# ... For all coroutine types
-# HELP coroutines_total total number of coroutines
-# TYPE coroutines_total counter
-coroutines_total{type="EnqueueTasks"} 0
-coroutines_total{type="SchedulePromises"} 0
-coroutines_total{type="TimeoutLocks"} 0
-coroutines_total{type="TimeoutPromises"} 0
-coroutines_total{type="TimeoutTasks"} 0
-# ... For all coroutine types
-```
-
-The `aio` prefix refers to stuff that “goes out” of the Server such as requests to the store, sending tasks to nodes, etc.
+The `aio` prefix refers to stuff that “goes out” of the server such as requests to the store, sending tasks to nodes, etc.
 Coroutines refers to the units of business logic in the Server.
 
-### Using Prometheus and Grafana
+## Metrics exposed
+
+### aio_connection
+
+Number of aio subsystem connections.
+
+- gauge
+- `aio_connection{type="sender:poll"} 0`
+
+### aio_in_flight_submissions
+
+Number of in flight aio submissions.
+
+- gauge
+- `aio_in_flight_submissions{type="store"} 0`
+
+### aio_total_submissions
+
+Total number of aio submissions.
+
+- counter
+- `aio_total_submissions{status="success",type="store"} 0`
+
+### aio_worker_count
+
+Number of aio subsystem workers.
+
+- gauge
+- `aio_worker_count{type="router"} 0`
+- `aio_worker_count{type="sender"} 0`
+- `aio_worker_count{type="sender:http"} 0`
+- `aio_worker_count{type="sender:poll"} 0`
+- `aio_worker_count{type="store:sqlite"} 0`
+
+### aio_worker_in_flight_submissions
+
+Number of in flight aio submissions.
+
+- gauge
+- `aio_worker_in_flight_submissions{type="router",worker="0"} 0`
+- `aio_worker_in_flight_submissions{type="sender",worker="0"} 0`
+- `aio_worker_in_flight_submissions{type="sender:http",worker="0"} 0`
+- `aio_worker_in_flight_submissions{type="sender:poll",worker="0"} 0`
+- `aio_worker_in_flight_submissions{type="store:sqlite",worker="0"} 0`
+
+### coroutines_in_flight number
+
+Number of in flight coroutines.
+
+- gauge
+- `coroutines_in_flight{type="EnqueueTasks"} 0`
+- `coroutines_in_flight{type="SchedulePromises"} 0`
+- `coroutines_in_flight{type="TimeoutLocks"} 0`
+- `coroutines_in_flight{type="TimeoutPromises"} 0`
+- `coroutines_in_flight{type="TimeoutTasks"} 0`
+
+### coroutines_total
+
+Total number of coroutines.
+
+- counter
+- `coroutines_total{type="EnqueueTasks"} 0`
+- `coroutines_total{type="SchedulePromises"} 0`
+- `coroutines_total{type="TimeoutLocks"} 0`
+- `coroutines_total{type="TimeoutPromises"} 0`
+- `coroutines_total{type="TimeoutTasks"} 0`
+
+## Using Prometheus and Grafana
 
 The way Grafana works is by pulling data from any timeseries db, in our case this db will be Prometheus.
 The way Prometheus works is by pulling data from the Resonate Server every X seconds.
