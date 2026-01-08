@@ -1,6 +1,6 @@
 ---
 id: typescript
-title: Skill Guide | Resonate TypeScript SDK
+title: Skill Guide | TypeScript SDK
 description: APIs that stay simple, even when your use cases aren’t
 sidebar_label: TypeScript SDK
 tags:
@@ -83,7 +83,6 @@ const resonate = new Resonate();
   Use the Context APIs for function activations inside Durable Functions.
 
 Upon initialization, the Resonate Client will look for [environment variables](#environment-variables) and/or use the options passed to it.
-
 For example, to specify a Resonate Server and process group, pass the url and group in the options.
 
 ```ts title="index.ts"
@@ -116,7 +115,7 @@ const resonate = new Resonate();
 
 Local development mode can be suitable for awhile.
 However, when you want to run multiple worker processes, persist state across restarts, or share work between machines, you will need to connect to a Resonate Server.
-See the [Quickstart guide] or [How to run a Resonate Server](/operate/run-server) for guidance on getting a server up and running.
+See the [Quickstart guide](/get-started/quickstart) or [How to run a Resonate Server](/operate/run-server) for guidance on getting a server up and running.
 
 ### Auth
 
@@ -134,28 +133,31 @@ const resonate = new Resonate({
 });
 ```
 
+- This auth configuration only applies to reqests made to the Resonate Server API from this Resonate Client.
+- The Client to Server request uses HTTP Basic Authentication for authenticating requests.
+
 See [How to customize Resonate Server configurations](/operate/run-server#customize-configuration) to learn how to set up authentication on the server side.
 
 ### Message sources
 
-A Resonate Client needs to be able to receive messages to know what to work on next.
+A Resonate Client receives messages by making HTTP Long Polling requests to a Resonate Server.
+The messages tell the client/sdk what to work on next.
 
-HTTP Long Polling the Resonate Server directly is the default way a Resonate Client is configured to receives messages.
-That is, if you do not specify specific message transport plugins, the Resonate Client will use the built-in Poller transport.
-
-You do not have to do anything special to enable this transport.
+You can customize the transport by which the client receives messages using a transport plugin.
+For example, here is how to configure it with a [Kafka message transport plugin](https://github.com/resonatehq/resonate-transport-kafka-ts).
 
 ```ts title="index.ts"
-import { Resonate } from "@resonatehq/sdk";
+import { type Context, Resonate } from "@resonatehq/sdk";
+import { Kafka } from "@resonatehq/kafka";
 
-const resonate = new Resonate({
-  url: "https://localhost:8001", // HTTP Poller transport is used here by default
-});
+const transport = new Kafka({ brokers: ["localhost:9092"] });
+await transport.start();
+
+const resonate = new Resonate({ transport });
 ```
 
-However, A Resonate Client can receive messages from many different transports, such as HTTP, Kafka, RabbitMQ, etc...
-
-To configure different message transports, see [How to configure message transports](#).
+The underlying protocols enable a wide range of potential message transports including SQS, Pub/Sub, RabbitMQ, NATS, and more.
+See [Message transports](/operate/message-transports) for a complete list.
 
 ### Environment Variables
 
@@ -188,35 +190,33 @@ This is convenient for unit tests or quick experiments that do not require a Res
 
 #### `RESONATE_URL`
 
-Provides the full base URL (scheme, host, and port) for connecting to a remote Resonate server.
-Takes precedence over the individual scheme/host/port variables.
+- Provides the full base URL (scheme, host, and port) for connecting to a remote Resonate server.
+  Takes precedence over the individual scheme/host/port variables.
+- Default is _unset_
+- Example, compose from a single URL:
 
-Default is _unset_
+  ```bash
+  export RESONATE_URL="https://resonate.example.com"
+  ```
 
-**Compose from a single URL:**
+  ```ts
+  import { Resonate } from "@resonatehq/sdk";
 
-```bash
-export RESONATE_URL="https://resonate.example.com"
-```
+  const resonate = new Resonate(); // picks up RESONATE_URL automatically
+  ```
 
-```ts
-import { Resonate } from "@resonatehq/sdk";
+- Example, compose a URL from components:
 
-const resonate = new Resonate(); // picks up RESONATE_URL automatically
-```
+  ```bash
+  export RESONATE_SCHEME=https
+  export RESONATE_HOST=resonate.example
+  export RESONATE_PORT=8443
+  ```
 
-**Compose a URL from components:**
-
-```bash
-export RESONATE_SCHEME=https
-export RESONATE_HOST=resonate.example
-export RESONATE_PORT=8443
-```
-
-```ts
-const resonate = new Resonate();
-// resolves to https://resonate.example:8443
-```
+  ```ts
+  const resonate = new Resonate();
+  // resolves to https://resonate.example:8443
+  ```
 
 #### `RESONATE_SCHEME`
 
