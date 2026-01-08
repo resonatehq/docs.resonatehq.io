@@ -268,9 +268,12 @@ This is convenient for unit tests or quick experiments that do not require a Res
 
 ## Client APIs
 
-**How to register a function with Resonate in the TypeScript SDK.**
+The following client APIs can only be used in the Ephemeral World, they can not be used inside Durable Functions.
 
 ### `.register()`
+
+Register a function to expose it to the Resonate system.
+A registered function can then be activated using by the Resonate Client, Resonate CLI, or from inside another Durable Function using the Context APIs.
 
 ```ts
 function foo(ctx: Context, ...args: any[]) {
@@ -287,25 +290,37 @@ resonate.register("foo", (ctx: Context, ...args: any[]) => {
 });
 ```
 
+You can specify a name for the function that is different from the function name by passing it as the first argument.
+
+```ts
+resonate.register("custom-foo", (ctx: Context, ...args: any[]) => {
+  // ...
+  return result;
+});
+```
+
+Registration does provide a stub that can be used to activate the function locally, ranther than using the run or rpc methods on the Resonate Client.
+
+```ts
+const fooStub = resonate.register("foo", (ctx: Context, ...args: any[]) => {
+  // ...
+  return result;
+});
+
+fooStub.run(promiseId, args);
+```
+
 ### `.setDependency()`
 
-Resonate's `.setDependency()` method allows you to set a dependency for the Application Node.
-You can then access the dependency in the function using the [`.getDependency()`](#getdependency) method.
-
-Dependencies can only be added in the ephemeral world.
+Resonate's `.setDependency()` method enables you to set a dependency for other functions in the local call graph to use.
 
 ```ts
 resonate.setDependency("dependency-name", dependency);
 ```
 
-The dependency can be accessed from any function in the Call Graph on that Application Node.
-This is useful for things like database connections or other resources that you want to share across functions.
-
-**How to invoke a function in the ephemeral world with the Resonate Class.**
-
-To move from the ephemeral world to the durable world you use the Resonate Class to invoke functions.
-
-There are two methods that you can use: `.run()` and `.rpc()`.
+- Setting a dependency can only be done in the Ephemeral World.
+- It is useful for sharing resources like database connections across functions.
+- You can then access the dependency inside a Durable Function using Context's [`.getDependency()`](#getdependency) method.
 
 ### `.run()`
 
