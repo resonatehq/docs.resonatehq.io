@@ -670,7 +670,7 @@ The options object is useful when you want to build the wake-up time conditional
 ```ts
 import { Context, Resonate } from "@resonatehq/sdk";
 
-const resonate = Resonate.local();
+const resonate = new Resonate();
 
 resonate.register("send-reminder", function* (ctx: Context, userId: string) {
   // Pause for five seconds without blocking the worker
@@ -685,7 +685,7 @@ resonate.register("send-reminder", function* (ctx: Context, userId: string) {
 ```ts
 import { Context, Resonate } from "@resonatehq/sdk";
 
-const resonate = Resonate.local();
+const resonate = new Resonate();
 
 resonate.register("schedule-digest", function* (ctx: Context, userId: string) {
   const nextEightAm = new Date();
