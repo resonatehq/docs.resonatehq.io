@@ -12,8 +12,6 @@ tags:
 
 Transform synchronous HTTP requests into durable jobs so clients can fire-and-forget while still getting reliable completion updates.
 
-Python example coming soon.
-
 import CloneRepoGrid from "@site/src/components/CloneRepoGrid/CloneRepoGrid";
 import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
 
@@ -36,3 +34,70 @@ If a server crashes mid-request, clients have no reliable way to know whether wo
 Resonate turns each inbound request into a durable workflow. The request handler enqueues work and immediately returns an identifier that clients can poll for status. Work execution becomes resilient to server restarts, retries, and long-running tasks.
 
 The example demonstrates how to expose submission and status endpoints, push long-running work into Resonate, and notify clients when it completes.
+
+## Quick example
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+    ]}>
+
+    <TabItem value="python" >
+
+```python title="main.py - API Gateway"
+from fastapi import FastAPI
+from resonate import Resonate
+
+app = FastAPI()
+resonate = Resonate().remote(group="gateway")
+
+@app.post("/begin")
+def begin(data=None, id=None):
+    # Start durable execution on a worker
+    handle = resonate.options(
+        target="poll://any@worker"
+    ).begin_rpc(func="foo", id=id, data=data)
+    
+    return {
+        "promise": handle.id,
+        "status": "pending",
+        "wait": f"/wait?id={handle.id}"
+    }
+
+@app.get("/wait")
+def wait(id: str):
+    handle = resonate.get(id)
+    
+    if handle.done():
+        return {
+            "status": "resolved",
+            "result": handle.result()
+        }
+    else:
+        return {
+            "status": "pending",
+            "message": "Processing in progress"
+        }
+```
+
+```python title="worker.py - Background Worker"
+from resonate import Context, Resonate
+
+resonate = Resonate().remote(group="worker")
+
+@resonate.register
+def foo(context: Context, data):
+    # Long-running work happens here
+    return {"result": f"Processed: {data}"}
+
+resonate.start()
+```
+
+  </TabItem>
+
+</Tabs>

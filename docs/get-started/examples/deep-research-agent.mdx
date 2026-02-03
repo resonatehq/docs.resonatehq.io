@@ -21,12 +21,12 @@ import CloneRepoCard from "@site/src/components/CloneRepoCard/CloneRepoCard";
   <CloneRepoCard
     sdk="Python SDK"
     description="Deep research agent"
-    link="https://github.com/resonatehq-examples/example-durable-sleep-py"
+    link="https://github.com/resonatehq-examples/example-openai-deep-research-agent-py"
   />
   <CloneRepoCard
     sdk="TypeScript SDK"
     description="Deep research agent"
-    link="https://github.com/resonatehq-examples/example-durable-sleep-ts"
+    link="https://github.com/resonatehq-examples/example-openai-deep-research-agent-ts"
   />
 </CloneRepoGrid>
 
@@ -37,3 +37,127 @@ Researching complex topics requires breaking them into subtopics and exploring e
 ## Solution
 
 The Distributed Recursive Deep Research Agent (powered by Resonate + OpenAI) automates this by decomposing topics and recursively researching subtopics in parallel with minimal code.
+
+## Quick example
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python" >
+
+```python title="research.py"
+from resonate import Context, Resonate
+from openai import OpenAI
+
+resonate = Resonate()
+aiclient = OpenAI()
+
+@resonate.register
+def research(ctx: Context, topic: str, depth: int):
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"Research {topic}"}
+    ]
+    
+    while True:
+        # Prompt LLM (only allow tool calls if depth > 0)
+        message = yield ctx.lfc(prompt, messages, depth > 0)
+        messages.append(message)
+        
+        # Handle parallel tool calls recursively
+        if message.tool_calls:
+            handles = []
+            for tool_call in message.tool_calls:
+                tool_args = json.loads(tool_call.function.arguments)
+                if tool_call.function.name == "research":
+                    # Recursively research subtopic (depth - 1)
+                    handle = yield ctx.rfi(
+                        research, 
+                        tool_args["topic"], 
+                        depth - 1
+                    )
+                    handles.append((tool_call, handle))
+            
+            # Await all subtopic results
+            for (tool_call, handle) in handles:
+                result = yield handle
+                messages.append({
+                    "role": "tool", 
+                    "tool_call_id": tool_call.id, 
+                    "content": result
+                })
+        else:
+            return message.content
+
+# Run the research
+result = research.run("research.1", "What are distributed systems", depth=2)
+```
+
+  </TabItem>
+
+    <TabItem value="typescript" >
+
+```typescript title="agent.ts"
+import type { Context } from "@resonatehq/sdk";
+import OpenAI from "openai";
+
+const aiclient = new OpenAI();
+
+export function* research(
+  ctx: Context,
+  topic: string,
+  depth: number,
+): Generator<any, string, any> {
+  const messages = [
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "user", content: `Research ${topic}` },
+  ];
+
+  while (true) {
+    // Prompt LLM (only allow tool calls if depth > 0)
+    const message = yield* ctx.run(prompt, messages, depth > 0);
+    messages.push(message);
+
+    // Handle parallel tool calls recursively
+    if (message.tool_calls) {
+      const handles = [];
+      for (const tool_call of message.tool_calls) {
+        const tool_args = JSON.parse(tool_call.function.arguments);
+        if (tool_call.function.name === "research") {
+          // Recursively research subtopic (depth - 1)
+          const handle = yield* ctx.beginRpc(
+            research,
+            tool_args.topic,
+            depth - 1,
+          );
+          handles.push([tool_call, handle]);
+        }
+      }
+      
+      // Await all subtopic results
+      for (const [tool_call, handle] of handles) {
+        const result = yield* handle;
+        messages.push({
+          role: "tool",
+          tool_call_id: tool_call.id,
+          content: result,
+        });
+      }
+    } else {
+      return message.content || "";
+    }
+  }
+}
+```
+
+  </TabItem>
+
+</Tabs>
