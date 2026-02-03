@@ -52,7 +52,7 @@ The server starts on:
 - gRPC API: `localhost:50051`
 - Metrics: `http://localhost:9090`
 
-See [`resonate dev --help`](/operate/cli-reference/commands/dev) for options.
+See `resonate dev --help` for options.
 
 ### Start a production server
 
@@ -69,7 +69,7 @@ resonate serve \
   --aio-store-postgres-password secret
 ```
 
-See [`resonate serve --help`](/operate/cli-reference/commands/serve) for all configuration options.
+See `resonate serve --help` for all configuration options.
 
 ### Invoke a function
 
@@ -221,12 +221,6 @@ curl http://localhost:9090/metrics
 resonate promises get order-123 --server https://resonate.yourcompany.com
 ```
 
-## Command reference
-
-For a complete list of commands and their options, see the [CLI reference](/operate/cli-reference/commands/).
-
-Each command page includes a brief description and a link to the built-in `--help` documentation.
-
 ## Troubleshooting
 
 ### Command not found
@@ -264,7 +258,7 @@ Each command page includes a brief description and a link to the built-in `--hel
 
 ## Next steps
 
-- Start a [development server](/operate/cli-reference/commands/dev) and connect your SDK
+- Start a development server (`resonate dev`) and connect your SDK
 - Explore [example applications](/get-started/examples) that show real-world CLI usage
 - Read about [production deployment](/operate/run-server) with persistent storage
 - Review the [TypeScript SDK guide](/develop/typescript) or [Python SDK guide](/develop/python)
