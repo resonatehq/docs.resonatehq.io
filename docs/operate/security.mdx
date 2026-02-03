@@ -32,7 +32,7 @@ Use **token-based auth** for production. It's more secure, easier to rotate, and
 | Token-based (JWT)     | ✅     | ✅             | ❌ (planned) |
 | Basic (username/password) | ✅  | ✅             | ✅         |
 
-:::note Python SDK users
+:::tip Python SDK users
 The Python SDK currently only supports basic authentication. Token-based auth support is planned for a future release.
 :::
 
@@ -57,7 +57,7 @@ export RESONATE_TOKEN="your-secure-token-here"
 resonate serve --config resonate.yaml
 ```
 
-:::warning Important
+:::tip Important
 - Generate a strong, random token for production (minimum 32 characters recommended)
 - Store tokens securely (environment variables, secrets manager, etc.)
 - Rotate tokens periodically
@@ -128,7 +128,7 @@ Or via command-line flags:
 resonate serve --auth user1=password1 --auth user2=password2
 ```
 
-:::caution
+:::tip
 When basic auth is enabled, **gRPC is automatically disabled** for security reasons. If you need gRPC, consider using token-based authentication or a reverse proxy with auth.
 :::
 
