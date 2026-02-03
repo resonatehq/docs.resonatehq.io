@@ -1,8 +1,8 @@
 ---
 id: security
-title: Authentication & Security
+title: Authentication and security
 sidebar_label: Security
-description: Secure your Resonate Server with authentication and authorization
+description: Secure your Resonate Server with authentication
 sidebar_position: 2
 tags:
   - operate
@@ -36,11 +36,11 @@ Use **token-based auth** for production. It's more secure, easier to rotate, and
 The Python SDK currently only supports basic authentication. Token-based auth support is planned for a future release.
 :::
 
-## Token-Based Authentication
+## Token-based authentication
 
 Token-based authentication uses JWT bearer tokens in the `Authorization` header. This is the recommended approach for production deployments.
 
-### Server Configuration
+### Server configuration
 
 Enable token authentication by setting the `token` configuration option:
 
@@ -79,7 +79,7 @@ const resonate = new Resonate({
 
 With TypeScript, tokens are passed as `Bearer` tokens in the `Authorization` header automatically.
 
-#### Example: Secure Production Setup
+#### Example: Secure production setup
 
 ```typescript title="resonate-client.ts"
 import { Resonate } from "@resonatehq/sdk";
@@ -106,11 +106,11 @@ Token-based authentication is **not yet supported** in the Python SDK. Use basic
 
 We recommend monitoring the [Python SDK releases](https://github.com/resonatehq/resonate-sdk-py/releases) for updates on token auth support.
 
-## Basic Authentication
+## Basic authentication
 
 Basic authentication uses username and password credentials encoded in the `Authorization` header. While simpler to set up, it requires credential management and is less flexible than token-based auth.
 
-### Server Configuration
+### Server configuration
 
 Enable basic authentication by setting username/password pairs:
 
@@ -160,7 +160,7 @@ resonate = Resonate(
 
 The Python SDK uses a tuple `(username, password)` for basic auth credentials.
 
-#### Environment Variables
+#### Environment variables
 
 The Python SDK automatically reads credentials from environment variables if not explicitly provided:
 
@@ -176,9 +176,9 @@ from resonate import Resonate
 resonate = Resonate(url="http://localhost:8001")
 ```
 
-## Production Best Practices
+## Production best practices
 
-### Token Management
+### Token management
 
 1. **Generate strong tokens** - Use cryptographically secure random tokens (32+ characters)
 2. **Store securely** - Use environment variables, AWS Secrets Manager, Google Secret Manager, etc.
@@ -193,7 +193,7 @@ const token = crypto.randomBytes(32).toString('hex');
 console.log(token); // Use this as your RESONATE_TOKEN
 ```
 
-### Network Security
+### Network security
 
 Even with authentication enabled, follow network security best practices:
 
@@ -213,7 +213,7 @@ Monitor authentication failures and suspicious activity:
 
 See the [Observability](/operate/observe/logs) documentation for logging configuration.
 
-## Multi-Environment Setup
+## Multi-environment setup
 
 Use different credentials for each environment:
 
@@ -281,21 +281,21 @@ export const config = {
 - Track [Python SDK GitHub issues](https://github.com/resonatehq/resonate-sdk-py/issues) for token auth updates
 - Consider contributing the feature if it's urgent for your use case
 
-## Examples & Tutorials
+## Examples and tutorials
 
 For working examples of authenticated applications:
 
 - **TypeScript**: See the [token authentication example](https://github.com/resonatehq/example-token-auth-ts) repository
 - **Python**: Check the SDK [integration tests](https://github.com/resonatehq/resonate-sdk-py/tree/main/tests) for basic auth examples
 
-## Next Steps
+## Next steps
 
 - [Deploy to production](/operate/run-server) with authentication enabled
 - [Set up observability](/operate/observe/logs) to monitor auth events
 - [Configure message transports](/operate/message-transports) for distributed workers
 - Review [server configuration](/operate/run-server#customize-configuration) for all security options
 
-## Related Documentation
+## Related documentation
 
 - [Develop with TypeScript SDK](/develop/typescript) - SDK reference with auth examples
 - [Develop with Python SDK](/develop/python) - SDK reference with auth examples
