@@ -1,53 +1,45 @@
 ---
 id: tasks
-title: CLI tasks command
-sidebar_label: Tasks
-description: Interact directly with the Task Framework to mock the behaviour of Application Node.
+title: resonate tasks
+sidebar_label: tasks
+description: Interact with the Task Framework.
 tags:
   - cli
   - tasks
 ---
 
-The `tasks` command enables you to interact with the Task Framework by simulating the behavior of an Application Node.
+Interact with the Task Framework to simulate Application Node behavior.
 
-```shell
-resonate tasks <sub-command> <args> [flags]
+```shell title="Task commands"
+resonate tasks <subcommand> [args] [flags]
 ```
 
-## complete
+## Available subcommands
 
-Complete a Task.
+- `claim` - Claim one or more tasks by ID
+- `complete` - Mark a task as complete
+- `heartbeat` - Send heartbeat signals for tasks
 
-```shell
-resonate tasks complete <id> [flags]
+## Quick examples
+
+```shell title="Claim a task"
+resonate tasks claim task-123 --counter 1
 ```
 
-Flags:
-
-- [--counter](/operate/cli-reference/flags#--counter)
-- [--process-id](/operate/cli-reference/flags#--process-id)
-- [--ttl](/operate/cli-reference/flags#--ttl)
-
-## claim
-
-Claim one or more Tasks associated with the given ID.
-
-```shell
-resonate tasks claim <id> [flags]
+```shell title="Complete a task"
+resonate tasks complete task-123 --counter 1 --process-id worker-1
 ```
 
-Flags:
-
-- [--counter](/operate/cli-reference/flags#--counter)
-
-## heartbeat
-
-Send Heartbeat signals for Tasks associated with the given process ID.
-
-```shell
-resonate tasks heartbeat <id> [flags]
+```shell title="Send heartbeat"
+resonate tasks heartbeat task-123 --process-id worker-1
 ```
 
-Flags:
+## Learn more
 
-- [--process-id](/operate/cli-reference/flags#--process-id)
+Run `resonate tasks --help` to see all subcommands.
+
+Run `resonate tasks <subcommand> --help` for detailed usage.
+
+:::tip For advanced users
+The tasks command is primarily for testing and debugging the Task Framework. Most users interact with tasks through the SDK, not the CLI.
+:::
