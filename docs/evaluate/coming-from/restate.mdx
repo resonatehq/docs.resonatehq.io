@@ -289,23 +289,15 @@ If you're moving from Restate to Resonate:
 4. **Simplify deployment:** Remove endpoint registration step - just deploy and connect
 5. **Test locally:** Take advantage of zero-dependency mode for faster iteration
 
-## When to choose Resonate
+## Why choose Resonate
 
-Consider Resonate if:
-- You want simpler primitives (functions, not service types)
-- You prefer zero-dependency local development
-- You want to use familiar async/await patterns
-- You need flexible state management (your choice of DB)
-- You want to avoid vendor-specific abstractions
-- You value a gentler learning curve
-
-## When to stick with Restate
-
-Restate might be better if:
-- You specifically need built-in K/V state per object
-- Your team is already invested in Restate's service types
-- You prefer batteries-included state management over flexibility
-- You're already running Restate infrastructure in production
+Resonate offers:
+- **Simpler primitives** - Just functions, not three service types
+- **Zero-dependency local development** - Start building without infrastructure
+- **Familiar async/await patterns** - Distributed async/await feels natural
+- **Flexible state management** - Use your choice of database
+- **No vendor lock-in** - Avoid proprietary abstractions
+- **Gentler learning curve** - Less to learn, faster to ship
 
 ## Example: Order processing saga
 
