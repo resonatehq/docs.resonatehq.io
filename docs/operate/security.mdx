@@ -52,7 +52,7 @@ api:
 
 Or via environment variable:
 
-```bash
+```bash title="Set token via environment variable"
 export RESONATE_TOKEN="your-secure-token-here"
 resonate serve --config resonate.yaml
 ```
@@ -124,7 +124,7 @@ api:
 
 Or via command-line flags:
 
-```bash
+```bash title="Enable basic auth via command line"
 resonate serve --auth user1=password1 --auth user2=password2
 ```
 
@@ -164,7 +164,7 @@ The Python SDK uses a tuple `(username, password)` for basic auth credentials.
 
 The Python SDK automatically reads credentials from environment variables if not explicitly provided:
 
-```bash
+```bash title="Set credentials via environment variables"
 export RESONATE_USERNAME="user1"
 export RESONATE_PASSWORD="password1"
 ```
@@ -187,7 +187,7 @@ resonate = Resonate(url="http://localhost:8001")
 
 Example token generation (Node.js):
 
-```javascript
+```javascript title="generate-token.js"
 const crypto = require('crypto');
 const token = crypto.randomBytes(32).toString('hex');
 console.log(token); // Use this as your RESONATE_TOKEN
