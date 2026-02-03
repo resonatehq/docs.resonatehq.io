@@ -1,899 +1,136 @@
 ---
 id: index
 title: Develop with Resonate
-description: Develop your application with a Resonate SDK.
+description: Build distributed applications without the distributed systems complexity.
 sidebar_label: Develop
 tags:
   - develop
 ---
 
-The Resonate API surface area is designed to fit the needs of a distributed application developer.
+## Problems you no longer solve
 
-The API is intentionally minimal.
-With just a small set of primitives, you can do most of the heavy lifting required for building distributed applications.
-This surface area was designed carefully: it’s simple to learn, yet powerful enough to address the core challenges developers face when writing resilient, distributed systems.
+Distributed systems have a whole class of problems that used to require weeks of engineering, careful design, and ongoing maintenance:
 
-Every API call in Resonate is durable by default.
-That means your operations survive process crashes, restarts, and unexpected failures.
-You don’t have to wire up custom retry loops or invent your own fault tolerance patterns — Resonate takes care of this, letting you focus on your business logic instead of infrastructure plumbing.
+- **Retries and backoff** - What happens when an API call fails? Do you retry immediately? Exponentially back off? Track attempt counts?
+- **Idempotency** - How do you prevent duplicate charges, double emails, or repeated side effects when retrying failed operations?
+- **State management** - Where do you store workflow state? How do you ensure it survives crashes? How do you clean it up?
+- **Process coordination** - How do you distribute work across multiple workers? What happens when a worker dies mid-task?
+- **Long-running workflows** - How do you pause a process for hours or days without blocking threads or keeping connections open?
+- **Failure recovery** - When your service crashes mid-workflow, how do you resume from where you left off instead of starting over?
+- **Ordering and consistency** - How do you guarantee operations happen in the right order across distributed processes?
 
-Distributed applications introduce unique problems: coordination across processes, ordering of events, fault handling, and more.
-Developers often patch these problems with ad-hoc solutions that make the business process hard to follow and even harder for new contributors to understand.
-Resonate smooths away this complexity by giving you APIs that make sense at the business-logic level, while still solving for the hard distributed systems problems underneath.
+**With Resonate, you don't build these anymore.** You write your business logic as straightforward code, and Resonate handles the hard distributed systems problems underneath.
 
-These docs aim to meet you where you are — whether you’re new to distributed programming or already familiar with the common pain points — while guiding you into the “Resonate way” of thinking about system design.
-Each code sample shown here is deliberately minimal, to highlight exactly what the API looks like and where it fits in the broader ecosystem of distributed application development.
-From there, you’ll find links to more detailed examples with step-by-step explanations.
+---
 
-## Installing SDKs
+## What Resonate gives you
 
-Resonate SDKs can be installed using your favorite package manager.
+### Durable execution by default
 
-Quick example:
+Every function you run through Resonate survives process crashes and restarts. If your service dies mid-execution, Resonate automatically:
+- Detects the failure
+- Restarts your function on another process
+- Resumes from the last successful checkpoint
+- Returns the same result as if nothing happened
 
-import Tabs from "@theme/Tabs";
-import TabItem from "@theme/TabItem";
-import MoreExamplesButton from "@site/src/components/MoreExamplesButton";
+You don't write retry logic. You don't manage state. You just write normal code.
 
-<Tabs
-    groupId="preferred-language"
-    defaultValue="typescript"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
+### Automatic idempotency
 
-    <TabItem value="python">
+When Resonate retries your function, it doesn't re-execute operations that already succeeded. It replays your function using recorded results from previous attempts.
 
-```shell title="Install via uv"
-uv add resonate-sdk
-```
+This means:
+- External API calls happen once (even across retries)
+- Database writes don't duplicate
+- Payments don't charge twice
+- Emails don't send multiple times
 
-<MoreExamplesButton href="/develop/python#installation" />
+You get automatic idempotency without writing deduplication logic.
 
-    </TabItem>
-    <TabItem value="typescript">
+### Distributed coordination primitives
 
-```shell title="Install via bun"
-bun add @resonatehq/sdk
-```
+Resonate provides simple primitives that solve complex coordination problems:
 
-<MoreExamplesButton href="/develop/typescript#installation" />
+**`ctx.run()`** - Execute any function durably. The result is recorded and reused on retry.
 
-    </TabItem>
+**`ctx.sleep()`** - Pause your workflow for hours, days, or weeks without blocking your process.
 
-</Tabs>
+**`ctx.rpc()`** - Call functions on other processes as if they're local. Resonate routes the work and returns the result.
 
-## Initializing clients
+**Durable Promises** - Coordinate between processes, humans, and systems. Wait for external input (like approval) that might take days.
 
-You need to initialize a Resonate Client in each process that you want to use Resonate.
+These primitives compose together, letting you build complex workflows from simple pieces.
 
-A Resonate Client connects to a Resonate Server and message sources while providing the top level APIs needed to durably invoke function executions.
+### Zero dependency development
 
-It is important to note that your Resonate Client does not need to connect to a Resonate Server to start developing.
-You can use the Resonate Client in "local mode", working with functions that are local to the process.
+Start building immediately. Resonate's local mode lets you develop and test without running a server, database, or any infrastructure.
 
-This is in contrast to Temporal, Restate, and DBOS which require connecting to a server or database, even for development.
+When you're ready for production, connect to a Resonate Server and your local workflows become distributed, fault-tolerant systems - without changing your code.
 
-Resonate calls this capability "Zero dependency development".
+---
 
-Quick example:
+## How it works
 
-<Tabs
-    groupId="preferred-language"
-    defaultValue="typescript"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
+Resonate uses a technique called **deterministic replay**. When your process crashes, Resonate replays your function from the beginning, but instead of re-executing expensive operations (API calls, database writes), it uses recorded results from the previous attempt.
 
-    <TabItem value="python">
+This means your function must follow a few simple rules:
+- Use `ctx.run()` for any operation that might return different results (API calls, random numbers, timestamps)
+- Design functions to be safe to retry (idempotent)
+- Use `ctx.sleep()` for long waits instead of blocking
 
-```py title="client.py"
-from resonate import Resonate
+These constraints ensure your functions replay correctly and survive failures. See [Constraints](/develop/constraints) for a detailed explanation.
 
-# Initialize a Resonate Client in local mode
-resonate = Resonate.local()
-```
+---
 
-<MoreExamplesButton href="/develop/python#initialization" />
+## Getting started
 
-    </TabItem>
+Choose your language and dive in:
 
-    <TabItem value="typescript">
+import DocCardList from "@theme/DocCardList";
 
-```ts title="client.ts"
-import { Resonate } from "@resonatehq/sdk";
+<DocCardList
+  items={[
+    {
+      type: 'link',
+      label: 'TypeScript SDK',
+      href: '/develop/typescript',
+      description: 'Install the SDK, register functions, and build durable workflows with TypeScript.',
+    },
+    {
+      type: 'link',
+      label: 'Python SDK',
+      href: '/develop/python',
+      description: 'Install the SDK, register functions, and build durable workflows with Python.',
+    },
+    {
+      type: 'link',
+      label: 'Constraints',
+      href: '/develop/constraints',
+      description: 'Understand the rules for writing durable functions (determinism, idempotency, process lifetime).',
+    },
+  ]}
+/>
 
-// Initialize a Resonate Client in local mode
-const resonate = new Resonate();
-```
+Or jump straight into an [example application](/get-started/examples) to see real patterns in action.
 
-<MoreExamplesButton href="/develop/typescript#initialization" />
+---
 
-    </TabItem>
+## What you'll find in the SDK guides
 
-</Tabs>
+The SDK-specific pages cover everything you need to build with Resonate:
 
-## Client APIs
+**Installation** - How to add Resonate to your project
 
-Many Resonate Client APIs can be used just about anywhere.
-Seriously.
-For example, the Resonate TypeScript SDK can run in your browser, enabling Async RPCs from your frontend code, or converting your browser session into a worker.
+**Initialization** - Setting up local mode vs production mode
 
-### Registering functions
+**Registering functions** - Making your functions durable and invocable
 
-Registering a function is a lot like exposing a service endpoint.
+**Client APIs** - Creating promises, invoking functions, managing workflows
 
-Resonate promotes a concept called the [Call Graph](https://journal.resonatehq.io/p/resonate-call-graphs).
-Effectively, it is a graph of function calls that can span multiple processes.
-The first function in the Call Graph is called the "top level" function.
+**Context APIs** - Using `ctx.run()`, `ctx.sleep()`, `ctx.rpc()`, and other primitives
 
-The "top level" function must be registered with Resonate.
-A registered function becomes a Durable Function.
-A registered function can be invoked from any other process with a Resonate Client connected to the same Resonate Server.
+**Code examples** - Real patterns for common scenarios
 
-The first argument of a registered function will always be a Resonate Context, which can be used to call other functions.
-Local functions do not need to be registered, but will become Durable Functions if invoked from the registered Durable Function.
-
-Note that all parameters passed to a Durable Functions must be serializable.
-
-Quick example:
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="typescript"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-In Python, you can use the `@resonate.register` decorator to register a function:
-
-```py title="client.py"
-@resonate.register
-def foo(context: Context, arg: str) -> str:
-    # ...
-    return result
-```
-
-<MoreExamplesButton href="/develop/python#resonateregister" />
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-In TypeScript, you can use the `register` method to register a function:
-
-```ts title="client.ts"
-fooR = resonate.register("foo", (context: Context, arg: string): string => {
-  // ...
-  return result;
-});
-```
-
-<MoreExamplesButton href="/develop/typescript#register" />
-
-    </TabItem>
-
-</Tabs>
-
-### Run
-
-Run is the workhorse API for your local process.
-
-The Run API on the Resonate Client is for invoking functions locally (in the same process).
-Basically, its the equivalent of a normal function call, but it creates a checkpoint so even if your process crashes, the caller function can resume in a new process.
-
-The Run API is synchronous, meaning it will block until the callee function completes and returns a result.
-So there is also a Begin Run API, which is asynchronous and does not block.
-
-Basically Run returns the value of the function being called while Begin Run returns a promise/handle to the function being called, which can be used to get the result later.
-
-Quick example:
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="typescript"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py title="client.py"
-# foo() and main() are in the same process
-@resonate.register
-def foo(ctx: Context, arg: str) -> str:
-    # ...
-    return
-
-def main():
-    # synchronous call with Run API
-    result = foo.run("invocation-id", "Hello World!")
-
-    # asynchronous call with Begin Run API
-    handle = foo.begin_run("invocation-id", "Hello World!")
-    # ...
-    result = handle.result()
-```
-
-<MoreExamplesButton href="/develop/python#run" />
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts title="client.ts"
-// foo() and main() are in the same process
-const fooR = resonate.register("foo", (ctx: Context, arg: string): string => {
-  // ...
-  return result;
-});
-
-async function main() {
-  // synchronous call with Run API
-  const result = await fooR.run("invocation-id", "Hello World!");
-
-  // asynchronouse call with Begin Run API
-  const handle = await fooR.beginRun("invocation-id", "Hello World!");
-  // ...
-  const result = await handle.result;
-}
-```
-
-<MoreExamplesButton href="/develop/typescript#run" />
-
-    </TabItem>
-
-</Tabs>
-
-### RPC
-
-If the Run API is the workhorse of your local process, then the RPC API is a magical unicorn for your distributed application.
-
-The RPC API is how you durably communicate between processes.
-Its how you invoke functions in other processes and extend the Call Graph across process boundaries.
-
-RPC is synchronous, and blocks the calling function until the invoked function returns.
-Begin RPC is asynchronous, and returns a promise which can be awaited later.
-
-Quick example:
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="typescript"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py title="worker.py"
-# foo is in process x
-@resonate.register
-def foo(context: Context, arg: str):
-    # ...
-    return result
-```
-
-```py title="client.py"
-# main is in process y
-def main():
-    # synchronously invoke foo
-    result = resonate.options(target="process-group-x").rpc(
-        "invocation_id", func="foo", arg="Hello World!"
-    )
-
-    # asynchronously invoke foo
-    handle = resonate.options(target="process-group-x").begin_rpc(
-        "invocation_id", func="foo", arg="Hello World!"
-    )
-    # do more stuff
-    result = handle.result()
-```
-
-<MoreExamplesButton href="/develop/python#rpc" />
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts title="worker.ts"
-// foo is in process x
-resonate.register("foo", (ctx: Context, arg: string) => {
-  // ...
-  return result;
-});
-```
-
-```ts title="client.ts"
-// main is in process y
-async function main() {
-  try {
-    const arg = "hello world!";
-    // synchronously invoke foo
-    const result = await resonate.rpc(
-      "write_once_id",
-      "foo",
-      arg,
-      resonate.options({
-        target: "process-group-x",
-      })
-    );
-
-    // asynchronously invoke foo
-    const handle = await resonate.beginRpc(
-      "write_once_id",
-      "foo",
-      arg,
-      resonate.options({
-        target: "process-group-x",
-      })
-    );
-    // do more stuff
-    const result = await handle.result;
-  } catch (error) {
-    // ...
-  }
-}
-```
-
-<MoreExamplesButton href="/develop/typescript#rpc" />
-
-    </TabItem>
-
-</Tabs>
-
-### Promises
-
-Promises are the key primitive for asynchronous programming in Resonate.
-They allow you to represent a value that may not be available yet, but will be at some point in the future.
-As a developer, you are effectively programming with async/await across processes.
-Resonate promises are durable, however, persisted by the Resonate Server.
-
-Each promise is unique, identified by an ID.
-The promise ID is a "write-once" value, meaning it can only be set once and cannot be changed.
-It can be used as an idempotency_key, ensuring that multiple attempts to take a step will not result in duplication.
-
-The Resonate Client enables you to create, get, resolve, and reject promises.
-
-These APIs are make it possible to manage the lifecycle of a promise outside of the Call Graph.
-
-The Create Promise API is useful for creating a promise before invoking the function that will resolve it later.
-And a common reason for using the Get Promise API, is to check whether a promise exists, and if it does, whether it is resolved.
-For example, if you have a long-running background job that you want to check on, you can use the get promise API to get the handle of the promise and check if it is resolved yet.
-
-Quick examples:
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="typescript"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```python title="client.py"
-# create a promise
-resonate.promises.create(
-    id="promise-id",
-    timeout=int(time.time() * 1000) + 30000,  # 30s in the future
-)
-# RE: Promise creation resolution timeout
-# Functions await on other functions through Durable Promises.
-# In Resonate, a timeout is associated with the Durable Promise resolution, not individual function executions.
-# Resonate attempts to resolve a Durable Promise until the specified timeout is reached.
-# If the timeout is reached, Resonate marks the Durable Promise as failed.
-
-# get a promise
-resonate.promises.get("promise-id")
-
-# resolve a promise
-resonate.promises.resolve("promise-id")
-
-# reject a promise
-resonate.promises.reject("promise-id")
-```
-
-<MoreExamplesButton href="/develop/python#promisescreate" />
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts title="client.ts"
-// create a promise
-const p = await resonate.promises.create(
-  "promise-id",
-  Date.now() + 30000 // timeout set for 30 seconds in the future
-);
-// RE: Promise creation resolution timeout
-// Functions await on other functions through Durable Promises.
-// In Resonate, a timeout is associated with the Durable Promise resolution, not individual function executions.
-// Resonate attempts to resolve a Durable Promise until the specified timeout is reached.
-// If the timeout is reached, Resonate marks the Durable Promise as failed.
-
-// get a promise
-const p = await resonate.promises.get("promise-id");
-
-// resolve a promise
-await resonate.promises.resolve("promise-id");
-
-// reject a promise
-await resonate.promises.reject("promise-id");
-```
-
-<MoreExamplesButton href="/develop/typescript#promisescreate" />
-
-    </TabItem>
-
-</Tabs>
-
-#### **Naming scheme best practices**
-
-When designing the naming scheme for your durable promise IDs, keep the following considerations in mind:
-
-1. **Uniqueness**: The naming scheme should guarantee uniqueness to avoid conflicts between executions.
-   If an ID is reused for a different execution, it will result in retrieving the stored result of the previous execution instead of starting a new one.
-2. **Readability**: Choose a naming scheme that is easy to understand and interpret, making it easier to debug and manage executions.
-3. **Relevance**: Incorporate relevant information into the naming scheme, such as the purpose or context of the execution.
-
-There are several approaches to ensure your Durable Promise IDs are unique but also readable and relevant.
-
-**Date-based**
-
-One very common approach is to use the date as part of the naming scheme to. For example, if you have a durable promise that fetches and aggregates news articles on a daily basis, you could include the date in the ID format to ensure uniqueness and provide clear indication of when the execution occurred.
-
-```
-news_feed_YYYY-MM-DD
-```
-
-**Hierarchical**
-
-You can use a hierarchical naming scheme similar to file system paths to represent the identity of a durable promise. The naming scheme can include information such as the environment, service, and specific execution details. For example:
-
-```
-staging/analytics/monthly-report/2023-05
-```
-
-**Platform-specific**
-
-If your durable promises are running on a specific platform or orchestrator, you can incorporate the platform's identity concepts into the naming scheme. For example, if you are using Kubernetes, you can include the namespace, pod, and other relevant information:
-
-```
-k8s/staging/namespace/analytics/gpu/h100/monthly-report-2023-05
-```
-
-**Opaque with metadata**
-
-In this case, the durable promise ID is a randomly generated unique identifier, and you would store the associated metadata (such as environment, service, execution details) in a separate database that can be queried using the ID.
-
-```
-executions/a7b89c3d-f012-4e78-9a7d-89a3f6b2e1c7
-```
-
-### Dependency injection
-
-Let's say that you have initialized a DB connection or some other resource that some of your functions in that process might need to use.
-You can set a dependency with the Resonate Client which makes it available to all Durable Functions in that process.
-
-Quick example:
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="typescript"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python" >
-
-```python title="worker.py"
-resonate.set_dependency("db", db_connection)
-```
-
-<MoreExamplesButton href="/develop/python#set_dependency" />
-
-</TabItem>
-
-    <TabItem value="typescript">
-
-```ts title="worker.ts"
-resonate.setDependency("db", db_connection);
-```
-
-<MoreExamplesButton href="/develop/typescript#setdependency" />
-
-    </TabItem>
-
-</Tabs>
-
-## Function APIs
-
-These are durable to durable APIs that are used inside the "durable world" — a world that automatically resumes after recovery.
-
-### Run
-
-The Run API is also available from the Context object, the first argument of any Durable Function.
-The difference between the Run API on Context vs the Client, is that the Context Run API is used from within Durable Functions.
-The Client Run API is used in regular "ephemeral" functions.
-
-Again, Run is synchronous and Begin Run is asynchronous.
-
-Use the Run API when you want to checkpoint the next step in your application / workflow.
-This checkpoint makes it possible to replay the calling function with the result of the callee.
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="typescript"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```python title="worker.py"
-@resonate.register
-def foo(ctx: Context, arg: string):
-
-    # synchronously call bar
-    result = yield ctx.run(bar, arg)
-
-    # asynchronously call bar
-    promise = yield ctx.run(bar, arg)
-    # do more stuff
-    result = promise.result()
-
-def bar(ctx: Context, arg: string):
-    # ...
-    return result
-```
-
-<MoreExamplesButton href="/develop/python#run-1" />
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts title="worker.ts"
-resonate.register("foo", function* (ctx: Context, ...args: any[]) {
-  // synchronously call bar
-  const result = yield* ctx.run(bar, ...args);
-
-  // asynchronously call bar
-  const promise = yield* ctx.run(bar, ...args);
-  // do more stuff
-  const result = promise.result;
-});
-
-function bar(ctx: Context, ...args: any[]) {
-  // ...
-  return;
-}
-```
-
-<MoreExamplesButton href="/develop/typescript#run-1" />
-
-    </TabItem>
-
-</Tabs>
-
-### RPC
-
-The RPC API is also available from the Context object, the first argument of any Durable Function.
-The difference between the RPC API on Context vs the Client, is that the Context RPC API is used from within Durable Functions.
-The Client RPC API is used in regular "ephemeral" functions.
-
-Again, RPC is synchronous and Begin RPC is asynchronous.
-
-Use the RPC API when you want to call a function in another process and checkpoint it in your application / workflow.
-This checkpoint makes it possible to replay the calling function with the result of the callee.
-
-Quick example:
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="typescript"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py title="client.py"
-# process x
-@resonate.register
-def foo(ctx: Context, arg: str) -> str:
-    # synchronous invocation of bar
-    result = yield ctx.rpc("bar", arg)
-
-    # asynchronous invocation of bar
-    promise = yield ctx.begin_rpc("bar", arg)
-    # do more stuff
-    result = yield promise
-```
-
-```py title="worker.py"
-@resonate.register
-def bar(ctx: Context, arg: str) -> str:
-    # ...
-    return
-```
-
-<MoreExamplesButton href="/develop/python#rpc-1" />
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-// process a
-resonate.register("foo", function* (ctx: Context, ...args: any[]) {
-  // ...
-  const result = yield* ctx.rpc(
-    "bar",
-    ...args,
-    ctx.options({ target: "poll://any@workers" })
-  );
-  // do more stuff
-
-  // asynchronous invocation of bar
-  const promise = yield* ctx.beginRpc(
-    "bar",
-    ...args,
-    ctx.options({ target: "poll://any@workers" })
-  );
-  // do more stuff
-  const result = yield* promise;
-  // do more stuff
-});
-
-// process b
-resonate.register("bar", function (ctx: Context, ...args: any[]) {
-  // ...
-  return;
-});
-```
-
-<MoreExamplesButton href="/develop/typescript#rpc-1" />
-
-    </TabItem>
-
-</Tabs>
-
-### Get dependency
-
-Get a dependency that was set on the Resonate Client in the same process.
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="typescript"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-@resonate.register
-def foo(ctx, arg):
-    # ...
-    db_conn = ctx.get_dependency("database-connection") # get database connection
-    # use database connection
-    # ...
-```
-
-<MoreExamplesButton href="/develop/python#get_dependency" />
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-resonate.register("foo", function* (ctx: Context, ...args: any[]) {
-  // ...
-  const db_conn = ctx.getDependency("database-connection"); // get database connection
-  // use database connection
-  // ...
-});
-```
-
-<MoreExamplesButton href="/develop/typescript#getdependency" />
-
-</TabItem>
-
-</Tabs>
-
-### Get or create promise
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="typescript"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-@resonate.register
-def foo(ctx, arg):
-    # ...
-    promise = yield ctx.promise(id="promise-id") # optionally supply an id
-    # do something
-    yield promise # block on the promise's resolution
-    # do more stuff
-    # ...
-```
-
-<MoreExamplesButton href="/develop/python#promise" />
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-resonate.register("foo", function* (ctx: Context, ...args: any[]) {
-  // ...
-  const promise = yield* ctx.promise({ id: "promise-id" }); // optionally supply an id
-  // do something
-  yield* promise; // block on the promise's resolution
-  // do more stuff
-  // ...
-});
-```
-
-<MoreExamplesButton href="/develop/typescript#promise" />
-
-    </TabItem>
-
-</Tabs>
-
-### Sleep
-
-Context's sleep method is durable across replays.
-That means that, once invoked, a replay of the function will not reset, extend, or retrigger the sleep duration.
-
-Additionally, this sleep method is non-blocking, meaning that other functions in the process will be able to make progress even if some are sleeping.
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="typescript"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-@resonate.register
-def foo(ctx, arg):
-    # ...
-    yield ctx.sleep(5.0)  # sleep for 5 seconds
-    # ...
-```
-
-<MoreExamplesButton href="/develop/python#sleep" />
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-resonate.register("foo", function* (ctx: Context, ...args: any[]) {
-  // ...
-  yield* ctx.sleep(5000); // sleep for 5 seconds
-  // ...
-});
-```
-
-<MoreExamplesButton href="/develop/typescript#sleep" />
-
-    </TabItem>
-
-</Tabs>
-
-### Generate random number
-
-Use Context's random methods to generate random numbers to ensure a deterministic number across replays.
-
-Quick example:
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="typescript"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-@resonate.register
-def foo(ctx, arg):
-    # ...
-    rand = yield ctx.random.random() # ensures the result is the same across replays
-    # do something with rand
-    # ...
-```
-
-<MoreExamplesButton href="/develop/python#randomrandom" />
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-resonate.register("foo", function* (ctx: Context, ...args: any[]) {
-  // ...
-  const rand = yield* ctx.math.random(); // ensures the result is the same across replays
-  // do something with rand
-  // ...
-});
-```
-
-<MoreExamplesButton href="/develop/typescript#mathrandom" />
-
-    </TabItem>
-
-</Tabs>
-
-### Get the time
-
-Use Context's time methods to get the current time to ensure a deterministic time across replays.
-
-Quick example:
-
-<Tabs
-    groupId="preferred-language"
-    defaultValue="typescript"
-    values={[
-        {label: 'Python', value: 'python'},
-        {label: 'TypeScript', value: 'typescript'},
-    ]}>
-
-    <TabItem value="python">
-
-```py
-@resonate.register
-def foo(ctx, arg):
-    # ...
-    time = yield ctx.time.time() # ensures the result is the same across replays
-    # do something with time
-    # ...
-```
-
-<MoreExamplesButton href="/develop/python#timetime" />
-
-    </TabItem>
-
-    <TabItem value="typescript">
-
-```ts
-resonate.register("foo", function* (ctx: Context, ...args: any[]) {
-  // ...
-  const time = yield* ctx.date.now(); // ensures the result is the same across replays
-  // do something with time
-  // ...
-});
-```
-
-<MoreExamplesButton href="/develop/typescript#datenow" />
-
-    </TabItem>
-
-</Tabs>
+Each SDK page is self-contained with complete examples and API references. Pick your language and start building:
+- [TypeScript SDK guide](/develop/typescript)
+- [Python SDK guide](/develop/python)
