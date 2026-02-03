@@ -30,8 +30,6 @@ Let's explore each one.
 
 A function is **deterministic** if calling it with the same inputs always produces the same outputs and side effects, in the same order.
 
-**Why this matters:**
-
 When your process crashes mid-execution, Resonate replays your function from the beginning using recorded results from previous steps. If your function behaves differently during replay (non-deterministic), Resonate won't be able to reconstruct the correct state, and your execution will diverge from what actually happened.
 
 ### Examples of non-deterministic operations
@@ -206,8 +204,6 @@ If an operation might return different results when called again (time, random, 
 
 A function is **idempotent** if executing it multiple times with the same inputs has the same effect as executing it once.
 
-**Why this matters:**
-
 Resonate automatically retries failed function executions. If your function has side effects that aren't safe to repeat (like charging a credit card or sending an email), retries could cause duplicate charges or duplicate messages.
 
 ### Examples of non-idempotent operations
@@ -276,25 +272,30 @@ function* chargeCustomer(ctx: Context, orderId: string, amount: number) {
 }
 ```
 
-✅ **Check before performing side effects**
+✅ **Let promise IDs handle deduplication**
 
-```typescript title="Guard against duplicate side effects"
+```typescript title="Idempotent because promise ID is deterministic"
 function* sendWelcomeEmail(ctx: Context, userId: string) {
-  const alreadySent = yield* ctx.run(async () => {
-    return db.query("SELECT 1 FROM sent_emails WHERE user_id = ? AND type = 'welcome'", [userId]);
-  });
-  
-  if (!alreadySent) {
-    yield* ctx.run(async () => {
-      await emailService.send({ to: userId, subject: "Welcome!" });
-      await db.query("INSERT INTO sent_emails (user_id, type) VALUES (?, 'welcome')", [userId]);
+  // ctx.run automatically creates a deterministic promise ID
+  // based on the function and arguments
+  yield* ctx.run(async () => {
+    await emailService.send({ 
+      to: userId, 
+      subject: "Welcome!",
+      idempotency_key: `welcome-${userId}` // Email service deduplicates
     });
-  }
+  });
+  // If this retries, same promise ID = same result returned from storage
+  // Email service never gets called again
 }
 ```
 
-:::tip Design for retries from the start
-Assume every function will be retried at least once. Use idempotency keys, upserts, and deduplication checks to make retries safe.
+When you use `ctx.run()` or `ctx.rpc()`, Resonate automatically generates a deterministic promise ID based on your function name and arguments. On retry, the same inputs produce the same promise ID, so Resonate returns the stored result instead of re-executing the work.
+
+This means if you use Resonate's APIs correctly, **you don't have to manually check for duplicates** - the framework handles it for you.
+
+:::tip Use deterministic promise IDs
+When you call operations through `ctx.run()` or `ctx.rpc()`, Resonate generates promise IDs that are the same across retries. This gives you automatic idempotency without manual deduplication logic.
 :::
 
 ---
@@ -304,8 +305,6 @@ Assume every function will be retried at least once. Use idempotency keys, upser
 ### What does this mean?
 
 An **activation** is a single execution attempt of your function. If your process crashes or restarts, the current activation ends immediately. Your function cannot keep running in the background after the process exits.
-
-**Why this matters:**
 
 Resonate is not a job queue or background task runner. It coordinates work across processes, but each individual function execution lives inside a process. When that process ends (crashes, deploy, scale-down), the execution stops.
 
@@ -443,12 +442,6 @@ For work that takes hours, days, or weeks, use `ctx.sleep()` or Durable Promises
 | **Idempotent** | Functions are retried on failure - must be safe to repeat | Use idempotency keys, upserts, deduplication checks |
 | **Process lifetime** | Activations end when process ends - can't outlive it | Use `ctx.sleep()`, Durable Promises for long-running work |
 
-Following these rules ensures your distributed application:
-- ✅ Survives process crashes and restarts
-- ✅ Retries safely without duplicating work
-- ✅ Handles long-running workflows spanning hours or days
+Following these rules ensures your distributed application survives process crashes and restarts, retries safely without duplicating work, and handles long-running workflows spanning hours or days.
 
-**Next steps:**
-- Explore the [TypeScript SDK guide](/develop/typescript) or [Python SDK guide](/develop/python)
-- Review [example applications](/get-started/examples) showing these patterns in action
-- Read the [Develop overview](/develop) for more on the Resonate API
+To see these patterns in action, check out the [TypeScript SDK guide](/develop/typescript), [Python SDK guide](/develop/python), or browse the [example applications](/get-started/examples).
