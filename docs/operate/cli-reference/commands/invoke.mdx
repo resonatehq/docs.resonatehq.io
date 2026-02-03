@@ -1,49 +1,45 @@
 ---
 id: invoke
-title: CLI invoke command
-sidebar_label: Invoke
+title: resonate invoke
+sidebar_label: invoke
 description: Invoke a function on a Durable Promise.
 tags:
   - cli
   - invoke
 ---
 
-Use the `invoke` command to invoke a function.
-The command requires both a promise id and the name of the function that should run.
+Invoke a function manually from the command line.
 
-```shell
+```shell title="Invoke a function"
 resonate invoke <promise-id> --func <function-name> [flags]
 ```
 
-## Flags
+Useful for testing functions, triggering workflows manually, or debugging.
 
-- `--func` (**required**): Name of the function to execute.
-- `--arg`: Provide a positional argument. Repeat the flag to send multiple
-  arguments. Values are passed as strings.
-- `--json-args`: Provide an entire JSON array of arguments. Useful for complex
-  payloads that would be cumbersome to express with repeated `--arg` flags.
-- `--timeout`: How long to wait for the invocation to complete before timing
-  out (for example `30s`, `5m`, or `1h`).
-- `--target`: Override the default target when invoking the function. Supply a
-  URI such as `poll://any@default` to steer the invocation to a specific worker
-  group.
+## Quick examples
 
-## Examples
-
-Invoke a function that adds two numbers:
-
-```shell
-resonate invoke promise-id --func add --arg 1 --arg 2 --arg "a string"
+```shell title="Invoke a function with arguments"
+resonate invoke order-123 --func processOrder --arg '{"orderId": "123"}'
 ```
 
-Invoke a function with a timeout and an explicit target:
-
-```shell
-resonate invoke promise-id --func process --arg data1 --arg 5 --timeout 1h --target "poll://any@default"
+```shell title="Invoke with timeout"
+resonate invoke task-456 --func processTask --arg data --timeout 30m
 ```
 
-Invoke a function with JSON arguments:
-
-```shell
-resonate invoke promise-id --func process --json-args '[{"key": "value"}, {"num": 42}]'
+```shell title="Invoke with JSON arguments"
+resonate invoke job-789 --func analyzeData --json-args '[{"key": "value"}, 42, "text"]'
 ```
+
+## Common flags
+
+- `--func` - Function name (required)
+- `--arg` - Positional argument (repeat for multiple)
+- `--json-args` - JSON array of arguments
+- `--timeout` - How long to wait for completion (e.g., `30s`, `5m`, `1h`)
+- `--target` - Override the default target (e.g., `poll://any@default`)
+
+## Learn more
+
+Run `resonate invoke --help` for all available flags and examples.
+
+See the [CLI guide](/operate/cli-guide#invoke-a-function) for common patterns.

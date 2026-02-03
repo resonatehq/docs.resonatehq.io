@@ -1,61 +1,52 @@
 ---
 id: serve
-title: CLI serve command
-sidebar_label: Serve
+title: resonate serve
+sidebar_label: serve
 description: Start the Resonate (Durable Promise) Server.
 tags:
   - cli
   - serve
 ---
 
-The `serve` command starts the Resonate (Durable Promise) Server.
+Start the Resonate (Durable Promise) Server.
 
-:::tip Development shortcut
-Use [`resonate dev`](./dev) to launch the server with SQLite and other
-development-friendly defaults. The alias expands to
-`resonate serve --aio-store-sqlite-path ':memory:' --aio-store-postgres-query 'sslmode=disable'`.
-:::
-
-```shell
+```shell title="Start server"
 resonate serve [flags]
 ```
 
-Flags:
+:::tip Development shortcut
+Use [`resonate dev`](./dev) for local development with in-memory storage. For production, use `resonate serve` with persistent storage.
+:::
 
-- [--api-size](/operate/cli-reference/flags#--api-size)
-- [--api-http-addr](/operate/cli-reference/flags#--api-http-addr)
-- [--api-http-timeout](/operate/cli-reference/flags#--api-http-timeout)
-- [--api-grpc-addr string](/operate/cli-reference/flags#--api-grpc-addr)
-- [--api-base-url](/operate/cli-reference/flags#--api-base-url)
-- [--api-http-auth](/operate/cli-reference/flags#--api-http-auth)
-- [--aio-size](/operate/cli-reference/flags#--aio-size)
-- [--aio-store](/operate/cli-reference/flags#--aio-store)
-- [--aio-store-size](/operate/cli-reference/flags#--aio-store-size)
-- [--aio-store-workers](/operate/cli-reference/flags#--aio-store-workers)
-- [--aio-store-batch-size](/operate/cli-reference/flags#--aio-store-batch-size)
-- [--aio-store-sqlite-path](/operate/cli-reference/flags#--aio-store-sqlite-path)
-- [--aio-store-sqlite-tx-timeout](/operate/cli-reference/flags#--aio-store-sqlite-tx-timeout)
-- [--aio-store-sqlite-reset](/operate/cli-reference/flags#--aio-store-sqlite-reset)
-- [--aio-store-postgres-host](/operate/cli-reference/flags#--aio-store-postgres-host)
-- [--aio-store-postgres-port](/operate/cli-reference/flags#--aio-store-postgres-port)
-- [--aio-store-postgres-username](/operate/cli-reference/flags#--aio-store-postgres-username)
-- [--aio-store-postgres-password](/operate/cli-reference/flags#--aio-store-postgres-password)
-- [--aio-store-postgres-database](/operate/cli-reference/flags#--aio-store-postgres-database)
-- [--aio-store-postgres-query](/operate/cli-reference/flags#--aio-store-postgres-query)
-- [--aio-store-postgres-tx-timeout](/operate/cli-reference/flags#--aio-store-postgres-tx-timeout)
-- [--aio-store-postgres-reset](/operate/cli-reference/flags#--aio-store-postgres-reset)
-- [--aio-network-size](/operate/cli-reference/flags#--aio-network-size)
-- [--aio-network-workers](/operate/cli-reference/flags#--aio-network-workers)
-- [--aio-network-batch-size](/operate/cli-reference/flags#--aio-network-batch-size)
-- [--aio-network-timeout](/operate/cli-reference/flags#--aio-network-timeout)
-- [--aio-queuing-size](/operate/cli-reference/flags#--aio-queuing-size)
-- [--aio-queuing-batch-size](/operate/cli-reference/flags#--aio-queuing-batch-size)
-- [--aio-queuing-connections](/operate/cli-reference/flags#--aio-queuing-connections)
-- [--aio-queuing-routes](/operate/cli-reference/flags#--aio-queuing-routes)
-- [--system-coroutine-max-size](/operate/cli-reference/flags#--system-coroutine-max-size)
-- [--system-notification-cache-size](/operate/cli-reference/flags#--system-notification-cache-size)
-- [--system-submission-batch-size](/operate/cli-reference/flags#--system-submission-batch-size)
-- [--system-completion-batch-size](/operate/cli-reference/flags#--system-completion-batch-size)
-- [--system-schedule-batch-size](/operate/cli-reference/flags#--system-schedule-batch-size)
-- [--metrics-port](/operate/cli-reference/flags#--metrics-port)
-- [--ignore-asserts](/operate/cli-reference/flags#--ignore-asserts)
+## Quick examples
+
+```shell title="Start with persistent SQLite"
+resonate serve --aio-store-sqlite-path /var/lib/resonate/resonate.db
+```
+
+```shell title="Start with PostgreSQL"
+resonate serve \
+  --aio-store-postgres-enable \
+  --aio-store-postgres-host localhost \
+  --aio-store-postgres-database resonate \
+  --aio-store-postgres-username resonate \
+  --aio-store-postgres-password secret
+```
+
+```shell title="Use a configuration file"
+resonate serve --config resonate.yaml
+```
+
+```shell title="Enable HTTP authentication"
+resonate serve --api-http-auth admin=secret
+```
+
+## Configuration
+
+The `serve` command accepts many configuration flags for storage, networking, authentication, and more.
+
+Run `resonate serve --help` to see all available options.
+
+See the [server configuration guide](/operate/run-server#customize-configuration) for detailed setup instructions.
+
+See the [CLI reference flags](/operate/cli-reference/flags) for flag documentation.

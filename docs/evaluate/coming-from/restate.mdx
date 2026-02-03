@@ -7,11 +7,381 @@ sidebar_position: 4
 tags:
   - evaluate
   - comparison
-draft: true
 ---
 
 **Are you coming from experience with Restate?**
 
-If so, this page will help you understand the differences and similarities between Resonate and Restate.
+This guide will help you understand the differences and similarities between Resonate and Restate, and how to translate Restate concepts to Resonate's programming model.
 
-Coming soon...
+## Overview
+
+Both Resonate and Restate provide durable execution for reliable distributed applications. However, they differ significantly in their approach:
+
+| Aspect | Restate | Resonate |
+|--------|---------|----------|
+| **Core model** | Three service types (Basic Service, Virtual Object, Workflow) | Just functions - no proprietary types |
+| **Server requirement** | Always requires Restate Server | Optional - zero-dependency local mode available |
+| **Programming model** | ctx.run() wrappers, journaling/replay | Distributed async/await (native async syntax) |
+| **Deployment** | Services → Endpoints → Registration with Restate Server | Deploy anywhere, connect when ready |
+| **State management** | Built-in K/V store in Virtual Objects | Durable Promises (explicit, flexible) |
+| **Learning curve** | Must understand 3 service types + deployment model | Familiar async/await patterns |
+
+## Philosophy
+
+**Restate's approach:** Define your application using three different service types depending on your needs (stateless handlers, stateful objects, or workflows), wrap non-deterministic operations in `ctx.run()`, and deploy behind endpoints that register with the Restate Server.
+
+**Resonate's approach:** Write normal async/await code. Resonate's distributed async/await automatically makes it durable without wrapper functions or service type abstractions.
+
+## Programming model
+
+### Service types become just functions
+
+Restate has three service types you must choose between:
+- **Basic Service**: Stateless handlers
+- **Virtual Object**: Stateful entity with a key
+- **Workflow**: Once-per-ID execution with signals/queries
+
+**In Resonate, there's no such distinction.** You write functions. That's it.
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="restate"
+    values={[
+        {label: 'Restate', value: 'restate'},
+        {label: 'Resonate', value: 'resonate'},
+    ]}>
+
+    <TabItem value="restate">
+
+```typescript title="Restate Basic Service"
+import * as restate from "@restatedev/restate-sdk";
+
+export const myService = restate.service({
+  name: "MyService",
+  handlers: {
+    processOrder: async (ctx: restate.Context, order: Order) => {
+      const payment = await ctx.run(() => processPayment(order));
+      const shipment = await ctx.run(() => scheduleShipment(order));
+      return { payment, shipment };
+    },
+  },
+});
+
+restate.serve({ services: [myService] });
+```
+
+    </TabItem>
+
+    <TabItem value="resonate">
+
+```typescript title="Resonate - just a function"
+import { Resonate, Context } from "@resonatehq/sdk";
+
+const resonate = new Resonate();
+
+function* processOrder(ctx: Context, order: Order) {
+  const payment = yield* ctx.run(processPayment, order);
+  const shipment = yield* ctx.run(scheduleShipment, order);
+  return { payment, shipment };
+}
+
+resonate.register("processOrder", processOrder);
+```
+
+    </TabItem>
+
+</Tabs>
+
+**Key difference:** No service wrapper, no handler object, no explicit serving. Just register the function.
+
+### Durable steps
+
+Both systems wrap non-deterministic operations to make them durable.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="restate"
+    values={[
+        {label: 'Restate', value: 'restate'},
+        {label: 'Resonate', value: 'resonate'},
+    ]}>
+
+    <TabItem value="restate">
+
+```typescript title="Restate durable step"
+const result = await ctx.run<string>(async () => doDbRequest());
+```
+
+    </TabItem>
+
+    <TabItem value="resonate">
+
+```typescript title="Resonate durable step"
+const result = yield* ctx.run(doDbRequest);
+```
+
+    </TabItem>
+
+</Tabs>
+
+Both achieve the same goal - making non-deterministic operations durable - but Resonate's generator-based approach enables automatic checkpointing of the entire call stack.
+
+### State management
+
+**Restate:** Built-in K/V state in Virtual Objects and Workflows
+
+```typescript title="Restate Virtual Object with state"
+export const userAccount = restate.object({
+  name: "UserAccount",
+  handlers: {
+    deposit: async (ctx: restate.ObjectContext, amount: number) => {
+      const balance = (await ctx.get<number>("balance")) ?? 0;
+      await ctx.set("balance", balance + amount);
+      return balance + amount;
+    },
+  },
+});
+```
+
+**Resonate:** Use Durable Promises for state or connect to external stores
+
+```typescript title="Resonate with external state"
+function* deposit(ctx: Context, userId: string, amount: number) {
+  // Option 1: External database (your choice of DB)
+  const balance = yield* ctx.run(getBalance, userId);
+  const newBalance = balance + amount;
+  yield* ctx.run(saveBalance, userId, newBalance);
+  
+  // Option 2: Durable Promise for workflow state
+  const balancePromise = yield* ctx.promise(`balance-${userId}`);
+  // ... resolve when ready
+  
+  return newBalance;
+}
+```
+
+Resonate doesn't prescribe state storage - use what fits your architecture. Durable Promises provide coordination primitives when you need them.
+
+### Workflows
+
+Restate Workflows are a special service type for once-per-ID execution:
+
+```typescript title="Restate Workflow"
+export const orderWorkflow = restate.workflow({
+  name: "OrderWorkflow",
+  handlers: {
+    run: async (ctx: restate.WorkflowContext, order: Order) => {
+      // Main workflow logic
+      const approved = await ctx.promise<boolean>("approval");
+      if (approved) {
+        await ctx.run(() => fulfillOrder(order));
+      }
+      return "complete";
+    },
+    
+    approve: async (ctx: restate.WorkflowSharedContext) => {
+      await ctx.promise("approval").resolve(true);
+    },
+  },
+});
+```
+
+In Resonate, this is just a function with a Durable Promise:
+
+```typescript title="Resonate workflow function"
+function* orderWorkflow(ctx: Context, orderId: string, order: Order) {
+  const approvalPromise = yield* ctx.promise(`approval-${orderId}`);
+  const approved = yield* approvalPromise;
+  
+  if (approved) {
+    yield* ctx.run(fulfillOrder, order);
+  }
+  
+  return "complete";
+}
+
+// Approve from anywhere
+async function approveOrder(orderId: string) {
+  await resonate.promises.resolve({
+    id: `approval-${orderId}`,
+    value: true
+  });
+}
+```
+
+No special workflow service type, no separate handler methods - just functions and promises.
+
+:::tip Durable Promise IDs
+Each Durable Promise has a unique ID (like `approval-${orderId}`) that acts as the idempotency key. The same promise ID will always resolve to the same value, making workflows resumable and ensuring exactly-once semantics.
+:::
+
+## Deployment and infrastructure
+
+### Restate's model
+
+1. Deploy services to your infrastructure (containers, Lambda, etc.)
+2. Start Restate Server (single binary or cluster)
+3. Register each service endpoint with the server:
+   ```bash title="Register deployment with Restate"
+   restate deployments register http://my-service:9080
+   ```
+4. Route requests through Restate Server
+
+**Always requires Restate Server** as a proxy/coordinator in front of services.
+
+### Resonate's model
+
+**Development:** Zero-dependency mode - no server required
+
+```typescript title="Local development mode"
+const resonate = new Resonate(); // Runs locally, in-memory
+```
+
+**Production:** Connect to Resonate Server when ready
+
+```typescript title="Production mode"
+const resonate = new Resonate({
+  url: "http://resonate-server:8001"
+});
+```
+
+:::tip Zero-dependency development
+You can develop and test without any infrastructure. Add the server when you need distributed coordination, not before.
+:::
+
+## Human-in-the-loop
+
+Both systems support human-in-the-loop patterns.
+
+**Restate:** Uses workflow promises or signals
+
+```typescript title="Restate workflow promise"
+// In workflow
+const decision = await ctx.promise<string>("user-decision");
+
+// From external handler
+await ctx.promise("user-decision").resolve("approved");
+```
+
+**Resonate:** Uses Durable Promises
+
+```typescript title="Resonate Durable Promise"
+// In function
+const approvalPromise = yield* ctx.promise("approval-123");
+const decision = yield* approvalPromise;
+
+// From anywhere
+await resonate.promises.resolve({ id: "approval-123", value: "approved" });
+```
+
+Same concept, similar API. Resonate's version works with any function, not just Workflows.
+
+## Migration path
+
+If you're moving from Restate to Resonate:
+
+1. **Start simple:** Remove service type abstractions - your handlers become functions
+2. **Adjust syntax:** Change `await ctx.run(() => fn())` to `yield* ctx.run(fn)`  
+3. **Rethink state:** If using Virtual Object state, decide whether to use external DB or Durable Promises
+4. **Simplify deployment:** Remove endpoint registration step - just deploy and connect
+5. **Test locally:** Take advantage of zero-dependency mode for faster iteration
+
+## Why choose Resonate
+
+Resonate offers:
+- **Simpler primitives** - Just functions, not three service types
+- **Zero-dependency local development** - Start building without infrastructure
+- **Familiar async/await patterns** - Distributed async/await feels natural
+- **Flexible state management** - Use your choice of database
+- **No vendor lock-in** - Avoid proprietary abstractions
+- **Gentler learning curve** - Less to learn, faster to ship
+
+## Example: Order processing saga
+
+Side-by-side comparison of the same workflow:
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="restate"
+    values={[
+        {label: 'Restate', value: 'restate'},
+        {label: 'Resonate', value: 'resonate'},
+    ]}>
+
+    <TabItem value="restate">
+
+```typescript title="Restate order saga"
+export const orderSaga = restate.service({
+  name: "OrderSaga",
+  handlers: {
+    processOrder: async (ctx: restate.Context, order: Order) => {
+      const payment = await ctx.run(() => chargePayment(order));
+      
+      try {
+        const inventory = await ctx.run(() => reserveInventory(order));
+        const shipment = await ctx.run(() => scheduleShipment(order, inventory));
+        return { success: true, shipment };
+      } catch (error) {
+        await ctx.run(() => refundPayment(payment));
+        throw error;
+      }
+    },
+  },
+});
+```
+
+    </TabItem>
+
+    <TabItem value="resonate">
+
+```typescript title="Resonate order saga"
+function* processOrder(ctx: Context, order: Order) {
+  const payment = yield* ctx.run(chargePayment, order);
+  
+  try {
+    const inventory = yield* ctx.run(reserveInventory, order);
+    const shipment = yield* ctx.run(scheduleShipment, order, inventory);
+    return { success: true, shipment };
+  } catch (error) {
+    yield* ctx.run(refundPayment, payment);
+    throw error;
+  }
+}
+
+resonate.register("processOrder", processOrder);
+```
+
+    </TabItem>
+
+</Tabs>
+
+Same logic, fewer abstractions. The Resonate version is a plain function with generator syntax.
+
+## Concepts mapping
+
+| Restate Concept | Resonate Equivalent |
+|----------------|---------------------|
+| Basic Service | Registered function |
+| Virtual Object | Function + external state or Durable Promise |
+| Workflow | Function with Durable Promises |
+| Handler | Function |
+| ctx.run() | ctx.run() (with generator syntax) |
+| ctx.promise() (workflow) | ctx.promise() (any function) |
+| ctx.sleep() | ctx.sleep() |
+| ctx.get/set (state) | External DB or Durable Promise |
+| Service endpoint | Function registration |
+| Deployment registration | Optional server connection |
+
+## Next steps
+
+- Try Resonate's [Quickstart](/get-started/quickstart) with zero-dependency mode
+- Review [TypeScript SDK guide](/develop/typescript) for distributed async/await patterns
+- Explore [example applications](/get-started/examples) for real-world patterns
+- Join [Discord](https://discord.gg/resonate) to discuss migration questions
+
+---
+
+**Questions or feedback?** This comparison is a work in progress. If you're coming from Restate and have questions about concepts we haven't covered, let us know in Discord!
