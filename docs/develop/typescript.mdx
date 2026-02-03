@@ -117,9 +117,26 @@ Local development mode can be suitable for awhile.
 However, when you want to run multiple worker processes, persist state across restarts, or share work between machines, you will need to connect to a Resonate Server.
 See the [Quickstart guide](/get-started/quickstart) or [How to run a Resonate Server](/operate/run-server) for guidance on getting a server up and running.
 
-### Auth
+### Authentication
 
-When constructing a Resonate Client, you can provide authentication credentials for making requests to a Resonate Server.
+The TypeScript SDK supports both **token-based** and **basic** authentication when connecting to a secured Resonate Server.
+
+#### Token-based authentication (recommended)
+
+Use JWT bearer tokens for production deployments:
+
+```ts title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = new Resonate({
+  url: "https://localhost:8001",
+  token: process.env.RESONATE_TOKEN, // Load from environment
+});
+```
+
+#### Basic authentication
+
+Use username and password credentials:
 
 ```ts title="index.ts"
 import { Resonate } from "@resonatehq/sdk";
@@ -127,16 +144,15 @@ import { Resonate } from "@resonatehq/sdk";
 const resonate = new Resonate({
   url: "https://localhost:8001",
   auth: {
-    username: "my-username",
-    password: "my-password",
+    username: process.env.RESONATE_USERNAME,
+    password: process.env.RESONATE_PASSWORD,
   },
 });
 ```
 
-- This auth configuration only applies to reqests made to the Resonate Server API from this Resonate Client.
-- The Client to Server request uses HTTP Basic Authentication for authenticating requests.
-
-See [How to customize Resonate Server configurations](/operate/run-server#customize-configuration) to learn how to set up authentication on the server side.
+:::tip
+Token-based authentication is recommended for production. See the [Security & Authentication](/operate/security) guide for detailed configuration, best practices, and server setup.
+:::
 
 ### Message sources
 
