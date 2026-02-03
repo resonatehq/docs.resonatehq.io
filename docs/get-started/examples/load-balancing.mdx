@@ -52,3 +52,89 @@ These are distributed system engineering issues that developers are commonly for
 ## Solution
 
 Resonate provides built-in service discovery, load balancing, and recovery, all exposed through a simple RPC API and target schema.
+
+## Quick example
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+    ]}>
+
+    <TabItem value="python" >
+
+```python title="worker.py"
+from resonate import Resonate
+
+# Initialize worker as part of "worker-group"
+resonate = Resonate.remote(
+    group="worker-group",
+)
+
+@resonate.register
+def compute_something(_, id, compute_cost):
+    print(f"starting computation {id}")
+    time.sleep(compute_cost)  # Simulate work
+    print(f"computed something that cost {compute_cost} seconds")
+    return
+
+resonate.start()
+```
+
+```python title="client.py"
+# Invoke any worker in the group
+resonate.run(
+    id,
+    compute_something,
+    id,
+    compute_cost,
+    opts=resonate.options(
+        target="poll://any@worker-group"  # Load balance across workers
+    )
+)
+```
+
+  </TabItem>
+
+    <TabItem value="typescript" >
+
+```typescript title="worker.ts"
+import { Resonate } from "@resonatehq/sdk";
+import type { Context } from "@resonatehq/sdk";
+
+// Initialize worker as part of "workers" group
+const resonate = Resonate.remote({
+  group: "workers",
+});
+
+function computeSomething(context: Context, args: any): void {
+  console.log(`${args.id} starting computation`);
+  setTimeout(() => {
+    console.log(`${args.id} computed something that cost ${args.computeCost} seconds`);
+  }, args.computeCost * 1000);
+  return;
+}
+
+resonate.register("computeSomething", computeSomething);
+```
+
+```typescript title="client.ts"
+// Invoke any worker in the group
+resonate.rpc(
+  id,
+  "computeSomething",
+  { id, computeCost },
+  resonate.options({
+    target: "poll://any@workers",  // Load balance across workers
+  })
+);
+```
+
+  </TabItem>
+
+</Tabs>

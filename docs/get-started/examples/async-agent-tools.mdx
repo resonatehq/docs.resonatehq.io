@@ -52,3 +52,68 @@ And, instead of a single tool such as get_weather_data, we will create three too
 The key is that the start gathering tool, instead of blocking on the result of the data gather job, kicks off a background job and returns a promise ID.
 
 Integrating Resonate into a MCP server preserves the standardized tool calling while completely transforming it into a Durable Distributed System.
+
+## Quick example
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+    ]}>
+
+    <TabItem value="python" >
+
+```python title="weather_data.py - MCP Server with Async Tools"
+from resonate import Resonate
+from fastmcp import FastMCP
+
+mcp = FastMCP("timer")
+resonate = Resonate.remote()
+
+# Define the durable function
+@resonate.register
+def weather_data(ctx, latitude, longitude, year, month):
+    # Long-running data gathering work
+    # ...API calls, processing, etc...
+    return response.json()
+
+# Tool 1: Start background job, return promise ID
+@mcp.tool()
+def start_gathering(latitude, longitude, year, month):
+    """Start a weather data gathering job."""
+    job_name = f"weather_data_{latitude}_{longitude}_{year}_{month}"
+    
+    # Start durable execution, return immediately
+    _ = weather_data.run(job_name, latitude, longitude, year, month)
+    
+    return {"job_name": job_name}
+
+# Tool 2: Check if job is done (non-blocking)
+@mcp.tool()
+def probe_status(job_names):
+    """Probe for the status of data gathering jobs."""
+    statuses = []
+    for job_name in job_names:
+        handle = resonate.get(job_name)
+        if handle.done():
+            statuses.append({"job_name": job_name, "status": "complete"})
+        else:
+            statuses.append({"job_name": job_name, "status": "running"})
+    return statuses
+
+# Tool 3: Wait for result (blocking)
+@mcp.tool()
+def await_result(job_name):
+    """Wait for a job to complete and return its result."""
+    handle = resonate.get(job_name)
+    result = handle.result()  # Blocks until complete
+    return result
+```
+
+  </TabItem>
+
+</Tabs>
