@@ -1,17 +1,368 @@
 ---
 id: byode
-title: Coming from building your own Durable Execution
+title: Coming from building your own durable execution
 description: Compare Resonate with building your own durable execution stack.
 sidebar_label: BYODE
 sidebar_position: 6
 tags:
   - evaluate
   - comparison
-draft: true
 ---
 
-**Are you coming from experience building your own reliable distributed system or Durable Execution?**
+**Have you built your own queue system, workflow engine, or retry framework?**
 
-If so, this page will help you understand the differences and similarities between Resonate and your own experience.
+If you've built custom infrastructure for handling distributed tasks, retries, sagas, or long-running processes, you've likely been building durable execution primitives - even if you didn't call it that.
 
-Coming soon...
+This guide is for engineers who identified the problem, built a solution, and now maintain it.
+
+## You identified the right problem
+
+If you built systems that handle:
+- **Reliable task execution** with retries and timeouts
+- **Distributed sagas** or multi-step transactions
+- **Scheduled or delayed processing** (cron jobs, deferred tasks)
+- **At-least-once or exactly-once semantics** (leases, idempotency keys)
+- **Long-running workflows** that survive crashes
+- **Worker coordination** across multiple processes
+
+**You were solving durable execution.** You saw the gap between what databases, queues, and frameworks provided, and you built what you needed.
+
+Projects like:
+- Custom queue systems with leases (e.g., [Querator](https://github.com/kapetan-io/querator))
+- Homegrown workflow engines
+- Retry frameworks with persistent state
+- Task schedulers with recovery logic
+- Event-driven systems with guaranteed delivery
+
+These are all variations of durable execution infrastructure.
+
+## The hidden cost
+
+You know the pain of maintaining custom infrastructure:
+
+**Operational burden:**
+- Debugging obscure failure modes
+- Handling edge cases (partial failures, timeouts, clock skew)
+- Scaling bottlenecks you didn't anticipate
+- Upgrading without breaking production workloads
+
+**Evolution challenges:**
+- Every new use case needs custom code
+- Patterns don't transfer between projects
+- New team members face a steep learning curve
+- Testing distributed scenarios is hard
+
+**Reliability questions:**
+- Did we handle every failure mode?
+- What happens if the process crashes mid-transaction?
+- Can we prove correctness under concurrent load?
+- Will this work when we add more nodes?
+
+You've built something that works, but it's bespoke. Every company reinvents these primitives because there wasn't a better option.
+
+## What makes Resonate different
+
+### Built on formal foundations
+
+Your system was built to solve a specific problem. **Resonate is built on a formal protocol** - Distributed Async Await - that has been through formal methods and verification.
+
+This means:
+- **Proven correctness** - The model has been validated against common failure scenarios
+- **Clear semantics** - What happens on retry, crash, timeout, or split-brain is defined, not discovered
+- **Interoperability** - The protocol is language-agnostic and implementation-independent
+
+### Insanely simple programming model
+
+Most custom systems require developers to:
+- Understand queue semantics, leases, and visibility timeouts
+- Manually track state across retries
+- Implement idempotency at the application layer
+- Wire up different systems (queues, databases, schedulers)
+
+**Resonate uses distributed async/await** - the same syntax you already know:
+
+```typescript title="Simple durable function"
+function* processOrder(ctx: Context, order: Order) {
+  const payment = yield* ctx.run(chargeCard, order);
+  const inventory = yield* ctx.run(reserveItems, order);
+  const shipment = yield* ctx.run(scheduleShipment, order);
+  
+  return { payment, inventory, shipment };
+}
+```
+
+That's it. No queue abstraction to learn. No lease management. No state machine diagrams. Just functions.
+
+**If the process crashes**, Resonate resumes from the last completed step. **If chargeCard succeeds but reserveItems fails**, the retry doesn't re-charge the card.
+
+The programming model is simple because the protocol handles complexity.
+
+## Translating your patterns
+
+### Pattern: Leased queue with retries
+
+**What you built:**
+```typescript title="Custom queue with leases"
+// Custom queue with lease semantics
+const task = await queue.dequeue({ lease: 30000 });
+try {
+  await processTask(task);
+  await queue.complete(task.id);
+} catch (error) {
+  await queue.release(task.id, { retryAfter: 60000 });
+}
+```
+
+**In Resonate:**
+```typescript title="Resonate automatic retry"
+function* processTask(ctx: Context, taskId: string) {
+  // Resonate handles leasing, retries, and completion automatically
+  const result = yield* ctx.run(doWork, taskId);
+  return result;
+}
+```
+
+No explicit lease management. Resonate's protocol ensures the function runs exactly once per invocation ID.
+
+### Pattern: Distributed saga
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="custom"
+    values={[
+        {label: 'Custom system', value: 'custom'},
+        {label: 'Resonate', value: 'resonate'},
+    ]}>
+
+    <TabItem value="custom">
+
+```typescript title="Custom saga with compensations"
+// Multi-step transaction with compensations
+async function orderSaga(order) {
+  const actions = [];
+  
+  try {
+    const payment = await chargeCard(order);
+    actions.push({ compensate: () => refundCard(payment) });
+    
+    const inventory = await reserveInventory(order);
+    actions.push({ compensate: () => releaseInventory(inventory) });
+    
+    const shipment = await scheduleShipment(order);
+    
+    await markComplete(order.id);
+  } catch (error) {
+    // Run compensations in reverse
+    for (const action of actions.reverse()) {
+      await action.compensate();
+    }
+    throw error;
+  }
+}
+```
+
+    </TabItem>
+
+    <TabItem value="resonate">
+
+```typescript title="Resonate saga"
+function* orderSaga(ctx: Context, order: Order) {
+  const payment = yield* ctx.run(chargeCard, order);
+  
+  try {
+    const inventory = yield* ctx.run(reserveInventory, order);
+    const shipment = yield* ctx.run(scheduleShipment, order);
+    return { success: true };
+  } catch (error) {
+    yield* ctx.run(refundCard, payment);
+    throw error;
+  }
+}
+```
+
+    </TabItem>
+
+</Tabs>
+
+Same logic, no manual tracking. Resonate checkpoints after each step, so retries don't re-execute completed work.
+
+### Pattern: Scheduled or deferred tasks
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="custom"
+    values={[
+        {label: 'Custom system', value: 'custom'},
+        {label: 'Resonate', value: 'resonate'},
+    ]}>
+
+    <TabItem value="custom">
+
+```typescript title="Custom scheduler"
+// Custom scheduler with persistent state
+await scheduler.schedule({
+  runAt: Date.now() + 86400000, // 24 hours
+  task: "sendReminderEmail",
+  payload: { userId, orderId }
+});
+```
+
+    </TabItem>
+
+    <TabItem value="resonate">
+
+```typescript title="Resonate durable sleep"
+function* sendReminder(ctx: Context, userId: string, orderId: string) {
+  yield* ctx.sleep(24 * 60 * 60 * 1000); // 24 hours
+  yield* ctx.run(sendEmail, userId, orderId);
+}
+```
+
+    </TabItem>
+
+</Tabs>
+
+Durable sleep is a first-class primitive. If the process crashes, the timer persists.
+
+### Pattern: Idempotency with external systems
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="custom"
+    values={[
+        {label: 'Custom system', value: 'custom'},
+        {label: 'Resonate', value: 'resonate'},
+    ]}>
+
+    <TabItem value="custom">
+
+```typescript title="Manual idempotency keys"
+// Manual idempotency key management
+const idempotencyKey = `charge-${order.id}`;
+const existing = await cache.get(idempotencyKey);
+if (existing) return existing;
+
+const result = await stripe.charge({ idempotencyKey, ...order });
+await cache.set(idempotencyKey, result, { ttl: 86400 });
+return result;
+```
+
+    </TabItem>
+
+    <TabItem value="resonate">
+
+```typescript title="Built-in idempotency"
+function* chargeOrder(ctx: Context, orderId: string) {
+  // The invocation ID IS the idempotency key
+  const result = yield* ctx.run(stripe.charge, order);
+  return result;
+}
+```
+
+    </TabItem>
+
+</Tabs>
+
+Invocation IDs provide built-in idempotency. The same ID always returns the same result.
+
+## Why move to Resonate
+
+### Reduce maintenance burden
+
+You built infrastructure. **Resonate is infrastructure.**
+
+Instead of:
+- Debugging custom queue semantics
+- Tuning lease timeouts and visibility windows
+- Handling database deadlocks in your state table
+- Writing migration scripts for schema changes
+
+You get:
+- A protocol-level implementation of durable execution
+- Formal verification of correctness properties
+- Battle-tested at scale (Resonate's design is based on production systems handling billions of events)
+
+### Standardize patterns across your organization
+
+Your custom system solves one problem well. **Resonate provides a platform.**
+
+- New projects use the same primitives (ctx.run, ctx.sleep, ctx.promise)
+- Team members learn one model, not N custom systems
+- Patterns from one project transfer to others
+- Onboarding is faster ("It's just async/await")
+
+### Zero-dependency development
+
+Your system likely requires:
+- A database for state
+- A message queue or scheduler
+- Service discovery or coordination
+- Configuration and deployment
+
+**Resonate has a zero-dependency mode:**
+
+```typescript title="Local development"
+const resonate = new Resonate(); // Runs locally, in-memory
+```
+
+Developers can test workflows on their laptop. When ready, connect to a server for distributed coordination. No infrastructure required until you need it.
+
+### Built on a protocol, not a product
+
+Your custom system is tied to your stack, your choices, your company.
+
+**Resonate implements Distributed Async Await** - a protocol with:
+- Formal semantics (TLA+ models, published specifications)
+- Language-agnostic design (TypeScript and Python SDKs today, more coming)
+- Open source implementation (server and SDKs)
+
+If you outgrow Resonate or want to embed the protocol elsewhere, the model is portable.
+
+## Migration path
+
+If you're considering migrating from a custom system:
+
+1. **Identify core patterns** - Map your queue/workflow patterns to Resonate primitives
+2. **Start with new workloads** - Use Resonate for new features while legacy systems run in parallel
+3. **Extract shared logic** - Move idempotency, retry, and coordination logic to Resonate
+4. **Migrate incrementally** - One workflow at a time, not big-bang
+5. **Decommission gradually** - As Resonate proves itself, reduce custom infrastructure surface area
+
+You don't have to rewrite everything. Resonate can coexist with your existing systems and gradually replace them.
+
+## When to stick with your custom system
+
+Resonate isn't always the right answer. Stick with your custom solution if:
+
+- **It's working great** - If your system is stable, well-understood, and maintainability isn't an issue, don't fix what isn't broken
+- **Extremely specialized** - If your requirements are so unique that general-purpose infrastructure can't fit
+- **Already scaled perfectly** - If you've solved all the hard problems and your team is expert in your system
+- **Investment pays off** - If the cost of maintaining custom infrastructure is worth the control and specificity
+
+But if you're here because you're **tired of maintaining custom infrastructure**, or you're **building yet another system** for a new project, Resonate is worth evaluating.
+
+## Honest comparison
+
+| Your Custom System | Resonate |
+|--------------------|----------|
+| Built for your specific use case | General-purpose durable execution |
+| Queue semantics, leases, visibility | Distributed async/await (familiar syntax) |
+| Custom state management | Protocol-level checkpointing |
+| Maintenance is on you | Open source community + commercial support available |
+| Bespoke, company-specific | Protocol-based, portable |
+| Formal verification: maybe | Formal verification: yes (TLA+ models) |
+| Learning curve: steep (new hires) | Learning curve: gentle (async/await) |
+
+## Next steps
+
+- Read [Why Resonate](/evaluate/why-resonate) to understand the formal foundations
+- Try the [Quickstart](/get-started/quickstart) with zero-dependency mode
+- Review [example applications](/get-started/examples) - many solve problems you've probably built custom solutions for
+- Join [Discord](https://discord.gg/resonate) to discuss migration paths from custom systems
+
+---
+
+**Questions or feedback?** If you've built custom durable execution infrastructure and want to share your experience or ask questions about migrating to Resonate, we'd love to hear from you in Discord.
