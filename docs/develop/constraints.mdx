@@ -1,0 +1,447 @@
+---
+id: constraints
+title: Constraints and gotchas
+sidebar_label: Constraints
+description: Understanding the rules and limitations when building with Resonate.
+sidebar_position: 2
+tags:
+  - develop
+  - constraints
+  - gotchas
+---
+
+Resonate enables you to write distributed applications that survive failures and restarts, but this power comes with a few important rules you need to follow. This page explains what those rules are and, more importantly, **why they exist**.
+
+## The three rules
+
+When writing durable functions with Resonate, you must follow these constraints:
+
+1. **Functions must be deterministic** - Same inputs always produce the same outputs
+2. **Functions must be idempotent** - Safe to retry multiple times
+3. **Activations cannot outlive the process** - Long-running work needs Resonate primitives
+
+Let's explore each one.
+
+---
+
+## Functions must be deterministic
+
+### What does deterministic mean?
+
+A function is **deterministic** if calling it with the same inputs always produces the same outputs and side effects, in the same order.
+
+When your process crashes mid-execution, Resonate replays your function from the beginning using recorded results from previous steps. If your function behaves differently during replay (non-deterministic), Resonate won't be able to reconstruct the correct state, and your execution will diverge from what actually happened.
+
+### Examples of non-deterministic operations
+
+These operations will cause problems if used directly in durable functions:
+
+❌ **Random number generation**
+
+```typescript
+function* processOrder(ctx: Context, orderId: string) {
+  const confirmationCode = Math.random(); // ⚠️ Different value on replay!
+  // ...
+}
+```
+
+❌ **Current time**
+
+```typescript
+function* scheduleReminder(ctx: Context, userId: string) {
+  const now = Date.now(); // ⚠️ Different value on replay!
+  // ...
+}
+```
+
+❌ **External API calls**
+
+```typescript
+function* getUserData(ctx: Context, userId: string) {
+  const response = await fetch(`https://api.example.com/users/${userId}`); // ⚠️ Could return different data on replay!
+  // ...
+}
+```
+
+❌ **Reading from files or databases**
+
+```typescript
+function* processData(ctx: Context) {
+  const data = fs.readFileSync("./data.json"); // ⚠️ File might have changed!
+  // ...
+}
+```
+
+### The solution: Use Context methods
+
+Resonate provides **deterministic versions** of these operations through the Context API.
+
+✅ **Deterministic random numbers**
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+    <TabItem value="typescript" >
+
+```typescript title="Deterministic random generation"
+function* processOrder(ctx: Context, orderId: string) {
+  const confirmationCode = yield* ctx.math.random(); // ✅ Same value on replay
+  // ...
+}
+```
+
+  </TabItem>
+
+    <TabItem value="python" >
+
+```python title="Deterministic random generation"
+@resonate.register
+def process_order(ctx: Context, order_id: str):
+    confirmation_code = yield ctx.random.random()  # ✅ Same value on replay
+    # ...
+```
+
+  </TabItem>
+
+</Tabs>
+
+✅ **Deterministic time**
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+    <TabItem value="typescript" >
+
+```typescript title="Deterministic timestamps"
+function* scheduleReminder(ctx: Context, userId: string) {
+  const now = yield* ctx.date.now(); // ✅ Same value on replay
+  // ...
+}
+```
+
+  </TabItem>
+
+    <TabItem value="python" >
+
+```python title="Deterministic timestamps"
+@resonate.register
+def schedule_reminder(ctx: Context, user_id: str):
+    now = yield ctx.time.time()  # ✅ Same value on replay
+    # ...
+```
+
+  </TabItem>
+
+</Tabs>
+
+✅ **Deterministic external calls**
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+    <TabItem value="typescript" >
+
+```typescript title="Wrap external calls with ctx.run"
+function* getUserData(ctx: Context, userId: string) {
+  const userData = yield* ctx.run(async () => {
+    const response = await fetch(`https://api.example.com/users/${userId}`);
+    return response.json();
+  }); // ✅ Result recorded, replays use recorded value
+  // ...
+}
+```
+
+  </TabItem>
+
+    <TabItem value="python" >
+
+```python title="Wrap external calls with ctx.lfc"
+@resonate.register
+def get_user_data(ctx: Context, user_id: str):
+    def fetch_user():
+        response = requests.get(f"https://api.example.com/users/{user_id}")
+        return response.json()
+    
+    user_data = yield ctx.lfc(fetch_user)  # ✅ Result recorded, replays use recorded value
+    # ...
+```
+
+  </TabItem>
+
+</Tabs>
+
+:::tip Use Context methods for anything that can change
+If an operation might return different results when called again (time, random, I/O, external APIs), wrap it with a Context method. Resonate records the result the first time and uses the recorded value during replays.
+:::
+
+**See also:**
+- [TypeScript Context APIs](/develop/typescript#context-apis)
+- [Python Context APIs](/develop/python#context-apis)
+
+---
+
+## Functions must be idempotent
+
+### What does idempotent mean?
+
+A function is **idempotent** if executing it multiple times with the same inputs has the same effect as executing it once.
+
+Resonate automatically retries failed function executions. If your function has side effects that aren't safe to repeat (like charging a credit card or sending an email), retries could cause duplicate charges or duplicate messages.
+
+### Examples of non-idempotent operations
+
+These operations are **not** safe to retry:
+
+❌ **Incrementing a counter**
+
+```typescript
+function* recordView(ctx: Context, postId: string) {
+  await db.query("UPDATE posts SET views = views + 1 WHERE id = ?", [postId]); 
+  // ⚠️ Retry = double counting!
+}
+```
+
+❌ **Appending to a list**
+
+```typescript
+function* addToCart(ctx: Context, userId: string, item: string) {
+  await db.query("INSERT INTO cart_items (user_id, item) VALUES (?, ?)", [userId, item]);
+  // ⚠️ Retry = duplicate cart items!
+}
+```
+
+❌ **Sending notifications without deduplication**
+
+```typescript
+function* sendWelcomeEmail(ctx: Context, userId: string) {
+  await emailService.send({
+    to: userId,
+    subject: "Welcome!",
+    body: "..."
+  }); // ⚠️ Retry = duplicate emails!
+}
+```
+
+### The solution: Design for retries
+
+Make your operations safe to retry:
+
+✅ **Use upsert instead of insert**
+
+```typescript title="Idempotent database operations"
+function* recordView(ctx: Context, postId: string, sessionId: string) {
+  yield* ctx.run(async () => {
+    // Use session ID to make it idempotent
+    await db.query(
+      "INSERT INTO view_log (post_id, session_id, timestamp) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+      [postId, sessionId, Date.now()]
+    );
+  });
+}
+```
+
+✅ **Include idempotency keys**
+
+```typescript title="Idempotent API calls with keys"
+function* chargeCustomer(ctx: Context, orderId: string, amount: number) {
+  yield* ctx.run(async () => {
+    await stripe.charges.create({
+      amount: amount,
+      currency: "usd",
+      idempotency_key: orderId, // ✅ Stripe deduplicates by key
+    });
+  });
+}
+```
+
+✅ **Let promise IDs handle deduplication**
+
+```typescript title="Idempotent because promise ID is deterministic"
+function* sendWelcomeEmail(ctx: Context, userId: string) {
+  // ctx.run automatically creates a deterministic promise ID
+  // based on the function and arguments
+  yield* ctx.run(async () => {
+    await emailService.send({ 
+      to: userId, 
+      subject: "Welcome!",
+      idempotency_key: `welcome-${userId}` // Email service deduplicates
+    });
+  });
+  // If this retries, same promise ID = same result returned from storage
+  // Email service never gets called again
+}
+```
+
+When you use `ctx.run()` or `ctx.rpc()`, Resonate automatically generates a deterministic promise ID based on your function name and arguments. On retry, the same inputs produce the same promise ID, so Resonate returns the stored result instead of re-executing the work.
+
+This means if you use Resonate's APIs correctly, **you don't have to manually check for duplicates** - the framework handles it for you.
+
+:::tip Use deterministic promise IDs
+When you call operations through `ctx.run()` or `ctx.rpc()`, Resonate generates promise IDs that are the same across retries. This gives you automatic idempotency without manual deduplication logic.
+:::
+
+---
+
+## Activations cannot outlive the process
+
+### What does this mean?
+
+An **activation** is a single execution attempt of your function. If your process crashes or restarts, the current activation ends immediately. Your function cannot keep running in the background after the process exits.
+
+Resonate is not a job queue or background task runner. It coordinates work across processes, but each individual function execution lives inside a process. When that process ends (crashes, deploy, scale-down), the execution stops.
+
+### What happens on process restart?
+
+When your process restarts, Resonate will:
+
+1. **Detect the activation ended** (heartbeat timeout)
+2. **Start a new activation** (automatic retry)
+3. **Replay from the beginning** using recorded results (determinism)
+
+This is how Resonate achieves **fault tolerance** - your work survives crashes, but individual activations do not.
+
+### Long-running work
+
+If you need work to span hours, days, or weeks, use Resonate primitives instead of blocking:
+
+❌ **Blocking sleep (wrong)**
+
+```typescript
+function* longRunningJob(ctx: Context) {
+  await new Promise(resolve => setTimeout(resolve, 3600000)); // ⚠️ 1 hour - process will likely crash!
+  // ...
+}
+```
+
+✅ **Durable sleep (correct)**
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+    <TabItem value="typescript" >
+
+```typescript title="Sleep that survives process restarts"
+function* longRunningJob(ctx: Context) {
+  yield* ctx.sleep(3600000); // ✅ 1 hour - process can restart safely
+  // ...
+}
+```
+
+  </TabItem>
+
+    <TabItem value="python" >
+
+```python title="Sleep that survives process restarts"
+@resonate.register
+def long_running_job(ctx: Context):
+    yield ctx.sleep(3600)  # ✅ 1 hour - process can restart safely
+    # ...
+```
+
+  </TabItem>
+
+</Tabs>
+
+**How it works:**
+
+`ctx.sleep()` doesn't block your process. Instead:
+1. Resonate records a "wake up at time X" checkpoint
+2. Your function yields control (process can do other work)
+3. At time X, Resonate resumes your function
+4. If the process crashed in between, Resonate restarts and resumes after the sleep
+
+✅ **Human-in-the-loop (wait for external input)**
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+    <TabItem value="typescript" >
+
+```typescript title="Wait indefinitely for human approval"
+function* approvalWorkflow(ctx: Context, requestId: string) {
+  const approvalPromise = yield* ctx.promise();
+  
+  // Send approval request email with promise ID
+  yield* ctx.run(sendApprovalEmail, approvalPromise.id);
+  
+  // Wait for human to resolve the promise (could be hours/days)
+  const approved = yield* approvalPromise; // ✅ Survives process restarts
+  
+  if (approved) {
+    // continue workflow
+  }
+}
+```
+
+  </TabItem>
+
+    <TabItem value="python" >
+
+```python title="Wait indefinitely for human approval"
+@resonate.register
+def approval_workflow(ctx: Context, request_id: str):
+    approval_promise = yield ctx.promise()
+    
+    # Send approval request email with promise ID
+    yield ctx.lfc(send_approval_email, approval_promise.id)
+    
+    # Wait for human to resolve the promise (could be hours/days)
+    approved = yield approval_promise  # ✅ Survives process restarts
+    
+    if approved:
+        # continue workflow
+```
+
+  </TabItem>
+
+</Tabs>
+
+:::tip Use Resonate primitives for long-running work
+For work that takes hours, days, or weeks, use `ctx.sleep()` or Durable Promises instead of blocking. This lets your process restart safely without losing progress.
+:::
+
+**See also:**
+- [Durable sleep example](/get-started/examples/durable-sleep)
+- [Human-in-the-loop example](/get-started/examples/human-in-the-loop)
+
+---
+
+## Summary
+
+| Constraint | Why it exists | Solution |
+|------------|---------------|----------|
+| **Deterministic** | Functions are replayed on restart - must produce same results | Use `ctx.random()`, `ctx.time()`, `ctx.run()` |
+| **Idempotent** | Functions are retried on failure - must be safe to repeat | Use idempotency keys, upserts, deduplication checks |
+| **Process lifetime** | Activations end when process ends - can't outlive it | Use `ctx.sleep()`, Durable Promises for long-running work |
+
+Following these rules ensures your distributed application survives process crashes and restarts, retries safely without duplicating work, and handles long-running workflows spanning hours or days.
+
+To see these patterns in action, check out the [TypeScript SDK guide](/develop/typescript), [Python SDK guide](/develop/python), or browse the [example applications](/get-started/examples).
