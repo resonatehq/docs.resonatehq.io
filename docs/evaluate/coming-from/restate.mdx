@@ -214,6 +214,10 @@ async function approveOrder(orderId: string) {
 
 No special workflow service type, no separate handler methods - just functions and promises.
 
+:::tip Durable Promise IDs
+Each Durable Promise has a unique ID (like `approval-${orderId}`) that acts as the idempotency key. The same promise ID will always resolve to the same value, making workflows resumable and ensuring exactly-once semantics.
+:::
+
 ## Deployment and infrastructure
 
 ### Restate's model
