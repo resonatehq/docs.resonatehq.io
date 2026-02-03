@@ -29,6 +29,11 @@
       "source": "/get-started/project-templates/:path*",
       "destination": "/get-started/examples/:path*",
       "permanent": true
+    },
+    {
+      "source": "/operate/cli-reference/:path*",
+      "destination": "/get-started/cli-guide",
+      "permanent": true
     }
   ]
 }
