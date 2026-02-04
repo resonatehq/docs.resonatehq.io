@@ -186,7 +186,21 @@ The Resonate server coordinates work but doesn't execute your functions, so its 
 
 ### Persistent storage
 
-**Use PostgreSQL in production.** SQLite is fine for development, but PostgreSQL provides the durability and reliability production systems need.
+**PostgreSQL is recommended for most production deployments**, but SQLite can be valid for certain use cases.
+
+**Use PostgreSQL when:**
+- Multiple servers or workers share the same promise store
+- You need high availability and replication
+- Your deployment serves multiple teams or projects
+- You expect high write throughput
+
+**SQLite works for:**
+- Single-tenant micro deployments (one server per user/project)
+- Embedded use cases where the server runs alongside your app
+- Low-traffic production workloads
+- Deployments where simplicity matters more than scale
+
+Resonate's server and SDK are lightweight enough to support micro deployments - you can run isolated server instances with SQLite for specific users or projects. For shared, multi-tenant deployments, PostgreSQL provides better concurrency and HA options.
 
 ```bash title="Start server with PostgreSQL"
 resonate serve \
