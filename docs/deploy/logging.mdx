@@ -76,3 +76,290 @@ Error logs identify conditions that usually require operator action.
 - Critical startup failures: failed to start api, failed to start aio, or control loop failed abort the serve command and indicate fatal initialization issues.
 - Shutdown triggers: api error received, shutting down or aio error received, shutting down explain why an emergency shutdown began.
 - Data-layer problems: Errors such as failed to read promise propagate exceptions returned by the storage layer, including the triggering command for root-cause analysis.
+
+### Log output format
+
+Logs are written to stdout in key-value format:
+
+```
+time=2026-02-04T10:30:00.123Z level=INFO msg="starting http server" addr=":8001"
+time=2026-02-04T10:30:01.456Z level=INFO msg="starting grpc server" addr=":50051"
+time=2026-02-04T10:30:01.789Z level=INFO msg="starting metrics server" addr=":9090"
+```
+
+**Fields:**
+- `time` - ISO 8601 timestamp with millisecond precision
+- `level` - Log level (DEBUG, INFO, WARN, ERROR)
+- `msg` - Human-readable message
+- Additional fields - Context-specific data (addr, id, method, status, etc.)
+
+## SDK logs
+
+The Resonate SDKs also emit logs for observing application behavior.
+
+### TypeScript SDK
+
+The TypeScript SDK uses console logging by default:
+
+```typescript
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = Resonate.remote({
+  url: "http://localhost:8001",
+  logLevel: "debug",  // debug | info | warn | error
+});
+```
+
+**What gets logged:**
+- Function execution (start, completion, errors)
+- Context operations (`ctx.run()`, `ctx.sleep()`, etc.)
+- RPC calls to workers
+- Promise resolution attempts
+- Retry attempts and failures
+
+### Python SDK
+
+The Python SDK uses Python's standard `logging` module:
+
+```python
+import logging
+from resonate import Resonate
+
+# Configure Python logging
+logging.basicConfig(level=logging.INFO)
+
+resonate = Resonate.remote(
+    url="http://localhost:8001",
+    log_level="info",  # debug | info | warn | error
+)
+```
+
+## Production logging patterns
+
+### Log aggregation
+
+In production, collect logs from all servers and workers into a centralized system:
+
+**Common patterns:**
+- **ELK Stack** (Elasticsearch, Logstash, Kibana)
+- **Datadog** logs
+- **CloudWatch Logs** (AWS)
+- **Google Cloud Logging**
+- **Azure Monitor Logs**
+- **Grafana Loki** (lightweight alternative)
+
+### Docker / Kubernetes
+
+**Docker Compose:**
+
+```yaml
+services:
+  resonate-server:
+    image: resonatehq/resonate:latest
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
+
+**Kubernetes:**
+
+Logs are automatically collected from stdout. Use a log aggregation solution like:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: resonate-server
+  annotations:
+    # Datadog log collection
+    ad.datadoghq.com/resonate.logs: '[{"source":"resonate","service":"resonate-server"}]'
+spec:
+  containers:
+  - name: server
+    image: resonatehq/resonate:latest
+```
+
+Or use Fluent Bit / Fluentd as a DaemonSet to forward logs to your aggregation system.
+
+### Structured logging for analysis
+
+Parse structured logs into fields for querying:
+
+**Logstash filter example:**
+
+```ruby
+filter {
+  grok {
+    match => { "message" => "time=%{TIMESTAMP_ISO8601:timestamp} level=%{WORD:level} msg=\"%{DATA:message}\"" }
+  }
+}
+```
+
+**Query examples (CloudWatch Insights):**
+
+```sql
+# Find all errors
+fields @timestamp, level, msg
+| filter level = "ERROR"
+| sort @timestamp desc
+
+# Count warnings by type
+fields msg
+| filter level = "WARN"
+| stats count() by msg
+```
+
+## What to log and monitor
+
+### Critical events
+
+Always monitor these log messages:
+
+**Server startup failures:**
+```
+level=ERROR msg="failed to start api"
+level=ERROR msg="failed to start aio"
+```
+**Action:** Check configuration and database connectivity.
+
+**Worker heartbeat failures:**
+```
+level=WARN msg="worker heartbeat timeout" workerId="abc123"
+```
+**Action:** Investigate worker health. Normal during rolling deployments, concerning if sustained.
+
+**Database errors:**
+```
+level=ERROR msg="failed to read promise"
+level=ERROR msg="failed to write promise"
+```
+**Action:** Check database health and connection pool.
+
+**Capacity issues:**
+```
+level=WARN msg="scheduler queue full"
+```
+**Action:** Increase server resources or optimize workload.
+
+### Normal operational events
+
+These logs indicate healthy operation:
+
+```
+level=INFO msg="starting http server"
+level=INFO msg="starting grpc server"
+level=INFO msg="shutdown signal received, shutting down"
+```
+
+## Log retention and storage
+
+### Development
+
+- **Retention:** 1-7 days
+- **Level:** `debug` or `info`
+- **Storage:** Local files or stdout
+
+### Staging
+
+- **Retention:** 7-30 days
+- **Level:** `info`
+- **Storage:** Centralized log aggregation
+
+### Production
+
+- **Retention:** 30-90 days (or per compliance requirements)
+- **Level:** `info` (use `debug` temporarily for troubleshooting)
+- **Storage:** Centralized log aggregation with archival to object storage (S3, GCS)
+
+## Performance considerations
+
+### Log volume
+
+**Debug logging produces significant volume.** In production:
+- Use `info` by default
+- Enable `debug` temporarily when troubleshooting
+- Monitor log storage costs
+
+**Estimate:** Debug logging can produce 10-100x more log data than info level.
+
+### Log sampling
+
+For very high-throughput systems, consider sampling:
+
+```yaml
+# Hypothetical config (not currently supported)
+logSampling:
+  enabled: true
+  rate: 0.1  # Log 10% of requests at debug level
+```
+
+**Alternative:** Use tracing (see [Tracing](/deploy/tracing)) for detailed execution visibility without overwhelming logs.
+
+## Correlating logs across components
+
+Use **request IDs** to trace requests across server and workers:
+
+**Server logs:**
+```
+level=INFO msg="api:sqe:enqueue" requestId="req-abc123" method="POST" path="/promises"
+```
+
+**SDK logs:**
+```
+level=INFO msg="promise created" requestId="req-abc123" promiseId="order.123"
+```
+
+Search logs by `requestId` to see the full request lifecycle.
+
+## Common debugging scenarios
+
+### Task not being processed
+
+**Look for:**
+1. Worker registration: `starting poll server` (server) + connection logs (worker)
+2. Task creation: `api:sqe:enqueue` with promise/task IDs
+3. Task routing: Check for `failed to match promise` warnings
+4. Worker heartbeat: Look for heartbeat timeout warnings
+
+### Promise stuck pending
+
+**Look for:**
+1. Promise creation: `api:sqe:enqueue` with promiseId
+2. Task assignment: Check if task was created and routed
+3. Worker processing: Worker should log function execution start
+4. Completion: Look for promise resolution logs
+
+### Slow performance
+
+**Look for:**
+1. `scheduler queue full` - Capacity exhausted
+2. Database query latency - Check database logs
+3. High request volume - Count `api:sqe:enqueue` per second
+
+## Best practices
+
+1. **Start with `info` level** - Debug is too verbose for production
+2. **Use structured logging** - Parse key-value pairs for analysis
+3. **Aggregate centrally** - Don't rely on local log files
+4. **Set up alerts** - Monitor critical error patterns
+5. **Retain logs adequately** - Balance cost vs troubleshooting needs
+6. **Correlate with metrics** - Cross-reference logs with metrics for complete picture
+7. **Test log queries** - Ensure you can find what you need during incidents
+
+## Summary
+
+**For development:**
+- Use `debug` or `info` level
+- Logs to stdout are fine
+- Focus on understanding normal behavior
+
+**For production:**
+- Use `info` level (enable `debug` only when troubleshooting)
+- Centralize logs (ELK, Datadog, CloudWatch, etc.)
+- Alert on critical errors (startup failures, database errors)
+- Retain logs 30-90 days minimum
+- Correlate logs with metrics and traces
+
+Logs are your debugging lifeline. Set them up properly from day one.

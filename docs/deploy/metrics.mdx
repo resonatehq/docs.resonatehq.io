@@ -83,67 +83,404 @@ Total number of coroutines.
 - `coroutines_total{type="TimeoutPromises"} 0`
 - `coroutines_total{type="TimeoutTasks"} 0`
 
-## Using Prometheus and Grafana
+## Using Prometheus
 
-The way Grafana works is by pulling data from any timeseries db, in our case this db will be Prometheus.
-The way Prometheus works is by pulling data from the Resonate Server every X seconds.
-X is part of the config.
+### Quick start
 
-Get Prometheus and Grafana both from their websites and follow the instructions to get both projects onto your machine, whether that is via Docker or direct binary download
+1. **Download Prometheus:** https://prometheus.io/download/
 
-- Grafana: https://grafana.com/grafana/download
-- Prometheus: https://prometheus.io/download/
+2. **Configure Prometheus** to scrape Resonate metrics:
 
-Run Grafana.
-
-```shell
-./grafana server
-```
-
-Define a `prometheus.yml` config file so Prometheus understands how to connect to the Resonate Server.
-
-```yml
-# prometheus.yml
+```yml title="prometheus.yml"
 global:
-  scrape_interval: 15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
-  evaluation_interval: 15s # Evaluate rules every 15 seconds. The default is every 1 minute.
-  # scrape_timeout is set to the global default (10s).
+  scrape_interval: 15s
+  evaluation_interval: 15s
 
-# Alertmanager configuration
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets:
-          # - alertmanager:9093
-
-# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
-rule_files:
-  # - "first_rules.yml"
-  # - "second_rules.yml"
-
-# A scrape configuration containing exactly one endpoint to scrape:
-# Here it's Prometheus itself.
 scrape_configs:
-  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
-  - job_name: "Resonate"
-
-    # metrics_path defaults to '/metrics'
-    # scheme defaults to 'http'.
-
+  - job_name: "resonate-server"
     static_configs:
-      - targets: ["localhost:9090"]
-        # The label name is added as a label `label_name=<label_value>` to any timeseries scraped from this config.
+      - targets: ["localhost:9090"]  # Resonate metrics endpoint
         labels:
           app: "resonate"
+          env: "production"
 ```
 
-The Resonate specific part is the `scrape_configs` section.
+3. **Start Prometheus:**
 
-Run Prometheus with the config file you just created, specifying port `9091` in the `--web.listen-address` to avoid port conflicts with the Resonate Server.
-You can customize the port that Resonate exports metrics to with the [Resonate Server config](/operate/run-server#customize-configuration).
-
-```shell
+```bash
+# Run on port 9091 to avoid conflict with Resonate (which uses 9090)
 ./prometheus --config.file=prometheus.yml --web.listen-address=:9091
 ```
 
-In the Grafana UI, add Prometheus as a data source.
+4. **Access Prometheus UI:**
+
+Open http://localhost:9091 to query metrics and build dashboards.
+
+### Prometheus in Docker
+
+```yaml title="docker-compose.yml"
+version: '3.8'
+services:
+  resonate-server:
+    image: resonatehq/resonate:latest
+    ports:
+      - "8001:8001"
+      - "9090:9090"  # Metrics endpoint
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+
+volumes:
+  prometheus-data:
+```
+
+### Prometheus in Kubernetes
+
+```yaml title="prometheus-config.yaml"
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    scrape_configs:
+      - job_name: 'resonate'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - default
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            regex: resonate-server
+            action: keep
+```
+
+## Using Grafana
+
+Grafana visualizes metrics from Prometheus.
+
+### Quick start
+
+1. **Download Grafana:** https://grafana.com/grafana/download
+
+2. **Start Grafana:**
+
+```bash
+./grafana server
+```
+
+3. **Add Prometheus as a data source:**
+   - Open http://localhost:3000 (default Grafana UI)
+   - Go to Configuration → Data Sources
+   - Add Prometheus
+   - URL: `http://localhost:9091` (your Prometheus instance)
+
+4. **Create dashboards** using PromQL queries.
+
+### Example dashboard panels
+
+**Promise creation rate:**
+
+```promql
+rate(resonate_promises_created_total[5m])
+```
+
+**Worker count:**
+
+```promql
+resonate_workers_active
+```
+
+**Database connection usage:**
+
+```promql
+resonate_db_connections_active / resonate_db_connections_max
+```
+
+## Key metrics to track
+
+### Workload metrics
+
+**Promise creation rate:**
+```promql
+rate(resonate_promises_created_total[5m])
+```
+Indicates incoming workload. Track trends and spikes.
+
+**Promise resolution latency (p95):**
+```promql
+histogram_quantile(0.95, rate(resonate_promise_resolution_duration_seconds_bucket[5m]))
+```
+How long promises take to resolve. High latency indicates performance issues.
+
+**Pending promises:**
+```promql
+resonate_promises_pending_total
+```
+Backlog of work. Should stay near zero. Growth indicates insufficient worker capacity.
+
+### Worker metrics
+
+**Active workers:**
+```promql
+resonate_workers_active
+```
+How many workers are connected. Should match your deployment count.
+
+**Worker heartbeat failures:**
+```promql
+rate(resonate_worker_heartbeat_failures_total[5m])
+```
+Workers that crashed or disconnected. Normal during deployments, concerning if sustained.
+
+**Task processing rate:**
+```promql
+rate(resonate_tasks_completed_total[5m])
+```
+How fast workers are processing tasks.
+
+### Server metrics
+
+**Database connections:**
+```promql
+resonate_db_connections_active
+```
+Active connections to PostgreSQL. Should be well below max.
+
+**Coroutines in flight:**
+```promql
+sum(coroutines_in_flight)
+```
+Server's internal work queue. High values indicate server capacity issues.
+
+**AIO submissions:**
+```promql
+rate(aio_total_submissions{status="success"}[5m])
+rate(aio_total_submissions{status="failure"}[5m])
+```
+Server's asynchronous I/O operations (database, worker communication). Failures indicate infrastructure issues.
+
+## Alerting rules
+
+Set up alerts for critical conditions:
+
+```yml title="alerts.yml"
+groups:
+  - name: resonate-alerts
+    rules:
+      - alert: ResonateServerDown
+        expr: up{job="resonate-server"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Resonate server is down"
+          description: "Resonate server has been down for more than 1 minute"
+
+      - alert: HighWorkerFailureRate
+        expr: rate(resonate_worker_heartbeat_failures_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High worker failure rate"
+          description: "More than 5 workers are failing per minute"
+
+      - alert: DatabaseConnectionsExhausted
+        expr: resonate_db_connections_active / resonate_db_connections_max > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool near capacity"
+          description: "Connection pool is >90% utilized"
+
+      - alert: PromiseBacklogGrowing
+        expr: rate(resonate_promises_pending_total[5m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Promise backlog is growing"
+          description: "Pending promises are accumulating - scale workers"
+
+      - alert: HighPromiseLatency
+        expr: histogram_quantile(0.95, rate(resonate_promise_resolution_duration_seconds_bucket[5m])) > 60
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High promise resolution latency"
+          description: "P95 promise latency is over 60 seconds"
+```
+
+Load alerting rules in Prometheus:
+
+```yml title="prometheus.yml"
+global:
+  scrape_interval: 15s
+
+rule_files:
+  - "alerts.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['localhost:9093']  # Alertmanager endpoint
+
+scrape_configs:
+  - job_name: "resonate-server"
+    static_configs:
+      - targets: ["localhost:9090"]
+```
+
+## Cloud provider integration
+
+### AWS CloudWatch
+
+Export metrics to CloudWatch using a bridge:
+
+```yaml
+# Use Prometheus CloudWatch exporter
+- name: cloudwatch-exporter
+  image: prom/cloudwatch-exporter:latest
+```
+
+Or use AWS Managed Prometheus (AMP):
+- Creates a workspace for Prometheus
+- Automatically scrapes metrics from ECS/EKS
+- Integrated with CloudWatch dashboards
+
+### Google Cloud Monitoring
+
+Use Google Cloud Managed Prometheus:
+
+```yaml title="prometheus.yaml"
+global:
+  external_labels:
+    cluster: 'my-cluster'
+    project_id: 'my-project'
+
+scrape_configs:
+  - job_name: 'resonate'
+    kubernetes_sd_configs:
+      - role: pod
+```
+
+Google Cloud Monitoring automatically imports Prometheus metrics.
+
+### Datadog
+
+Use the Datadog Agent to scrape Prometheus metrics:
+
+```yaml title="datadog-agent-config.yaml"
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: datadog-config
+data:
+  prometheus.yaml: |
+    - prometheus_url: http://resonate-server:9090/metrics
+      namespace: resonate
+      metrics:
+        - resonate_*
+```
+
+## Best practices
+
+1. **Set retention policies** - Prometheus defaults to 15 days. Adjust based on needs:
+```bash
+./prometheus --storage.tsdb.retention.time=90d
+```
+
+2. **Use recording rules** for expensive queries:
+```yml
+groups:
+  - name: resonate-recording-rules
+    interval: 1m
+    rules:
+      - record: resonate:promise_creation_rate:5m
+        expr: rate(resonate_promises_created_total[5m])
+```
+
+3. **Monitor Prometheus itself**:
+```promql
+prometheus_tsdb_storage_blocks_bytes  # Storage usage
+prometheus_target_scrapes_exceeded_sample_limit_total  # Cardinality issues
+```
+
+4. **Use labels strategically** - Don't add high-cardinality labels (e.g., user IDs, promise IDs)
+
+5. **Alert on trends, not thresholds** - Use `rate()` and time windows to detect anomalies
+
+6. **Test alerts** - Trigger alerts intentionally to verify they work
+
+## Troubleshooting metrics
+
+### Metrics endpoint not accessible
+
+**Check server is running:**
+```bash
+curl http://localhost:9090/metrics
+```
+
+Should return Prometheus-formatted metrics.
+
+**Check metrics port configuration:**
+```yaml title="resonate.yaml"
+api:
+  metrics:
+    port: 9090  # Must be accessible to Prometheus
+```
+
+### Prometheus not scraping metrics
+
+**Check Prometheus targets:**
+- Open http://localhost:9091/targets
+- Look for your Resonate server job
+- Status should be "UP" with green indicator
+
+**Common issues:**
+- Wrong target address (hostname/port)
+- Network/firewall blocking access
+- Prometheus config not loaded (restart Prometheus)
+
+### Missing metrics
+
+**Not all metrics appear immediately.** Some are only emitted when events occur:
+- `resonate_promises_created_total` - Only increments when promises are created
+- `resonate_worker_heartbeat_failures_total` - Only increments when workers fail
+
+Run workload to generate metrics.
+
+## Summary
+
+**For development:**
+- Run Prometheus locally
+- Use Prometheus UI for ad-hoc queries
+- Focus on understanding baseline metrics
+
+**For production:**
+- Use managed Prometheus (AWS AMP, GCP Managed Prometheus, Grafana Cloud)
+- Set up Grafana dashboards
+- Configure alerting for critical conditions
+- Monitor trends, not just point-in-time values
+- Integrate with your existing observability stack
+
+**Key metrics to always track:**
+- Promise creation rate (workload)
+- Promise resolution latency (performance)
+- Worker count and failures (capacity)
+- Database connection usage (infrastructure)
+
+Metrics give you visibility into system health. Set them up before you need them.

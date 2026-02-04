@@ -11,9 +11,410 @@ tags:
   - observability
 ---
 
-The Resonate TypeScript SDK supports [OpenTelemetry](https://opentelemetry.io/) for tracing task execution, retries, and remote procedure calls (RPCs).
+Distributed tracing shows you the complete execution flow of your Resonate functions across workers and the server. This is invaluable for debugging performance issues and understanding complex workflows.
 
-Use the [@resonatehq/opentelemetry](https://github.com/resonatehq/resonate-opentelemetry-ts) package.
+## What is distributed tracing?
 
-This allows you to monitor and analyze the behavior of your distributed function executions using your existing telemetry infrastructure.
-All spans created by the SDK flow through your OpenTelemetry pipeline with parent-child relationships maintained across workers via the injected headers.
+Traditional logs show what happened on individual services. Tracing shows the **entire path** a request takes through your system:
+
+```
+Request enters → Server creates promise → Worker A starts task →
+Worker A calls Worker B → Worker B completes → Worker A completes →
+Promise resolves
+```
+
+Each step is a **span**. Spans are linked together into a **trace** that shows the complete request lifecycle.
+
+## OpenTelemetry support
+
+The Resonate TypeScript SDK supports [OpenTelemetry](https://opentelemetry.io/) for automatic tracing of:
+- Function execution (start, completion, duration)
+- Context operations (`ctx.run()`, `ctx.sleep()`)
+- RPC calls between workers
+- Promise creation and resolution
+- Retries and failures
+
+Use the [@resonatehq/opentelemetry](https://github.com/resonatehq/resonate-opentelemetry-ts) package to enable tracing.
+
+## Setup
+
+### Install the package
+
+```bash
+npm install @resonatehq/opentelemetry
+```
+
+### Configure OpenTelemetry
+
+```typescript
+import { ResonateOpenTelemetry } from "@resonatehq/opentelemetry";
+import { Resonate } from "@resonatehq/sdk";
+
+// Initialize OpenTelemetry
+const otel = new ResonateOpenTelemetry({
+  serviceName: "my-resonate-app",
+  exporterEndpoint: "http://localhost:4318/v1/traces",  // OTLP endpoint
+});
+
+// Create Resonate instance with tracing
+const resonate = Resonate.remote({
+  url: "http://localhost:8001",
+  // OpenTelemetry context automatically propagated
+});
+
+// Start your application
+await resonate.start();
+```
+
+### OTLP Exporter endpoint
+
+OpenTelemetry Protocol (OTLP) is the standard way to send traces. Point it to your collector or backend:
+
+- **Jaeger:** `http://localhost:4318/v1/traces`
+- **Zipkin:** `http://localhost:9411/api/v2/spans`
+- **Tempo:** `http://localhost:4318/v1/traces`
+- **Datadog:** `http://localhost:8126/v0.4/traces` (via Datadog Agent)
+- **Honeycomb:** `https://api.honeycomb.io/v1/traces` (with API key)
+
+## Trace backends
+
+Choose a backend to visualize and query traces:
+
+### Jaeger (open source)
+
+**Quick start with Docker:**
+
+```bash
+docker run -d --name jaeger \
+  -p 4318:4318 \
+  -p 16686:16686 \
+  jaegertracing/all-in-one:latest
+```
+
+Access UI at http://localhost:16686
+
+### Grafana Tempo (open source)
+
+Lightweight, cost-effective tracing backend:
+
+```yaml title="docker-compose.yml"
+version: '3.8'
+services:
+  tempo:
+    image: grafana/tempo:latest
+    ports:
+      - "4318:4318"  # OTLP receiver
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml
+    command: ["-config.file=/etc/tempo.yaml"]
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_INSTALL_PLUGINS=grafana-tempo-datasource
+```
+
+### Datadog APM
+
+Commercial solution with powerful features:
+
+```typescript
+import { ResonateOpenTelemetry } from "@resonatehq/opentelemetry";
+
+const otel = new ResonateOpenTelemetry({
+  serviceName: "my-resonate-app",
+  exporterEndpoint: "http://localhost:8126/v0.4/traces",  // Datadog Agent
+});
+```
+
+Traces appear in Datadog APM UI automatically.
+
+### Honeycomb
+
+Cloud-native observability platform:
+
+```typescript
+import { ResonateOpenTelemetry } from "@resonatehq/opentelemetry";
+
+const otel = new ResonateOpenTelemetry({
+  serviceName: "my-resonate-app",
+  exporterEndpoint: "https://api.honeycomb.io/v1/traces",
+  headers: {
+    "x-honeycomb-team": process.env.HONEYCOMB_API_KEY,
+  },
+});
+```
+
+### AWS X-Ray
+
+AWS-native tracing:
+
+```typescript
+import { AWSXRayPropagator } from "@opentelemetry/propagator-aws-xray";
+import { AWSXRayIdGenerator } from "@opentelemetry/id-generator-aws-xray";
+
+const otel = new ResonateOpenTelemetry({
+  serviceName: "my-resonate-app",
+  exporterEndpoint: "http://localhost:2000",  // X-Ray daemon
+  idGenerator: new AWSXRayIdGenerator(),
+  propagator: new AWSXRayPropagator(),
+});
+```
+
+## What gets traced
+
+### Function execution
+
+Every Resonate function creates a span:
+
+```typescript
+resonate.register("processOrder", async (ctx, order) => {
+  // Span: "processOrder" (duration = function execution time)
+  const result = await ctx.run(() => validateOrder(order));
+  return result;
+});
+```
+
+**Span attributes:**
+- `resonate.function.name` - Function name
+- `resonate.promise.id` - Promise ID
+- `resonate.worker.group` - Worker group
+
+### Context operations
+
+Each `ctx.run()`, `ctx.sleep()`, etc. creates child spans:
+
+```typescript
+resonate.register("checkout", async (ctx, cart) => {
+  // Parent span: "checkout"
+  
+  const validated = await ctx.run(() => validateCart(cart));
+  // Child span: "validateCart"
+  
+  await ctx.sleep(1000);
+  // Child span: "sleep(1000ms)"
+  
+  const charged = await ctx.run(() => chargeCard(cart.total));
+  // Child span: "chargeCard"
+  
+  return charged;
+});
+```
+
+### RPC calls
+
+When one worker calls another, spans are linked across workers:
+
+```typescript
+// Worker A
+resonate.register("orderWorkflow", async (ctx, order) => {
+  // Span: "orderWorkflow" on Worker A
+  
+  const result = await resonate.rpc(
+    `inventory-${order.id}`,
+    "checkInventory",
+    order.items,
+    resonate.options({ target: "poll://any@inventory-workers" })
+  );
+  // Creates linked span on Worker B
+  
+  return result;
+});
+
+// Worker B (inventory-workers group)
+resonate.register("checkInventory", async (ctx, items) => {
+  // Span: "checkInventory" on Worker B
+  // Parent: "orderWorkflow" on Worker A
+});
+```
+
+Parent-child relationships are maintained via OpenTelemetry context propagation.
+
+### Retries and failures
+
+Failed attempts create error spans:
+
+```typescript
+resonate.register("unreliableTask", async (ctx) => {
+  // Each retry attempt gets its own span
+  // Failed attempts marked with error: true
+  // Successful retry shows full history
+});
+```
+
+## Analyzing traces
+
+### Find slow functions
+
+Look for spans with high duration:
+
+**Jaeger:** Filter by min duration (e.g., >5s)
+**Datadog:** Sort by latency, look at p95/p99
+**Honeycomb:** Use `HEATMAP(duration_ms)` to visualize distribution
+
+### Identify bottlenecks
+
+Trace view shows where time is spent:
+
+```
+orderWorkflow (10s total)
+├─ validateOrder (0.1s)
+├─ checkInventory (8s) ← BOTTLENECK
+└─ chargeCard (1.9s)
+```
+
+Focus optimization on `checkInventory`.
+
+### Debug failures
+
+Failed spans show error details:
+
+```
+orderWorkflow (FAILED)
+├─ validateOrder (SUCCESS)
+├─ checkInventory (FAILED) ← error: "out of stock"
+```
+
+Click into failed span to see error message, stack trace, and context.
+
+### Track distributed workflows
+
+See how work flows across workers:
+
+```
+Worker A: orderWorkflow
+  ├─ Worker B: checkInventory
+  ├─ Worker B: reserveInventory
+  └─ Worker C: sendConfirmation
+```
+
+Understand the complete execution path.
+
+## Sampling
+
+High-volume systems generate too many traces. Use sampling to reduce overhead:
+
+```typescript
+import { ParentBasedSampler, TraceIdRatioBasedSampler } from "@opentelemetry/sdk-trace-base";
+
+const otel = new ResonateOpenTelemetry({
+  serviceName: "my-resonate-app",
+  sampler: new ParentBasedSampler({
+    root: new TraceIdRatioBasedSampler(0.1),  // Sample 10% of traces
+  }),
+});
+```
+
+**Strategies:**
+- **Head-based sampling:** Sample at trace creation (10% of all traces)
+- **Tail-based sampling:** Keep interesting traces (all errors, slow requests)
+- **Adaptive sampling:** Adjust rate based on traffic
+
+Most backends support tail-based sampling (sample after seeing full trace).
+
+## Correlation with logs and metrics
+
+**Trace ID in logs:**
+
+```typescript
+import { trace } from "@opentelemetry/api";
+
+const span = trace.getActiveSpan();
+const traceId = span?.spanContext().traceId;
+
+console.log(`Processing order [traceId=${traceId}]`);
+```
+
+Search logs by trace ID to see detailed context.
+
+**Metrics from traces:**
+
+Backends can generate metrics from span data:
+- Request rate by function name
+- Latency percentiles (p50, p95, p99)
+- Error rates
+- Span counts
+
+## Best practices
+
+1. **Enable tracing from day one** - Hard to add later
+2. **Use meaningful span names** - "processOrder" not "function_123"
+3. **Add custom attributes** - Enrich spans with business context:
+```typescript
+span.setAttribute("order.id", orderId);
+span.setAttribute("user.id", userId);
+```
+4. **Trace sparingly in hot paths** - Use sampling for high-throughput functions
+5. **Correlate traces with logs** - Include trace ID in log messages
+6. **Set up alerts on trace metrics** - Monitor error rate, latency from spans
+7. **Review traces regularly** - Don't wait for incidents to look at traces
+
+## Limitations
+
+**Python SDK:** OpenTelemetry support is not yet implemented. Use logs and metrics for observability until tracing is added.
+
+**Server tracing:** The Resonate server itself doesn't emit traces yet. You can trace SDK/worker activity, but server coordination isn't visible in traces.
+
+## Troubleshooting
+
+### No traces appearing
+
+**Check exporter endpoint:**
+```bash
+curl http://localhost:4318/v1/traces
+# Should return 404 (endpoint exists but needs POST)
+```
+
+**Check OpenTelemetry initialization:**
+```typescript
+console.log("OpenTelemetry initialized:", otel);
+```
+
+**Enable debug logging:**
+```typescript
+const otel = new ResonateOpenTelemetry({
+  serviceName: "my-app",
+  logLevel: "debug",  // See what's being exported
+});
+```
+
+### Spans not linked across workers
+
+**Cause:** Context propagation not working.
+
+**Solution:** Ensure `@resonatehq/opentelemetry` is initialized on all workers. Context is automatically propagated via Resonate's RPC mechanism.
+
+### High cardinality warnings
+
+**Cause:** Too many unique span attributes (e.g., user IDs, promise IDs).
+
+**Solution:** Use sampling or limit high-cardinality attributes:
+```typescript
+// Don't add unique IDs as span names
+span.setAttribute("order.id", orderId);  // Attribute, not name
+```
+
+## Summary
+
+**For development:**
+- Use Jaeger locally (easy Docker setup)
+- Enable tracing from day one
+- Trace a few example workflows to understand behavior
+
+**For production:**
+- Use managed backend (Datadog, Honeycomb, Tempo)
+- Enable sampling (10-30% of traces)
+- Correlate traces with logs and metrics
+- Set up alerts on trace-derived metrics
+
+**Key insights from tracing:**
+- Where time is spent (find bottlenecks)
+- How work flows across workers (understand distributed execution)
+- Why failures happen (error context and stack traces)
+
+Tracing complements logs and metrics. Together, they give you complete observability:
+- **Logs:** What happened (events)
+- **Metrics:** How much/how fast (aggregates)
+- **Traces:** Why and where (causality)

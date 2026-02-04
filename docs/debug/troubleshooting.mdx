@@ -7,5 +7,546 @@ description: Common problems and how to fix them.
 tags:
   - debug
   - troubleshooting
-draft: true
 ---
+
+This guide covers common issues you might encounter when using Resonate and how to resolve them.
+
+If your problem isn't listed here, check the [Errors](/debug/errors) reference for error codes or ask in [Discord](https://discord.gg/R4ad7T4U).
+
+## Server won't start
+
+### Database connection failures
+
+**Symptoms:**
+- Server fails to start with connection errors
+- Logs show `failed to connect to database` or similar
+
+**Causes:**
+- PostgreSQL not running
+- Wrong connection credentials
+- Network/firewall blocking connection
+- Database doesn't exist
+
+**Solutions:**
+
+1. **Check PostgreSQL is running:**
+```bash
+# PostgreSQL status
+pg_isready -h localhost -p 5432
+
+# For managed services, check cloud console
+```
+
+2. **Verify connection string:**
+```yaml title="resonate.yaml"
+aio:
+  store:
+    postgres:
+      enable: true
+      host: "localhost"  # Check this matches your DB host
+      database: "resonate"  # Database must exist
+      username: "resonate"  # User must exist
+      password: "secret"  # Check credentials
+```
+
+3. **Create database if missing:**
+```bash
+psql -h localhost -U postgres -c "CREATE DATABASE resonate;"
+```
+
+4. **Check firewall/security groups:**
+- Ensure server can reach database on port 5432
+- Check cloud security group rules
+- Verify VPC/network configuration
+
+### Port already in use
+
+**Symptoms:**
+- Server fails to start
+- Logs show `address already in use` or `bind: address already in use`
+
+**Cause:**
+Another process is using port 8001 (HTTP) or 50051 (gRPC).
+
+**Solutions:**
+
+1. **Find what's using the port:**
+```bash
+# macOS/Linux
+lsof -i :8001
+
+# Kill the process if needed
+kill -9 <PID>
+```
+
+2. **Use a different port:**
+```yaml title="resonate.yaml"
+api:
+  http:
+    port: 8002  # Change to unused port
+```
+
+### Configuration file errors
+
+**Symptoms:**
+- Server fails to parse config
+- Logs show `failed to parse config` or YAML errors
+
+**Cause:**
+Invalid YAML syntax or unknown configuration options.
+
+**Solutions:**
+
+1. **Validate YAML syntax:**
+```bash
+# Use a YAML validator
+yamllint resonate.yaml
+
+# Or check online: https://www.yamllint.com/
+```
+
+2. **Check for typos:**
+```yaml
+# WRONG: aoi (typo)
+aoi:
+  store:
+
+# RIGHT: aio
+aio:
+  store:
+```
+
+3. **Verify config options:**
+See [Server configuration](/deploy/run-server#customize-configuration) for valid options.
+
+## Workers not receiving tasks
+
+### Workers not connecting
+
+**Symptoms:**
+- Workers start but never process tasks
+- No worker registration in server logs
+- Tasks remain pending indefinitely
+
+**Causes:**
+- Wrong server URL
+- Network/firewall blocking connection
+- Server not running
+- Authentication misconfigured
+
+**Solutions:**
+
+1. **Verify server URL:**
+```typescript
+const resonate = Resonate.remote({
+  url: "http://resonate-server:8001",  // Must match server address
+  group: "workers",
+});
+```
+
+2. **Test connectivity:**
+```bash
+# From worker machine, test server reachability
+curl http://resonate-server:8001/healthz
+
+# Should return 200 OK
+```
+
+3. **Check authentication:**
+If server has auth enabled, workers must provide credentials:
+
+```typescript
+const resonate = Resonate.remote({
+  url: "http://resonate-server:8001",
+  group: "workers",
+  auth: {
+    basic: {
+      username: "user",
+      password: "pass",
+    },
+  },
+});
+```
+
+4. **Check server logs:**
+```bash
+# Look for worker registration messages
+resonate serve --log-level debug
+
+# Should see: "worker registered" or similar
+```
+
+### Tasks not reaching workers
+
+**Symptoms:**
+- Workers connected but not processing tasks
+- Tasks created but remain pending
+- No task distribution happening
+
+**Causes:**
+- Wrong worker group name
+- Worker polling misconfigured
+- Task routing rules don't match workers
+
+**Solutions:**
+
+1. **Verify group names match:**
+```typescript
+// When registering worker:
+const resonate = Resonate.remote({
+  group: "workers",  // Note the group name
+});
+
+// When creating task:
+resonate.rpc(
+  taskId,
+  "processOrder",
+  data,
+  resonate.options({
+    target: "poll://any@workers",  // Must match worker group
+  })
+);
+```
+
+2. **Check worker is polling:**
+Workers must actively poll for tasks. Ensure your worker code calls functions that poll:
+
+```typescript
+// Worker polls when you register functions
+resonate.register("processOrder", async (ctx, data) => {
+  // Task execution
+});
+
+// Start polling
+await resonate.start();
+```
+
+3. **Inspect promise state:**
+```bash
+# Query promises to see if tasks are being created
+curl http://localhost:8001/promises?state=pending
+
+# Check if tasks exist for those promises
+curl http://localhost:8001/tasks?state=pending
+```
+
+## Promises not resolving
+
+### Promise stuck in pending state
+
+**Symptoms:**
+- Promise created but never completes
+- No worker picks up the task
+- `resonate.promises.get()` shows `state: "pending"` indefinitely
+
+**Causes:**
+- No workers available for the task's group
+- Worker crashed mid-execution and task not reassigned
+- Task timeout not configured (waits forever)
+- Routing misconfiguration
+
+**Solutions:**
+
+1. **Confirm workers are running:**
+```bash
+# Check worker processes
+ps aux | grep worker
+
+# In Kubernetes:
+kubectl get pods -l app=resonate-worker
+```
+
+2. **Check promise/task state:**
+```bash
+# Get promise details
+curl http://localhost:8001/promises/{promiseId}
+
+# Check if task exists
+curl http://localhost:8001/tasks?promiseId={promiseId}
+```
+
+3. **Set task timeouts:**
+```typescript
+resonate.rpc(
+  taskId,
+  "processOrder",
+  data,
+  resonate.options({
+    target: "poll://any@workers",
+    timeout: 60000,  // 60 second timeout
+  })
+);
+```
+
+4. **Check worker heartbeats:**
+If worker crashed, server should detect via heartbeat timeout (default: 60s) and reassign. Check server logs for heartbeat failures.
+
+### Promise failed but retry not working
+
+**Symptoms:**
+- Promise fails once and doesn't retry
+- Expected automatic retry but it didn't happen
+
+**Cause:**
+Resonate doesn't automatically retry failed promises unless you configure retry logic.
+
+**Solutions:**
+
+1. **Implement retry logic explicitly:**
+```typescript
+async function processOrderWithRetry(ctx, data) {
+  let attempts = 0;
+  const maxAttempts = 3;
+
+  while (attempts < maxAttempts) {
+    try {
+      const result = await ctx.run(() => processOrder(data));
+      return result;
+    } catch (error) {
+      attempts++;
+      if (attempts >= maxAttempts) throw error;
+      await ctx.sleep(1000 * attempts);  // Exponential backoff
+    }
+  }
+}
+```
+
+2. **Check error type:**
+Some errors shouldn't retry (e.g., invalid input). Handle appropriately:
+
+```typescript
+catch (error) {
+  if (error.code === "INVALID_INPUT") {
+    throw error;  // Don't retry
+  }
+  // Retry for transient errors
+}
+```
+
+## Performance issues
+
+### Slow task execution
+
+**Symptoms:**
+- Tasks complete but take longer than expected
+- High latency between task creation and completion
+
+**Causes:**
+- Not enough workers (tasks queue up)
+- Worker resource constraints (CPU/memory)
+- Database performance issues
+- Network latency
+
+**Solutions:**
+
+1. **Scale workers horizontally:**
+```bash
+# Docker Compose
+docker-compose up -d --scale worker=10
+
+# Kubernetes
+kubectl scale deployment resonate-workers --replicas=20
+```
+
+See [Scaling](/deploy/scaling) for details.
+
+2. **Monitor worker resources:**
+```bash
+# Check CPU/memory usage
+top
+htop
+
+# Kubernetes:
+kubectl top pods -l app=resonate-worker
+```
+
+3. **Optimize database:**
+- Add indexes for frequently queried promise/task fields
+- Increase PostgreSQL connection pool size
+- Use managed PostgreSQL with IOPS scaling
+
+4. **Check network latency:**
+```bash
+# Measure round-trip time to server
+ping resonate-server
+
+# Test HTTP latency
+time curl http://resonate-server:8001/healthz
+```
+
+### High database load
+
+**Symptoms:**
+- Slow promise creation/resolution
+- Database CPU/IOPS maxed out
+- Connection pool exhausted
+
+**Causes:**
+- Too many concurrent promises
+- Inefficient queries (missing indexes)
+- Insufficient database resources
+
+**Solutions:**
+
+1. **Upgrade database resources:**
+- Increase CPU/RAM
+- Add IOPS capacity (for cloud databases)
+- Use managed PostgreSQL with auto-scaling
+
+2. **Tune connection pool:**
+```yaml title="resonate.yaml"
+aio:
+  store:
+    postgres:
+      maxOpenConns: 50  # Increase pool size
+      maxIdleConns: 10
+```
+
+3. **Add database indexes:**
+Check PostgreSQL slow query log and add indexes for common queries.
+
+4. **Batch operations:**
+If creating many promises, batch them when possible to reduce database round-trips.
+
+## Authentication issues
+
+### Unauthorized errors
+
+**Symptoms:**
+- Workers can't connect
+- API requests return `401 Unauthorized`
+- Logs show authentication failures
+
+**Causes:**
+- Wrong credentials
+- Auth enabled on server but not configured in client
+- Token expired (JWT)
+
+**Solutions:**
+
+1. **Verify credentials:**
+```typescript
+const resonate = Resonate.remote({
+  url: "http://resonate-server:8001",
+  auth: {
+    basic: {
+      username: "user",  // Check these match server config
+      password: "pass",
+    },
+  },
+});
+```
+
+2. **Check server auth config:**
+```yaml title="resonate.yaml"
+api:
+  http:
+    auth:
+      basic:
+        username: "user"
+        password: "pass"
+```
+
+3. **For JWT tokens, verify:**
+- Token hasn't expired
+- JWT secret matches between server and client
+- Token payload is valid
+
+See [Security](/deploy/security) for auth setup.
+
+## Development workflow issues
+
+### Changes not taking effect
+
+**Symptoms:**
+- Code changes don't appear when running
+- Old behavior persists after updates
+
+**Causes:**
+- Using wrong binary (old version still running)
+- Cache issues
+- Docker image not rebuilt
+
+**Solutions:**
+
+1. **Verify process is new:**
+```bash
+# Kill old processes
+pkill -f resonate
+
+# Restart with fresh binary
+resonate serve
+```
+
+2. **Rebuild Docker images:**
+```bash
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+3. **Clear SDK caches (if applicable):**
+```bash
+# Node.js
+rm -rf node_modules && npm install
+
+# Python
+rm -rf __pycache__ && pip install -r requirements.txt
+```
+
+### SQLite "database is locked" errors
+
+**Symptoms:**
+- SQLite errors about locked database
+- Concurrent access failures
+
+**Cause:**
+SQLite doesn't handle high concurrency well. Multiple processes/threads trying to write simultaneously.
+
+**Solution:**
+Use PostgreSQL for any deployment with >1 worker or concurrent access:
+
+```yaml title="resonate.yaml"
+aio:
+  store:
+    postgres:
+      enable: true
+      # ... connection details
+```
+
+SQLite is only suitable for development with a single worker.
+
+## Getting more help
+
+If these troubleshooting steps don't resolve your issue:
+
+1. **Check error codes:** See [Errors](/debug/errors) for detailed error information
+2. **Enable debug logging:**
+```bash
+resonate serve --log-level debug
+```
+3. **Collect diagnostics:**
+   - Server logs
+   - Worker logs
+   - Promise/task state from API
+   - Database connection status
+   - Network connectivity tests
+
+4. **Ask in Discord:** Share diagnostics in the [Resonate Discord](https://discord.gg/R4ad7T4U)
+5. **File a bug:** If you've found a bug, [open an issue on GitHub](https://github.com/resonatehq/resonate/issues)
+
+## Quick diagnostic checklist
+
+When debugging, check these in order:
+
+- [ ] Server running and reachable (`curl http://server:8001/healthz`)
+- [ ] Database connected and accessible
+- [ ] Workers registered with server (check logs)
+- [ ] Worker group names match task routing
+- [ ] Authentication configured (if enabled)
+- [ ] Network/firewall allows communication
+- [ ] Adequate resources (CPU, memory, IOPS)
+- [ ] No port conflicts
+- [ ] Configuration file syntax valid
+- [ ] Using recent Resonate version
+
+Most issues fall into one of these categories. Work through the checklist systematically.
