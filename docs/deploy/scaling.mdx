@@ -235,18 +235,23 @@ If your workload exceeds single-server capacity, contact the Resonate team to di
 Track these metrics to know when to scale:
 
 ```promql
-# Worker task processing rate
-rate(resonate_tasks_completed_total[5m])
+# Task completion rate
+rate(tasks_total{state="completed"}[5m])
 
-# Worker heartbeat failures (crashed workers)
-rate(resonate_worker_heartbeat_failures_total[5m])
+# Promise backlog
+promises_total{state="pending"}
 
-# Promise queue depth (backlog)
-resonate_promises_pending_total
+# Tasks claimed but not completed (stalled tasks)
+tasks_total{state="claimed"} - tasks_total{state="completed"}
 
 # Worker CPU usage (from your infrastructure metrics)
 avg(container_cpu_usage_seconds_total{app="resonate-worker"})
 ```
+
+**Note:** Worker health metrics (heartbeat failures, active worker count) are not exposed by Resonate server. Monitor workers at the infrastructure level:
+- Kubernetes: `kubectl get pods -l app=resonate-worker`
+- Docker: `docker ps | grep worker`
+- Use infrastructure monitoring (Prometheus node exporter, Datadog, etc.) for worker health
 
 See [Metrics](/deploy/metrics) for the full metrics catalog.
 

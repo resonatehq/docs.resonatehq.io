@@ -141,17 +141,17 @@ curl http://localhost:9090/metrics
 **Key metrics to watch:**
 
 ```promql
-# Promise creation rate (workload indicator)
-rate(resonate_promises_created_total[5m])
+# Promise rate (workload indicator)
+rate(promises_total[5m])
 
-# Promise resolution latency (performance indicator)
-histogram_quantile(0.95, rate(resonate_promise_resolution_duration_seconds_bucket[5m]))
+# Pending promises (backlog indicator)
+promises_total{state="pending"}
 
-# Worker heartbeat failures (worker health indicator)
-rate(resonate_worker_heartbeat_failures_total[5m])
+# API request latency (performance indicator)
+histogram_quantile(0.95, rate(api_duration_seconds_bucket[5m]))
 
-# Database connection pool usage (resource pressure indicator)
-resonate_db_connections_active / resonate_db_connections_max
+# Server internal queue (capacity indicator)
+sum(coroutines_in_flight)
 ```
 
 See [Metrics](/deploy/metrics) for the full metrics catalog.
@@ -170,17 +170,17 @@ groups:
         annotations:
           summary: "Resonate server is unreachable"
 
-      - alert: DatabaseConnectionsExhausted
-        expr: resonate_db_connections_active / resonate_db_connections_max > 0.9
+      - alert: HighAPIErrorRate
+        expr: rate(api_requests_total{status=~"5.."}[5m]) > 10
         for: 5m
         annotations:
-          summary: "Database connection pool near capacity"
+          summary: "High server error rate indicates availability issues"
 
-      - alert: HighWorkerFailureRate
-        expr: rate(resonate_worker_heartbeat_failures_total[5m]) > 5
-        for: 5m
+      - alert: PromiseBacklogGrowing
+        expr: increase(promises_total{state="pending"}[5m]) > 100
+        for: 10m
         annotations:
-          summary: "Unusual number of worker failures"
+          summary: "Promise backlog growing - may indicate processing issues"
 ```
 
 ## Server restart procedures

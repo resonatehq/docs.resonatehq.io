@@ -189,73 +189,95 @@ Grafana visualizes metrics from Prometheus.
 
 ### Example dashboard panels
 
-**Promise creation rate:**
+**Promise workload:**
 
 ```promql
-rate(resonate_promises_created_total[5m])
+# Total pending promises
+promises_total{state="pending"}
+
+# Promise rate by state
+rate(promises_total[5m])
 ```
 
-**Worker count:**
+**Task processing:**
 
 ```promql
-resonate_workers_active
+# Total tasks by state
+tasks_total{state="claimed"}
+tasks_total{state="completed"}
+
+# Task completion rate
+rate(tasks_total{state="completed"}[5m])
 ```
 
-**Database connection usage:**
+**Server load:**
 
 ```promql
-resonate_db_connections_active / resonate_db_connections_max
+# API request rate
+rate(api_requests_total[5m])
+
+# Coroutines in flight (internal queue depth)
+sum(coroutines_in_flight)
 ```
 
 ## Key metrics to track
 
 ### Workload metrics
 
-**Promise creation rate:**
+**Promise rate:**
 ```promql
-rate(resonate_promises_created_total[5m])
+rate(promises_total[5m])
 ```
-Indicates incoming workload. Track trends and spikes.
-
-**Promise resolution latency (p95):**
-```promql
-histogram_quantile(0.95, rate(resonate_promise_resolution_duration_seconds_bucket[5m]))
-```
-How long promises take to resolve. High latency indicates performance issues.
+Indicates incoming workload. Track trends and spikes across all promise states.
 
 **Pending promises:**
 ```promql
-resonate_promises_pending_total
+promises_total{state="pending"}
 ```
-Backlog of work. Should stay near zero. Growth indicates insufficient worker capacity.
+Backlog of work. Should stay near zero. Growth indicates insufficient worker capacity or processing issues.
 
-### Worker metrics
-
-**Active workers:**
+**Promise state distribution:**
 ```promql
-resonate_workers_active
+promises_total{state="resolved"}
+promises_total{state="rejected"}
+promises_total{state="canceled"}
 ```
-How many workers are connected. Should match your deployment count.
+Track outcomes to understand success/failure patterns.
 
-**Worker heartbeat failures:**
-```promql
-rate(resonate_worker_heartbeat_failures_total[5m])
-```
-Workers that crashed or disconnected. Normal during deployments, concerning if sustained.
+### Task metrics
 
-**Task processing rate:**
+**Task completion rate:**
 ```promql
-rate(resonate_tasks_completed_total[5m])
+rate(tasks_total{state="completed"}[5m])
 ```
-How fast workers are processing tasks.
+How fast tasks are being processed. Compare with promise rate to understand throughput.
+
+**Claimed vs completed:**
+```promql
+tasks_total{state="claimed"}
+tasks_total{state="completed"}
+```
+Large gap between claimed and completed indicates tasks are stalling.
 
 ### Server metrics
 
-**Database connections:**
+**API request rate:**
 ```promql
-resonate_db_connections_active
+rate(api_requests_total[5m])
 ```
-Active connections to PostgreSQL. Should be well below max.
+Overall server load. High values indicate heavy traffic.
+
+**API request latency:**
+```promql
+histogram_quantile(0.95, rate(api_duration_seconds_bucket[5m]))
+```
+P95 latency for API requests. High values indicate performance bottlenecks.
+
+**HTTP requests:**
+```promql
+rate(http_requests_total[5m])
+```
+HTTP API usage. Track by method and path to understand traffic patterns.
 
 **Coroutines in flight:**
 ```promql
@@ -287,41 +309,41 @@ groups:
           summary: "Resonate server is down"
           description: "Resonate server has been down for more than 1 minute"
 
-      - alert: HighWorkerFailureRate
-        expr: rate(resonate_worker_heartbeat_failures_total[5m]) > 5
+      - alert: HighAPIErrorRate
+        expr: rate(api_requests_total{status=~"5.."}[5m]) > 10
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High worker failure rate"
-          description: "More than 5 workers are failing per minute"
-
-      - alert: DatabaseConnectionsExhausted
-        expr: resonate_db_connections_active / resonate_db_connections_max > 0.9
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Database connection pool near capacity"
-          description: "Connection pool is >90% utilized"
+          summary: "High API error rate"
+          description: "More than 10 API errors per minute"
 
       - alert: PromiseBacklogGrowing
-        expr: rate(resonate_promises_pending_total[5m]) > 0
+        expr: increase(promises_total{state="pending"}[5m]) > 100
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "Promise backlog is growing"
-          description: "Pending promises are accumulating - scale workers"
+          description: "Pending promises are accumulating - scale workers or check processing"
 
-      - alert: HighPromiseLatency
-        expr: histogram_quantile(0.95, rate(resonate_promise_resolution_duration_seconds_bucket[5m])) > 60
+      - alert: TasksNotCompleting
+        expr: tasks_total{state="claimed"} - tasks_total{state="completed"} > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tasks claimed but not completing"
+          description: "Large gap between claimed and completed tasks"
+
+      - alert: HighAPILatency
+        expr: histogram_quantile(0.95, rate(api_duration_seconds_bucket[5m])) > 5
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High promise resolution latency"
-          description: "P95 promise latency is over 60 seconds"
+          summary: "High API latency"
+          description: "P95 API latency is over 5 seconds"
 ```
 
 Load alerting rules in Prometheus:
@@ -458,10 +480,16 @@ api:
 ### Missing metrics
 
 **Not all metrics appear immediately.** Some are only emitted when events occur:
-- `resonate_promises_created_total` - Only increments when promises are created
-- `resonate_worker_heartbeat_failures_total` - Only increments when workers fail
+- `promises_total` - Only increments when promises are created/resolved
+- `tasks_total` - Only increments when tasks are created/completed
+- `http_requests_total` - Only increments when HTTP requests are made
 
 Run workload to generate metrics.
+
+**Metrics not currently exposed:**
+- Worker heartbeat failures (monitor worker pod restarts at infrastructure level)
+- Database connection pool stats (PostgreSQL exposes these separately)
+- Per-worker execution metrics (not tracked at server level)
 
 ## Summary
 
@@ -478,9 +506,14 @@ Run workload to generate metrics.
 - Integrate with your existing observability stack
 
 **Key metrics to always track:**
-- Promise creation rate (workload)
-- Promise resolution latency (performance)
-- Worker count and failures (capacity)
-- Database connection usage (infrastructure)
+- `promises_total` by state (workload)
+- `tasks_total` by state (processing throughput)
+- `api_requests_total` (server load)
+- `coroutines_in_flight` (server capacity)
+
+**What's not metricked:**
+- Individual worker health (monitor at infrastructure level: K8s pod restarts, container health)
+- Database connection pools (use PostgreSQL's own metrics)
+- Promise/task latency histograms (not currently exposed)
 
 Metrics give you visibility into system health. Set them up before you need them.
