@@ -274,21 +274,23 @@ Key metrics to watch:
 
 The server can be restarted safely without losing work:
 
-1. **Graceful shutdown** - Server stops accepting new work but completes in-flight operations
-2. **Workers continue polling** - Workers retry connections during restart
-3. **State preserved in PostgreSQL** - All promise state survives restart
-4. **Workers resume** - When server comes back, workers reconnect and continue
+1. **State preserved in PostgreSQL** - All promise state is persisted, survives restart
+2. **Workers handle disconnection** - Workers detect server disconnect and retry connections
+3. **Graceful shutdown available** - Server responds to signals and attempts graceful cleanup (configurable timeout: default 10s)
+4. **Workers resume** - When server comes back, workers reconnect and continue from checkpoints
 
-```bash title="Graceful restart"
-# Send SIGTERM for graceful shutdown
+```bash title="Server restart"
+# Stop the server (sends signal for graceful shutdown)
 kill -TERM $(pgrep resonate)
 
-# Wait for shutdown to complete
-sleep 5
+# Wait for shutdown (respects timeout config, default 10s)
+sleep 12
 
 # Start server again
 resonate serve --config resonate.yaml
 ```
+
+The `timeout` configuration option controls how long the server waits during graceful shutdown (default: 10s). See [Server configuration](/operate/run-server#customize-configuration) for details.
 
 ### When to upgrade server resources
 
