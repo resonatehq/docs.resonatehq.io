@@ -34,6 +34,71 @@
       "source": "/operate/cli-reference/:path*",
       "destination": "/get-started/cli-guide",
       "permanent": true
+    },
+    {
+      "source": "/operate/errors",
+      "destination": "/debug/errors",
+      "permanent": true
+    },
+    {
+      "source": "/operate/troubleshooting",
+      "destination": "/debug/troubleshooting",
+      "permanent": true
+    },
+    {
+      "source": "/operate",
+      "destination": "/deploy",
+      "permanent": true
+    },
+    {
+      "source": "/operate/run-server",
+      "destination": "/deploy/run-server",
+      "permanent": true
+    },
+    {
+      "source": "/operate/security",
+      "destination": "/deploy/security",
+      "permanent": true
+    },
+    {
+      "source": "/operate/message-transports",
+      "destination": "/deploy/message-transports",
+      "permanent": true
+    },
+    {
+      "source": "/operate/serverless-workers",
+      "destination": "/deploy/serverless-workers",
+      "permanent": true
+    },
+    {
+      "source": "/operate/upgrade-server",
+      "destination": "/deploy/upgrade-server",
+      "permanent": true
+    },
+    {
+      "source": "/operate/production",
+      "destination": "/deploy",
+      "permanent": true
+    },
+    {
+      "source": "/operate/observe",
+      "destination": "/deploy",
+      "permanent": true
+    },
+    {
+      "source": "/operate/observe/logs",
+      "destination": "/deploy/logging",
+      "permanent": true
+    },
+    {
+      "source": "/operate/observe/metrics",
+      "destination": "/deploy/metrics",
+      "permanent": true
+    },
+    {
+      "source": "/operate/observe/traces",
+      "destination": "/deploy/tracing",
+      "permanent": true
     }
   ]
 }
