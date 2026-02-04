@@ -1,0 +1,266 @@
+---
+id: scaling
+title: Scaling
+sidebar_label: Scaling
+description: Scale Resonate workers horizontally to handle increased load.
+sidebar_position: 4
+tags:
+  - deploy
+  - scaling
+  - workers
+---
+
+Worker scaling is the primary way to handle increased load in Resonate. Since workers execute your application code, adding more workers directly increases your system's execution capacity.
+
+## How worker scaling works
+
+Workers register with the Resonate server using a **group name**. All workers in the same group can handle the same tasks, and Resonate automatically distributes work across available workers.
+
+### Worker registration
+
+```typescript title="TypeScript worker registration"
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = Resonate.remote({
+  url: "http://resonate-server:8001",
+  group: "workers", // All workers in this group can handle the same tasks
+});
+```
+
+```python title="Python worker registration"
+from resonate import Resonate
+
+resonate = Resonate.remote(
+    url="http://resonate-server:8001",
+    group="workers",  # All workers in this group can handle the same tasks
+)
+```
+
+### Task distribution
+
+When you invoke a function targeting a worker group, Resonate distributes work across any available worker in that group:
+
+```typescript title="Targeting a worker group"
+// This task goes to ANY available worker in the "workers" group
+resonate.rpc(
+  taskId,
+  "processOrder",
+  { orderId: "123" },
+  resonate.options({
+    target: "poll://any@workers",
+  })
+);
+```
+
+The server automatically load-balances across workers. You don't need to implement distribution logic.
+
+## When to scale workers
+
+Scale workers horizontally when you observe:
+
+- **High CPU usage** across worker processes (&gt;70% sustained)
+- **Task queue buildup** (promises pending longer than expected)
+- **Slow response times** for synchronous RPC calls
+- **Memory pressure** (workers running out of RAM)
+
+You can run as many workers as needed - there's no fixed limit. Start with 2-4 workers and scale based on observed load.
+
+## Worker fault tolerance
+
+If a worker crashes mid-task, Resonate automatically detects the failure (via heartbeat timeout) and reassigns the work to another available worker in the same group.
+
+The new worker replays the function from the last checkpoint stored in the durable promise.
+
+**This means:**
+- Worker crashes don't lose in-flight work
+- You can safely restart workers for deployments
+- Load rebalances automatically when workers go down
+- No manual intervention required for worker failures
+
+## Scaling patterns
+
+### Multiple processes
+
+Run multiple worker processes on the same machine or across different machines:
+
+```bash title="Start 4 worker processes"
+# Terminal 1
+node worker.js &
+
+# Terminal 2
+node worker.js &
+
+# Terminal 3
+node worker.js &
+
+# Terminal 4
+node worker.js &
+```
+
+All processes share the same worker group and receive tasks from the server.
+
+### Docker containers
+
+Scale workers using container orchestration:
+
+```yaml title="docker-compose.yml"
+version: '3.8'
+services:
+  resonate-server:
+    image: resonatehq/resonate:latest
+    ports:
+      - "8001:8001"
+    environment:
+      RESONATE_STORE_POSTGRES_HOST: postgres
+      RESONATE_STORE_POSTGRES_DATABASE: resonate
+      RESONATE_STORE_POSTGRES_USERNAME: resonate
+      RESONATE_STORE_POSTGRES_PASSWORD: secret
+    depends_on:
+      - postgres
+
+  worker:
+    image: your-app:latest
+    environment:
+      RESONATE_URL: http://resonate-server:8001
+    deploy:
+      replicas: 5  # Scale to 5 workers
+```
+
+Adjust the `replicas` count to scale worker capacity.
+
+### Kubernetes
+
+Deploy workers as a Kubernetes Deployment with horizontal pod autoscaling:
+
+```yaml title="worker-deployment.yaml"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resonate-workers
+spec:
+  replicas: 10  # Scale to 10 workers
+  selector:
+    matchLabels:
+      app: resonate-worker
+  template:
+    metadata:
+      labels:
+        app: resonate-worker
+    spec:
+      containers:
+      - name: worker
+        image: your-app:latest
+        env:
+        - name: RESONATE_URL
+          value: "http://resonate-server:8001"
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: resonate-workers-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: resonate-workers
+  minReplicas: 5
+  maxReplicas: 50
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+```
+
+The HPA automatically adjusts worker count based on CPU utilization.
+
+### Serverless workers
+
+Workers can run as serverless functions that wake up to claim tasks:
+
+```typescript title="Cloud Run worker"
+// Worker runs on Cloud Run, polls for tasks
+const resonate = Resonate.remote({
+  url: process.env.RESONATE_URL,
+  group: "cloud-run-workers",
+});
+
+// Cloud Run container stays alive polling for work
+// Scales to zero when idle, scales up under load
+```
+
+**Deploy to Cloud Run:**
+
+```bash title="Deploy serverless worker"
+gcloud run deploy resonate-worker \
+  --image gcr.io/your-project/worker:latest \
+  --set-env-vars RESONATE_URL=https://resonate.example.com \
+  --min-instances 1 \
+  --max-instances 100 \
+  --cpu 1 \
+  --memory 512Mi
+```
+
+:::tip Start with containers, scale to serverless later
+Containerized workers are easier to debug and cheaper at low scale. Move to serverless when you need auto-scaling or have highly variable load.
+:::
+
+## Server scaling limitations
+
+**The Resonate server does not currently support horizontal scaling across multiple server instances.**
+
+A single server can coordinate thousands of workers and millions of promises because it coordinates work but doesn't execute your functions. The server is rarely a bottleneck.
+
+**What this means:**
+- You can run one server that coordinates many workers
+- Workers scale horizontally (add as many as you need)
+- Server scales vertically (add more CPU/RAM if needed)
+- Message passing between multiple servers is not yet implemented
+
+For most deployments, a modest server (2-4 CPUs, 4-8GB RAM) can coordinate hundreds of workers processing thousands of tasks per second.
+
+If your workload exceeds single-server capacity, contact the Resonate team to discuss your use case.
+
+## Monitoring worker scale
+
+Track these metrics to know when to scale:
+
+```promql
+# Task completion rate
+rate(tasks_total{state="completed"}[5m])
+
+# Promise backlog
+promises_total{state="pending"}
+
+# Tasks claimed but not completed (stalled tasks)
+tasks_total{state="claimed"} - tasks_total{state="completed"}
+
+# Worker CPU usage (from your infrastructure metrics)
+avg(container_cpu_usage_seconds_total{app="resonate-worker"})
+```
+
+**Note:** Worker health metrics (heartbeat failures, active worker count) are not exposed by Resonate server. Monitor workers at the infrastructure level:
+- Kubernetes: `kubectl get pods -l app=resonate-worker`
+- Docker: `docker ps | grep worker`
+- Use infrastructure monitoring (Prometheus node exporter, Datadog, etc.) for worker health
+
+See [Metrics](/deploy/metrics) for the full metrics catalog.
+
+## Summary
+
+**Worker scaling is how Resonate handles load:**
+- Add more workers to increase execution capacity
+- Workers automatically load-balance via server coordination
+- Worker failures are handled transparently
+- Server coordination scales vertically (not horizontally yet)
+
+**Pattern:** Start small (2-4 workers), monitor load, scale horizontally as needed.

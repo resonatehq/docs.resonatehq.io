@@ -1,0 +1,10 @@
+{
+  "label": "Deploy",
+  "position": 6,
+  "collapsed": true,
+  "collapsible": true,
+  "link": {
+    "type": "doc",
+    "id": "deploy/index"
+  }
+}

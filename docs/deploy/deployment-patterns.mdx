@@ -1,0 +1,439 @@
+---
+id: deployment-patterns
+title: Deployment patterns
+sidebar_label: Patterns
+description: Deploy Resonate to different environments - Docker, Kubernetes, serverless, and more.
+sidebar_position: 3
+tags:
+  - deploy
+  - docker
+  - kubernetes
+  - serverless
+---
+
+Resonate works in any environment where you can run a server and workers. This guide covers common deployment patterns for different infrastructure choices.
+
+## Development and staging
+
+### Docker Compose
+
+Use Docker Compose for local development and staging environments. This gives you a complete Resonate stack (server + database + workers) with one command:
+
+```yaml title="docker-compose.yml"
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: resonate
+      POSTGRES_USER: resonate
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resonate"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  resonate-server:
+    image: resonatehq/resonate:latest
+    ports:
+      - "8001:8001"
+      - "9090:9090"
+    environment:
+      RESONATE_STORE_POSTGRES_ENABLE: "true"
+      RESONATE_STORE_POSTGRES_HOST: postgres
+      RESONATE_STORE_POSTGRES_DATABASE: resonate
+      RESONATE_STORE_POSTGRES_USERNAME: resonate
+      RESONATE_STORE_POSTGRES_PASSWORD: secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    image: your-app:latest
+    environment:
+      RESONATE_URL: http://resonate-server:8001
+    deploy:
+      replicas: 3
+
+volumes:
+  postgres-data:
+```
+
+**Start the stack:**
+
+```bash
+docker-compose up -d
+```
+
+**Scale workers:**
+
+```bash
+docker-compose up -d --scale worker=10
+```
+
+This pattern works for:
+
+- Local development
+- CI/CD testing
+- Staging environments
+- Small production deployments
+
+## Kubernetes
+
+### Server deployment
+
+The Resonate server runs as a single replica (multi-server coordination is not yet implemented). Use a Deployment with health checks:
+
+```yaml title="server-deployment.yaml"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resonate-server
+spec:
+  replicas: 1 # Single server coordinates all workers
+  selector:
+    matchLabels:
+      app: resonate-server
+  template:
+    metadata:
+      labels:
+        app: resonate-server
+    spec:
+      containers:
+        - name: server
+          image: resonatehq/resonate:latest
+          ports:
+            - containerPort: 8001
+              name: http
+            - containerPort: 50051
+              name: grpc
+            - containerPort: 9090
+              name: metrics
+          env:
+            - name: RESONATE_STORE_POSTGRES_ENABLE
+              value: "true"
+            - name: RESONATE_STORE_POSTGRES_HOST
+              value: "postgres-service"
+            - name: RESONATE_STORE_POSTGRES_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: database
+            - name: RESONATE_STORE_POSTGRES_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: RESONATE_STORE_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8001
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: resonate-server
+spec:
+  selector:
+    app: resonate-server
+  ports:
+    - name: http
+      port: 8001
+      targetPort: 8001
+    - name: grpc
+      port: 50051
+      targetPort: 50051
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+```
+
+### Worker deployment
+
+Workers scale horizontally. Use a Deployment with HorizontalPodAutoscaler:
+
+```yaml title="worker-deployment.yaml"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resonate-workers
+spec:
+  replicas: 10 # Initial worker count
+  selector:
+    matchLabels:
+      app: resonate-worker
+  template:
+    metadata:
+      labels:
+        app: resonate-worker
+    spec:
+      containers:
+        - name: worker
+          image: your-app:latest
+          env:
+            - name: RESONATE_URL
+              value: "http://resonate-server:8001"
+            - name: WORKER_GROUP
+              value: "workers"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: resonate-workers-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: resonate-workers
+  minReplicas: 5
+  maxReplicas: 50
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+```
+
+The HPA automatically scales worker pods based on CPU utilization.
+
+## Serverless platforms
+
+### Google Cloud Run
+
+Cloud Run workers can scale to zero and handle variable load automatically:
+
+```dockerfile title="Dockerfile"
+FROM node:20-slim
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --production
+COPY . .
+CMD ["node", "worker.js"]
+```
+
+```bash title="Build and deploy"
+# Build container
+docker build -t gcr.io/your-project/resonate-worker:latest .
+
+# Push to GCR
+docker push gcr.io/your-project/resonate-worker:latest
+
+# Deploy to Cloud Run
+gcloud run deploy resonate-worker \
+  --image gcr.io/your-project/resonate-worker:latest \
+  --set-env-vars RESONATE_URL=https://resonate.example.com \
+  --min-instances 1 \
+  --max-instances 100 \
+  --cpu 1 \
+  --memory 512Mi \
+  --region us-central1
+```
+
+Cloud Run workers stay alive polling for tasks and scale automatically based on load.
+
+### AWS Lambda
+
+Lambda workers can run as functions that poll for tasks or respond to events:
+
+```typescript title="lambda-worker.ts"
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = Resonate.remote({
+  url: process.env.RESONATE_URL!,
+  group: "lambda-workers",
+});
+
+// Lambda handler polls for tasks
+export async function handler(event: any) {
+  // Poll and process tasks
+  // Return when done or Lambda timeout approaches
+}
+```
+
+**Deployment (using AWS CDK):**
+
+```typescript title="worker-stack.ts"
+import * as cdk from "aws-cdk-lib";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+
+export class ResonateWorkerStack extends cdk.Stack {
+  constructor(scope: cdk.App, id: string) {
+    super(scope, id);
+
+    new lambda.Function(this, "ResonateWorker", {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: "lambda-worker.handler",
+      code: lambda.Code.fromAsset("dist"),
+      environment: {
+        RESONATE_URL: "https://resonate.example.com",
+      },
+      timeout: cdk.Duration.minutes(15),
+      memorySize: 512,
+    });
+  }
+}
+```
+
+:::tip Serverless execution limits
+Lambda has a 15-minute execution limit. Cloud Run supports longer executions (up to 60 minutes). Design your functions to complete within these limits, or use containerized workers for long-running workflows.
+:::
+
+### AWS Fargate
+
+Fargate runs containers without managing servers, similar to Cloud Run:
+
+```json title="task-definition.json"
+{
+  "family": "resonate-worker",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "containerDefinitions": [
+    {
+      "name": "worker",
+      "image": "your-account.dkr.ecr.us-east-1.amazonaws.com/resonate-worker:latest",
+      "environment": [
+        {
+          "name": "RESONATE_URL",
+          "value": "https://resonate.example.com"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/resonate-worker",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
+```
+
+Create a Fargate service that runs the task definition, and Fargate handles scheduling and scaling.
+
+## Bare metal / VMs
+
+### Systemd service
+
+Run Resonate server as a systemd service on bare metal or VMs:
+
+```ini title="/etc/systemd/system/resonate.service"
+[Unit]
+Description=Resonate Server
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=resonate
+WorkingDirectory=/opt/resonate
+ExecStart=/usr/local/bin/resonate serve --config /etc/resonate/config.yaml
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Enable and start:**
+
+```bash
+sudo systemctl enable resonate
+sudo systemctl start resonate
+```
+
+### Worker processes
+
+Run workers as separate systemd services or use a process manager like PM2:
+
+```bash title="PM2 worker management"
+# Start 10 workers
+pm2 start worker.js -i 10 --name "resonate-worker"
+
+# Scale to 20 workers
+pm2 scale resonate-worker 20
+
+# Monitor
+pm2 monit
+```
+
+## Hybrid deployments
+
+You can mix deployment patterns:
+
+**Example:** Server on Kubernetes, workers on Cloud Run
+
+- Central server in GKE for stability
+- Workers on Cloud Run for auto-scaling and cost efficiency
+
+**Example:** Server on VM, workers in Lambda
+
+- Self-hosted server for control
+- Serverless workers for variable load
+
+Resonate doesn't care where workers run as long as they can reach the server.
+
+## Which pattern to choose?
+
+**Start simple, scale as needed:**
+
+| Use case                           | Recommended pattern         |
+| ---------------------------------- | --------------------------- |
+| Local development                  | Docker Compose              |
+| Small production (&lt;10 workers)  | Docker Compose or single VM |
+| Medium production (10-100 workers) | Kubernetes or Cloud Run     |
+| Large production (&gt;100 workers) | Kubernetes with HPA         |
+| Variable/unpredictable load        | Cloud Run or Fargate        |
+| Event-driven workloads             | Lambda workers              |
+| Cost-sensitive                     | Cloud Run (scales to zero)  |
+
+**General guidance:**
+
+- Use managed services for PostgreSQL (RDS, Cloud SQL, etc.)
+- Start with containers (easier debugging than serverless)
+- Add auto-scaling when you understand your load patterns
+- Use serverless for unpredictable or bursty workloads
+
+## Summary
+
+Resonate works in any environment:
+
+- **Containers:** Docker Compose, Kubernetes, Fargate, Cloud Run
+- **Serverless:** Lambda, Cloud Functions
+- **Bare metal:** Systemd, PM2, manual processes
+
+**The pattern is always the same:**
+
+1. Run one Resonate server (coordinates work)
+2. Run N workers (execute your code)
+3. Connect workers to server via `RESONATE_URL`
+
+Choose your infrastructure based on your operational preferences and scale requirements. Resonate adapts to where you want to run.

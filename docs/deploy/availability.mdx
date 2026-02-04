@@ -1,0 +1,258 @@
+---
+id: availability
+title: Availability
+sidebar_label: Availability
+description: High availability strategies for Resonate deployments.
+sidebar_position: 5
+tags:
+  - deploy
+  - availability
+  - ha
+  - postgres
+---
+
+Resonate's availability depends primarily on the availability of its persistent storage. Since all execution state is stored in the database, database availability directly determines system reliability.
+
+## Architecture and availability
+
+**The Resonate server coordinates work** but doesn't execute your functions. This separation means:
+
+- Worker failures don't impact the server
+- Worker restarts don't lose execution state
+- Workers can be added/removed dynamically
+- The database is the single source of truth for all execution state
+
+A single Resonate server can coordinate thousands of workers and millions of promises because it's a coordination layer, not a computational bottleneck.
+
+## Persistent storage
+
+### PostgreSQL (recommended)
+
+**Use PostgreSQL for production deployments** when you need:
+- High availability and replication
+- Multi-tenant deployments (multiple teams/projects sharing one server)
+- High write throughput
+- Standard HA patterns and tooling
+
+### SQLite
+
+**SQLite works for specific use cases:**
+- Single-tenant micro deployments (one server per user/project)
+- Embedded use cases where the server runs alongside your app
+- Low-traffic production workloads
+- Deployments where simplicity matters more than scale
+
+Resonate's server and SDK are lightweight enough to support micro deployments. You can run isolated server instances with SQLite for specific users or projects.
+
+For shared, multi-tenant deployments, PostgreSQL provides better concurrency and HA options.
+
+### Configure PostgreSQL
+
+```bash title="Start server with PostgreSQL"
+resonate serve \
+  --aio-store-postgres-enable \
+  --aio-store-postgres-host localhost \
+  --aio-store-postgres-database resonate \
+  --aio-store-postgres-username resonate \
+  --aio-store-postgres-password secret
+```
+
+```yaml title="resonate.yaml"
+aio:
+  store:
+    postgres:
+      enable: true
+      host: "postgres.example.com"
+      database: "resonate"
+      username: "resonate"
+      password: "secret"
+      query: "sslmode=require"
+```
+
+## PostgreSQL high availability
+
+Since the server stores all promise state in PostgreSQL, database availability directly impacts system reliability.
+
+Use standard PostgreSQL HA patterns:
+
+### Managed services (recommended)
+
+Managed database services handle replication, failover, and backups automatically:
+
+- **AWS RDS** with Multi-AZ deployment
+- **Google Cloud SQL** with high availability configuration
+- **Azure Database for PostgreSQL** with zone redundancy
+- **Supabase** with automatic backups and replication
+
+These services provide:
+- Automatic failover (typically &lt;1 minute)
+- Automated backups with point-in-time recovery
+- Read replicas for scaling read traffic
+- Monitoring and alerting built-in
+
+:::tip Use managed PostgreSQL for production
+Let your cloud provider handle database operations. They're better at it than you are, and their HA patterns are battle-tested.
+:::
+
+### Self-managed replication
+
+If you need to manage PostgreSQL yourself:
+
+**Primary-replica setup:**
+- Use Patroni or similar for automatic failover
+- Configure streaming replication between primary and replicas
+- Set up health checks and automatic promotion
+
+**Point-in-time recovery (PITR):**
+- Enable WAL (write-ahead logging) archiving
+- Store WAL files in durable storage (S3, GCS, etc.)
+- Test recovery procedures regularly
+
+**Example backup strategy:**
+
+```bash title="Automated PostgreSQL backups"
+# Daily full backup
+pg_dump -h postgres.example.com -U resonate resonate > backup-$(date +%Y%m%d).sql
+
+# Continuous WAL archiving for PITR
+# In postgresql.conf:
+archive_mode = on
+archive_command = 'cp %p /mnt/wal_archive/%f'
+```
+
+## Server monitoring
+
+Monitor server health to detect issues before they impact availability:
+
+### Health check endpoint
+
+```bash title="Check server health"
+curl http://localhost:8001/healthz
+```
+
+Returns `200 OK` when the server is healthy. Use this in load balancer health checks and monitoring systems.
+
+### Prometheus metrics
+
+```bash title="Scrape metrics"
+curl http://localhost:9090/metrics
+```
+
+**Key metrics to watch:**
+
+```promql
+# Promise rate (workload indicator)
+rate(promises_total[5m])
+
+# Pending promises (backlog indicator)
+promises_total{state="pending"}
+
+# API request latency (performance indicator)
+histogram_quantile(0.95, rate(api_duration_seconds_bucket[5m]))
+
+# Server internal queue (capacity indicator)
+sum(coroutines_in_flight)
+```
+
+See [Metrics](/deploy/metrics) for the full metrics catalog.
+
+### Alerting
+
+Set up alerts for critical conditions:
+
+```yaml title="alerting-rules.yml"
+groups:
+  - name: resonate-availability
+    rules:
+      - alert: ResonateServerDown
+        expr: up{job="resonate-server"} == 0
+        for: 1m
+        annotations:
+          summary: "Resonate server is unreachable"
+
+      - alert: HighAPIErrorRate
+        expr: rate(api_requests_total{status=~"5.."}[5m]) > 10
+        for: 5m
+        annotations:
+          summary: "High server error rate indicates availability issues"
+
+      - alert: PromiseBacklogGrowing
+        expr: increase(promises_total{state="pending"}[5m]) > 100
+        for: 10m
+        annotations:
+          summary: "Promise backlog growing - may indicate processing issues"
+```
+
+## Server restart procedures
+
+The Resonate server can be restarted safely without losing work:
+
+1. **State preserved in PostgreSQL** - All promise state persists across restarts
+2. **Workers handle disconnection** - Workers detect server disconnect and retry connections automatically
+3. **Graceful shutdown** - Server responds to `SIGTERM` and attempts graceful cleanup (configurable timeout, default 10s)
+4. **Workers resume** - When the server comes back online, workers reconnect and continue from checkpoints
+
+### Restart the server
+
+```bash title="Graceful server restart"
+# Stop the server (sends SIGTERM for graceful shutdown)
+kill -TERM $(pgrep resonate)
+
+# Wait for shutdown (respects timeout config, default 10s)
+sleep 12
+
+# Start server again
+resonate serve --config resonate.yaml
+```
+
+The `timeout` configuration option controls how long the server waits during graceful shutdown (default: 10s). See [Server configuration](/deploy/run-server#customize-configuration).
+
+### Rolling updates
+
+For zero-downtime updates, the current architecture requires:
+
+1. Upgrade the database schema (if needed) in a backward-compatible way
+2. Deploy the new server version
+3. Restart the server (brief downtime: ~10s)
+4. Workers reconnect automatically
+
+**Multi-server deployments** (where multiple server instances share the same database) are not yet supported. The server-to-server coordination protocol is not implemented.
+
+## When to upgrade server resources
+
+The server's resource needs grow slowly compared to workers. Consider upgrading when you observe:
+
+- **Database connections exhausted** - Increase connection pool size or upgrade server RAM
+- **CPU sustained &gt;80%** - Rare, but indicates heavy coordination load
+- **Network bandwidth saturated** - Large payloads moving between workers and server
+
+For most deployments, a modest server (2-4 CPUs, 4-8GB RAM) can coordinate hundreds of workers processing thousands of tasks per second.
+
+## What's not available yet
+
+Some features you might expect in a high-availability guide aren't implemented today:
+
+**Multi-server coordination** - Resonate doesn't support running multiple server instances that coordinate with each other. You run one server that coordinates many workers.
+
+**Automatic server failover** - No built-in automatic failover between multiple server instances. Use PostgreSQL HA/replication for state persistence, and restart the server if it crashes.
+
+**Cross-region disaster recovery** - For multi-region setups, use standard PostgreSQL replication patterns and manual failover procedures.
+
+These features aren't implemented because **worker horizontal scaling** handles the vast majority of scale and availability needs. The server coordinates but doesn't execute work, so it's rarely a bottleneck or single point of failure (state lives in PostgreSQL).
+
+If your use case exceeds single-server capacity, contact the Resonate team to discuss your requirements.
+
+## Summary
+
+**Availability in Resonate depends on:**
+1. PostgreSQL availability (use managed HA services)
+2. Server monitoring and alerting
+3. Worker fault tolerance (automatic via heartbeats)
+
+**The pattern:**
+- Use managed PostgreSQL with HA configuration
+- Monitor server health and database connections
+- Scale workers horizontally for capacity
+- Scale server vertically if coordination becomes a bottleneck
+
+**Resonate's architecture makes availability simpler** because execution state lives in the database, not in-memory. Worker failures don't lose work, and server restarts are safe.

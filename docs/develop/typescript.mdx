@@ -115,7 +115,7 @@ const resonate = new Resonate();
 
 Local development mode can be suitable for awhile.
 However, when you want to run multiple worker processes, persist state across restarts, or share work between machines, you will need to connect to a Resonate Server.
-See the [Quickstart guide](/get-started/quickstart) or [How to run a Resonate Server](/operate/run-server) for guidance on getting a server up and running.
+See the [Quickstart guide](/get-started/quickstart) or [How to run a Resonate Server](/deploy/run-server) for guidance on getting a server up and running.
 
 ### Authentication
 
@@ -151,7 +151,7 @@ const resonate = new Resonate({
 ```
 
 :::tip
-Token-based authentication is recommended for production. See the [Security & Authentication](/operate/security) guide for detailed configuration, best practices, and server setup.
+Token-based authentication is recommended for production. See the [Security & Authentication](/deploy/security) guide for detailed configuration, best practices, and server setup.
 :::
 
 ### Message sources
@@ -173,7 +173,7 @@ const resonate = new Resonate({ transport });
 ```
 
 The underlying protocols enable a wide range of potential message transports including SQS, Pub/Sub, RabbitMQ, NATS, and more.
-See [Message transports](/operate/message-transports) for a complete list.
+See [Message transports](/deploy/message-transports) for a complete list.
 
 ### Environment Variables
 

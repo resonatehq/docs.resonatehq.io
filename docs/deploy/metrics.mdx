@@ -1,0 +1,519 @@
+---
+id: metrics
+title: Metrics
+description: Prometheus metrics exposed by the Resonate server.
+sidebar_label: Metrics
+sidebar_position: 8
+tags:
+  - deploy
+  - metrics
+  - observability
+  - prometheus
+---
+
+The Resonate server exposes a metrics endpoint `:9090/metrics` that is compatible with Prometheus.
+
+The `aio` prefix refers to stuff that “goes out” of the server such as requests to the store, sending tasks to nodes, etc.
+Coroutines refers to the units of business logic in the Server.
+
+## Metrics exposed
+
+### aio_connection
+
+Number of aio subsystem connections.
+
+- gauge
+- `aio_connection{type="sender:poll"} 0`
+
+### aio_in_flight_submissions
+
+Number of in flight aio submissions.
+
+- gauge
+- `aio_in_flight_submissions{type="store"} 0`
+
+### aio_total_submissions
+
+Total number of aio submissions.
+
+- counter
+- `aio_total_submissions{status="success",type="store"} 0`
+
+### aio_worker_count
+
+Number of aio subsystem workers.
+
+- gauge
+- `aio_worker_count{type="router"} 0`
+- `aio_worker_count{type="sender"} 0`
+- `aio_worker_count{type="sender:http"} 0`
+- `aio_worker_count{type="sender:poll"} 0`
+- `aio_worker_count{type="store:sqlite"} 0`
+
+### aio_worker_in_flight_submissions
+
+Number of in flight aio submissions.
+
+- gauge
+- `aio_worker_in_flight_submissions{type="router",worker="0"} 0`
+- `aio_worker_in_flight_submissions{type="sender",worker="0"} 0`
+- `aio_worker_in_flight_submissions{type="sender:http",worker="0"} 0`
+- `aio_worker_in_flight_submissions{type="sender:poll",worker="0"} 0`
+- `aio_worker_in_flight_submissions{type="store:sqlite",worker="0"} 0`
+
+### coroutines_in_flight number
+
+Number of in flight coroutines.
+
+- gauge
+- `coroutines_in_flight{type="EnqueueTasks"} 0`
+- `coroutines_in_flight{type="SchedulePromises"} 0`
+- `coroutines_in_flight{type="TimeoutLocks"} 0`
+- `coroutines_in_flight{type="TimeoutPromises"} 0`
+- `coroutines_in_flight{type="TimeoutTasks"} 0`
+
+### coroutines_total
+
+Total number of coroutines.
+
+- counter
+- `coroutines_total{type="EnqueueTasks"} 0`
+- `coroutines_total{type="SchedulePromises"} 0`
+- `coroutines_total{type="TimeoutLocks"} 0`
+- `coroutines_total{type="TimeoutPromises"} 0`
+- `coroutines_total{type="TimeoutTasks"} 0`
+
+## Using Prometheus
+
+### Quick start
+
+1. **Download Prometheus:** https://prometheus.io/download/
+
+2. **Configure Prometheus** to scrape Resonate metrics:
+
+```yml title="prometheus.yml"
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "resonate-server"
+    static_configs:
+      - targets: ["localhost:9090"]  # Resonate metrics endpoint
+        labels:
+          app: "resonate"
+          env: "production"
+```
+
+3. **Start Prometheus:**
+
+```bash
+# Run on port 9091 to avoid conflict with Resonate (which uses 9090)
+./prometheus --config.file=prometheus.yml --web.listen-address=:9091
+```
+
+4. **Access Prometheus UI:**
+
+Open http://localhost:9091 to query metrics and build dashboards.
+
+### Prometheus in Docker
+
+```yaml title="docker-compose.yml"
+version: '3.8'
+services:
+  resonate-server:
+    image: resonatehq/resonate:latest
+    ports:
+      - "8001:8001"
+      - "9090:9090"  # Metrics endpoint
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+
+volumes:
+  prometheus-data:
+```
+
+### Prometheus in Kubernetes
+
+```yaml title="prometheus-config.yaml"
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    scrape_configs:
+      - job_name: 'resonate'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - default
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            regex: resonate-server
+            action: keep
+```
+
+## Using Grafana
+
+Grafana visualizes metrics from Prometheus.
+
+### Quick start
+
+1. **Download Grafana:** https://grafana.com/grafana/download
+
+2. **Start Grafana:**
+
+```bash
+./grafana server
+```
+
+3. **Add Prometheus as a data source:**
+   - Open http://localhost:3000 (default Grafana UI)
+   - Go to Configuration → Data Sources
+   - Add Prometheus
+   - URL: `http://localhost:9091` (your Prometheus instance)
+
+4. **Create dashboards** using PromQL queries.
+
+### Example dashboard panels
+
+**Promise workload:**
+
+```promql
+# Total pending promises
+promises_total{state="pending"}
+
+# Promise rate by state
+rate(promises_total[5m])
+```
+
+**Task processing:**
+
+```promql
+# Total tasks by state
+tasks_total{state="claimed"}
+tasks_total{state="completed"}
+
+# Task completion rate
+rate(tasks_total{state="completed"}[5m])
+```
+
+**Server load:**
+
+```promql
+# API request rate
+rate(api_requests_total[5m])
+
+# Coroutines in flight (internal queue depth)
+sum(coroutines_in_flight)
+```
+
+## Key metrics to track
+
+### Workload metrics
+
+**Promise rate:**
+```promql
+rate(promises_total[5m])
+```
+Indicates incoming workload. Track trends and spikes across all promise states.
+
+**Pending promises:**
+```promql
+promises_total{state="pending"}
+```
+Backlog of work. Should stay near zero. Growth indicates insufficient worker capacity or processing issues.
+
+**Promise state distribution:**
+```promql
+promises_total{state="resolved"}
+promises_total{state="rejected"}
+promises_total{state="canceled"}
+```
+Track outcomes to understand success/failure patterns.
+
+### Task metrics
+
+**Task completion rate:**
+```promql
+rate(tasks_total{state="completed"}[5m])
+```
+How fast tasks are being processed. Compare with promise rate to understand throughput.
+
+**Claimed vs completed:**
+```promql
+tasks_total{state="claimed"}
+tasks_total{state="completed"}
+```
+Large gap between claimed and completed indicates tasks are stalling.
+
+### Server metrics
+
+**API request rate:**
+```promql
+rate(api_requests_total[5m])
+```
+Overall server load. High values indicate heavy traffic.
+
+**API request latency:**
+```promql
+histogram_quantile(0.95, rate(api_duration_seconds_bucket[5m]))
+```
+P95 latency for API requests. High values indicate performance bottlenecks.
+
+**HTTP requests:**
+```promql
+rate(http_requests_total[5m])
+```
+HTTP API usage. Track by method and path to understand traffic patterns.
+
+**Coroutines in flight:**
+```promql
+sum(coroutines_in_flight)
+```
+Server's internal work queue. High values indicate server capacity issues.
+
+**AIO submissions:**
+```promql
+rate(aio_total_submissions{status="success"}[5m])
+rate(aio_total_submissions{status="failure"}[5m])
+```
+Server's asynchronous I/O operations (database, worker communication). Failures indicate infrastructure issues.
+
+## Alerting rules
+
+Set up alerts for critical conditions:
+
+```yml title="alerts.yml"
+groups:
+  - name: resonate-alerts
+    rules:
+      - alert: ResonateServerDown
+        expr: up{job="resonate-server"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Resonate server is down"
+          description: "Resonate server has been down for more than 1 minute"
+
+      - alert: HighAPIErrorRate
+        expr: rate(api_requests_total{status=~"5.."}[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API error rate"
+          description: "More than 10 API errors per minute"
+
+      - alert: PromiseBacklogGrowing
+        expr: increase(promises_total{state="pending"}[5m]) > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Promise backlog is growing"
+          description: "Pending promises are accumulating - scale workers or check processing"
+
+      - alert: TasksNotCompleting
+        expr: tasks_total{state="claimed"} - tasks_total{state="completed"} > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tasks claimed but not completing"
+          description: "Large gap between claimed and completed tasks"
+
+      - alert: HighAPILatency
+        expr: histogram_quantile(0.95, rate(api_duration_seconds_bucket[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API latency"
+          description: "P95 API latency is over 5 seconds"
+```
+
+Load alerting rules in Prometheus:
+
+```yml title="prometheus.yml"
+global:
+  scrape_interval: 15s
+
+rule_files:
+  - "alerts.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['localhost:9093']  # Alertmanager endpoint
+
+scrape_configs:
+  - job_name: "resonate-server"
+    static_configs:
+      - targets: ["localhost:9090"]
+```
+
+## Cloud provider integration
+
+### AWS CloudWatch
+
+Export metrics to CloudWatch using a bridge:
+
+```yaml
+# Use Prometheus CloudWatch exporter
+- name: cloudwatch-exporter
+  image: prom/cloudwatch-exporter:latest
+```
+
+Or use AWS Managed Prometheus (AMP):
+- Creates a workspace for Prometheus
+- Automatically scrapes metrics from ECS/EKS
+- Integrated with CloudWatch dashboards
+
+### Google Cloud Monitoring
+
+Use Google Cloud Managed Prometheus:
+
+```yaml title="prometheus.yaml"
+global:
+  external_labels:
+    cluster: 'my-cluster'
+    project_id: 'my-project'
+
+scrape_configs:
+  - job_name: 'resonate'
+    kubernetes_sd_configs:
+      - role: pod
+```
+
+Google Cloud Monitoring automatically imports Prometheus metrics.
+
+### Datadog
+
+Use the Datadog Agent to scrape Prometheus metrics:
+
+```yaml title="datadog-agent-config.yaml"
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: datadog-config
+data:
+  prometheus.yaml: |
+    - prometheus_url: http://resonate-server:9090/metrics
+      namespace: resonate
+      metrics:
+        - resonate_*
+```
+
+## Best practices
+
+1. **Set retention policies** - Prometheus defaults to 15 days. Adjust based on needs:
+```bash
+./prometheus --storage.tsdb.retention.time=90d
+```
+
+2. **Use recording rules** for expensive queries:
+```yml
+groups:
+  - name: resonate-recording-rules
+    interval: 1m
+    rules:
+      - record: resonate:promise_creation_rate:5m
+        expr: rate(resonate_promises_created_total[5m])
+```
+
+3. **Monitor Prometheus itself**:
+```promql
+prometheus_tsdb_storage_blocks_bytes  # Storage usage
+prometheus_target_scrapes_exceeded_sample_limit_total  # Cardinality issues
+```
+
+4. **Use labels strategically** - Don't add high-cardinality labels (e.g., user IDs, promise IDs)
+
+5. **Alert on trends, not thresholds** - Use `rate()` and time windows to detect anomalies
+
+6. **Test alerts** - Trigger alerts intentionally to verify they work
+
+## Troubleshooting metrics
+
+### Metrics endpoint not accessible
+
+**Check server is running:**
+```bash
+curl http://localhost:9090/metrics
+```
+
+Should return Prometheus-formatted metrics.
+
+**Check metrics port configuration:**
+```yaml title="resonate.yaml"
+api:
+  metrics:
+    port: 9090  # Must be accessible to Prometheus
+```
+
+### Prometheus not scraping metrics
+
+**Check Prometheus targets:**
+- Open http://localhost:9091/targets
+- Look for your Resonate server job
+- Status should be "UP" with green indicator
+
+**Common issues:**
+- Wrong target address (hostname/port)
+- Network/firewall blocking access
+- Prometheus config not loaded (restart Prometheus)
+
+### Missing metrics
+
+**Not all metrics appear immediately.** Some are only emitted when events occur:
+- `promises_total` - Only increments when promises are created/resolved
+- `tasks_total` - Only increments when tasks are created/completed
+- `http_requests_total` - Only increments when HTTP requests are made
+
+Run workload to generate metrics.
+
+**Metrics not currently exposed:**
+- Worker heartbeat failures (monitor worker pod restarts at infrastructure level)
+- Database connection pool stats (PostgreSQL exposes these separately)
+- Per-worker execution metrics (not tracked at server level)
+
+## Summary
+
+**For development:**
+- Run Prometheus locally
+- Use Prometheus UI for ad-hoc queries
+- Focus on understanding baseline metrics
+
+**For production:**
+- Use managed Prometheus (AWS AMP, GCP Managed Prometheus, Grafana Cloud)
+- Set up Grafana dashboards
+- Configure alerting for critical conditions
+- Monitor trends, not just point-in-time values
+- Integrate with your existing observability stack
+
+**Key metrics to always track:**
+- `promises_total` by state (workload)
+- `tasks_total` by state (processing throughput)
+- `api_requests_total` (server load)
+- `coroutines_in_flight` (server capacity)
+
+**What's not metricked:**
+- Individual worker health (monitor at infrastructure level: K8s pod restarts, container health)
+- Database connection pools (use PostgreSQL's own metrics)
+- Promise/task latency histograms (not currently exposed)
+
+Metrics give you visibility into system health. Set them up before you need them.
