@@ -71,7 +71,7 @@ Scale workers horizontally when you see:
 
 - **High CPU usage** across worker processes (>70% sustained)
 - **Task queue buildup** (promises pending longer than expected)
-- **Slow response times** for RPC calls
+- **Slow response times** for synchronous RPC calls
 - **Memory pressure** (workers running out of RAM)
 
 You can run as many workers as needed - there's no fixed limit. Start with 2-4 workers and scale based on observed load.
