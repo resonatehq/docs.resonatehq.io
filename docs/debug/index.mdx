@@ -1,0 +1,65 @@
+---
+id: debug
+title: Debug
+sidebar_label: Overview
+description: Diagnose and fix issues in Resonate applications.
+sidebar_position: 1
+tags:
+  - debugging
+  - troubleshooting
+  - errors
+---
+
+Something's not working. This section helps you figure out why and fix it.
+
+## When things go wrong
+
+Debugging distributed systems is hard. Resonate's durable execution model helps by preserving execution state across failures, but you still need to know where to look when something breaks.
+
+**Start here:**
+
+1. **Check the logs** - Server and SDK logs show what's happening at each step
+2. **Look for error codes** - Resonate returns structured errors with codes you can search
+3. **Use the troubleshooting guide** - Common problems and solutions
+
+## What you'll find here
+
+### [Errors](/debug/errors)
+
+Resonate's error codes and what they mean. When you see an error, look it up here to understand what went wrong and how to fix it.
+
+### [Troubleshooting](/debug/troubleshooting)
+
+Common problems and their solutions. Start here if you're seeing unexpected behavior but not sure what's causing it.
+
+## Debug workflow
+
+**When something fails:**
+
+1. **Reproduce it** - Can you make it happen again? Consistent failures are easier to debug
+2. **Check the logs** - Server logs (see [Logging](/deploy/logging)) show internal state changes
+3. **Look up the error** - Find the error code in the [Errors](/debug/errors) reference
+4. **Check common issues** - See if your problem matches something in [Troubleshooting](/debug/troubleshooting)
+5. **Ask for help** - If you're stuck, share logs + error codes in [Discord](https://discord.gg/R4ad7T4U)
+
+## What debugging looks like
+
+**Durable execution changes debugging:**
+
+In traditional systems, when a function fails, its execution state is lost. You see an error but can't inspect where it failed or what it was doing.
+
+With Resonate, execution state is preserved in durable promises. When something fails:
+- The promise shows the last successful checkpoint
+- You can inspect input/output of each step
+- You can retry from the failure point (not from scratch)
+- Logs show the full execution history
+
+This makes debugging **incremental** rather than blind.
+
+## Beyond this section
+
+- **Deployment issues** → See [Deploy](/deploy) for server startup, configuration, and infrastructure problems
+- **Performance tuning** → See [Scaling](/deploy/scaling) for capacity and throughput optimization
+- **Observability setup** → See [Logging](/deploy/logging), [Metrics](/deploy/metrics), and [Tracing](/deploy/tracing) to instrument your system
+
+This section is about **fixing what's broken**. The other sections are about **building what works**.

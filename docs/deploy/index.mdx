@@ -1,0 +1,272 @@
+---
+id: deploy
+title: Deploy
+sidebar_label: Overview
+description: Deploy Resonate from development to production.
+sidebar_position: 1
+tags:
+  - deploy
+  - deployment
+  - production
+---
+
+Deployment is how you take Resonate from your laptop to production. This section covers everything you need to run Resonate reliably at any scale.
+
+## What you're deploying
+
+Resonate has two components:
+
+1. **Resonate Server** - Coordinates work, stores durable promise state, routes tasks to workers
+2. **Workers** - Execute your application code (functions you write)
+
+**Key insight:** The server coordinates. Workers execute. This separation means you scale execution capacity (workers) independently from coordination (server).
+
+## The deployment spectrum
+
+"Production" means different things depending on your scale:
+
+### Development
+
+**Local testing** - Docker Compose or `resonate dev`:
+- SQLite for storage (no PostgreSQL needed)
+- 1-2 workers for testing
+- Logs to stdout
+- No authentication
+
+**What matters:** Fast iteration, easy debugging.
+
+### Staging
+
+**Pre-production testing** - Similar to production but isolated:
+- PostgreSQL for realistic behavior
+- Multiple workers to test load distribution
+- Observability setup (logs, metrics)
+- Authentication enabled
+
+**What matters:** Catch integration issues before they hit production.
+
+### Production
+
+**Real workloads** - Scale and reliability matter:
+- PostgreSQL with high availability
+- Workers scaled to handle load (5-100+)
+- Full observability (logging, metrics, tracing)
+- Authentication and TLS
+- Monitoring and alerting
+
+**What matters:** Uptime, performance, security.
+
+## How to deploy Resonate
+
+### 1. Choose your infrastructure
+
+Where do you want to run Resonate?
+
+- **Containers** (Docker, Kubernetes) → See [Deployment patterns](/deploy/deployment-patterns)
+- **Serverless** (Cloud Run, Lambda, Fargate) → See [Deployment patterns](/deploy/deployment-patterns)
+- **Bare metal / VMs** → See [Deployment patterns](/deploy/deployment-patterns)
+
+Resonate works anywhere. Choose based on your operational preferences.
+
+### 2. Run the server
+
+Start the Resonate server with persistent storage:
+
+- **Development:** SQLite is fine
+- **Production:** Use PostgreSQL (see [Run server](/deploy/run-server))
+
+The server coordinates work for all your workers.
+
+### 3. Deploy workers
+
+Workers execute your application code:
+
+- Start with 2-4 workers
+- Scale horizontally based on load (see [Scaling](/deploy/scaling))
+- Workers connect to the server via `RESONATE_URL`
+
+### 4. Set up observability
+
+You can't manage what you can't measure:
+
+- **Logging** → See [Logging](/deploy/logging)
+- **Metrics** → See [Metrics](/deploy/metrics)
+- **Tracing** → See [Tracing](/deploy/tracing)
+
+### 5. Secure it
+
+Enable authentication and TLS for production:
+
+- **Authentication** → Token-based (JWT) or basic auth
+- **TLS** → Secure server communication
+- **Secrets** → Store credentials safely
+
+See [Security](/deploy/security) for details.
+
+### 6. Ensure availability
+
+Make your deployment resilient:
+
+- **PostgreSQL HA** → Use managed services (RDS, Cloud SQL)
+- **Worker fault tolerance** → Automatic via heartbeats
+- **Server monitoring** → Health checks and alerts
+
+See [Availability](/deploy/availability) for HA patterns.
+
+## What to read first
+
+**If you're just starting:**
+1. [Run server](/deploy/run-server) - Get the server running locally
+2. [Deployment patterns](/deploy/deployment-patterns) - See your infrastructure options
+3. [Scaling](/deploy/scaling) - Understand how workers scale
+
+**If you're going to production:**
+1. [Deployment patterns](/deploy/deployment-patterns) - Choose your infrastructure
+2. [Availability](/deploy/availability) - Set up PostgreSQL HA
+3. [Security](/deploy/security) - Enable auth and TLS
+4. [Scaling](/deploy/scaling) - Plan for load
+5. [Logging](/deploy/logging), [Metrics](/deploy/metrics), [Tracing](/deploy/tracing) - Observe everything
+
+**If you're debugging issues:**
+Go to [Debug](/debug) - that section is for troubleshooting.
+
+## Decision tree
+
+Not sure where to start? Follow this:
+
+```
+Are you developing locally?
+  └─ Yes → Use Docker Compose or `resonate dev` with SQLite
+  └─ No → Continue
+
+Do you need production reliability?
+  └─ No → Use Docker Compose with PostgreSQL for staging
+  └─ Yes → Continue
+
+What infrastructure do you prefer?
+  ├─ Kubernetes → See Kubernetes deployment pattern
+  ├─ Serverless (Cloud Run, Lambda) → See serverless deployment pattern
+  ├─ Bare metal / VMs → See systemd deployment pattern
+  └─ Not sure → Start with Docker Compose, migrate later
+
+How many workers do you need?
+  ├─ <10 → Start with Docker Compose or simple VM deployment
+  ├─ 10-100 → Use Kubernetes with HPA or Cloud Run with auto-scaling
+  └─ >100 → Use Kubernetes with horizontal pod autoscaling
+
+Do you have variable/unpredictable load?
+  └─ Yes → Use serverless (Cloud Run, Fargate) for auto-scaling
+  └─ No → Use containers with manual scaling
+```
+
+## Common patterns
+
+### Small production (1-10 workers)
+
+**Pattern:** Docker Compose + managed PostgreSQL
+
+```yaml
+services:
+  resonate-server:
+    image: resonatehq/resonate:latest
+    environment:
+      RESONATE_STORE_POSTGRES_HOST: your-postgres.rds.amazonaws.com
+  
+  worker:
+    image: your-app:latest
+    environment:
+      RESONATE_URL: http://resonate-server:8001
+    deploy:
+      replicas: 5
+```
+
+**Why:** Simple, cheap, easy to manage. Perfect for small teams.
+
+### Medium production (10-100 workers)
+
+**Pattern:** Kubernetes + Cloud SQL + HPA
+
+- Resonate server: 1 replica (single server coordinates all workers)
+- Workers: Deployment with HorizontalPodAutoscaler
+- PostgreSQL: Managed service (Cloud SQL, RDS)
+
+**Why:** Kubernetes handles scaling, managed services handle ops.
+
+### Large production (100+ workers)
+
+**Pattern:** Kubernetes + replicated PostgreSQL + regional deployment
+
+- Same as medium, but with PostgreSQL replication for HA
+- Regional worker deployments for latency
+- Advanced monitoring and alerting
+
+**Why:** Scale requires automation and redundancy.
+
+### Variable load
+
+**Pattern:** Cloud Run or Fargate workers + managed PostgreSQL
+
+- Workers scale to zero when idle
+- Auto-scale to 100+ during load spikes
+- Pay only for what you use
+
+**Why:** Serverless auto-scaling handles unpredictable workloads.
+
+## Architecture principles
+
+Understanding these principles helps you deploy Resonate effectively:
+
+### 1. Server coordinates, workers execute
+
+The server never runs your code. It coordinates work and stores durable promise state. This means:
+- Server resource needs are modest (2-4 CPUs, 4-8GB RAM)
+- Workers scale to handle load
+- You can restart workers without losing work
+
+### 2. State lives in the database
+
+All execution state is stored in PostgreSQL (or SQLite for dev). This means:
+- Server restarts don't lose work
+- Worker failures don't lose work
+- Database availability = system availability
+
+### 3. Workers are stateless and interchangeable
+
+Workers poll for tasks and execute them. Any worker in a group can handle any task. This means:
+- Workers scale horizontally (add as many as you need)
+- Workers can be restarted safely
+- Load balances automatically
+
+### 4. Fault tolerance is built-in
+
+Resonate handles worker failures automatically via heartbeat timeouts. This means:
+- No manual intervention for worker crashes
+- Work is reassigned automatically
+- Execution resumes from last checkpoint
+
+## What's not covered yet
+
+Some features you might expect in a production deployment:
+
+**Multi-server coordination** - Resonate doesn't support running multiple server instances that coordinate with each other. One server coordinates many workers.
+
+**Automatic server failover** - No built-in failover between multiple servers. Use PostgreSQL HA/replication for state persistence.
+
+**Cross-region disaster recovery** - Use standard PostgreSQL replication patterns and manual failover procedures.
+
+These features aren't implemented because **worker horizontal scaling** handles the vast majority of scale needs. The server coordinates work but doesn't execute it, so it's rarely a bottleneck.
+
+## Summary
+
+**To deploy Resonate:**
+1. Run one server (coordinates all work)
+2. Run N workers (execute your code)
+3. Use PostgreSQL for production
+4. Scale workers horizontally for capacity
+5. Enable observability and security
+
+**Start simple, scale as needed.** You can begin with Docker Compose on a single VM and grow to Kubernetes with 100+ workers when your workload requires it.
+
+---
+
+**Next:** Ready to run the server? See [Run server](/deploy/run-server).

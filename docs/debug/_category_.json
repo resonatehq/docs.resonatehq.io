@@ -1,0 +1,8 @@
+{
+  "label": "Debug",
+  "position": 4,
+  "link": {
+    "type": "doc",
+    "id": "debug/index"
+  }
+}

@@ -1,10 +1,10 @@
 {
-  "label": "Operate",
-  "position": 6,
+  "label": "Deploy",
+  "position": 5,
   "collapsed": false,
   "collapsible": false,
   "link": {
     "type": "doc",
-    "id": "operate/index"
+    "id": "deploy/index"
   }
 }
