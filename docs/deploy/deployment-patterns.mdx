@@ -405,9 +405,9 @@ Resonate doesn't care where workers run as long as they can reach the server.
 | Use case | Recommended pattern |
 |----------|---------------------|
 | Local development | Docker Compose |
-| Small production (<10 workers) | Docker Compose or single VM |
+| Small production (&lt;10 workers) | Docker Compose or single VM |
 | Medium production (10-100 workers) | Kubernetes or Cloud Run |
-| Large production (>100 workers) | Kubernetes with HPA |
+| Large production (&gt;100 workers) | Kubernetes with HPA |
 | Variable/unpredictable load | Cloud Run or Fargate |
 | Event-driven workloads | Lambda workers |
 | Cost-sensitive | Cloud Run (scales to zero) |

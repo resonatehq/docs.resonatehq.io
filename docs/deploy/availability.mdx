@@ -85,7 +85,7 @@ Managed database services handle replication, failover, and backups automaticall
 - **Supabase** with automatic backups and replication
 
 These services provide:
-- Automatic failover (typically <1 minute)
+- Automatic failover (typically &lt;1 minute)
 - Automated backups with point-in-time recovery
 - Read replicas for scaling read traffic
 - Monitoring and alerting built-in
@@ -223,7 +223,7 @@ For zero-downtime updates, the current architecture requires:
 The server's resource needs grow slowly compared to workers. Consider upgrading when you observe:
 
 - **Database connections exhausted** - Increase connection pool size or upgrade server RAM
-- **CPU sustained >80%** - Rare, but indicates heavy coordination load
+- **CPU sustained &gt;80%** - Rare, but indicates heavy coordination load
 - **Network bandwidth saturated** - Large payloads moving between workers and server
 
 For most deployments, a modest server (2-4 CPUs, 4-8GB RAM) can coordinate hundreds of workers processing thousands of tasks per second.
