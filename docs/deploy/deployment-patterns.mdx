@@ -1,7 +1,7 @@
 ---
 id: deployment-patterns
 title: Deployment patterns
-sidebar_label: Deployment patterns
+sidebar_label: Patterns
 description: Deploy Resonate to different environments - Docker, Kubernetes, serverless, and more.
 sidebar_position: 3
 tags:
@@ -20,7 +20,7 @@ Resonate works in any environment where you can run a server and workers. This g
 Use Docker Compose for local development and staging environments. This gives you a complete Resonate stack (server + database + workers) with one command:
 
 ```yaml title="docker-compose.yml"
-version: '3.8'
+version: "3.8"
 
 services:
   postgres:
@@ -76,6 +76,7 @@ docker-compose up -d --scale worker=10
 ```
 
 This pattern works for:
+
 - Local development
 - CI/CD testing
 - Staging environments
@@ -93,7 +94,7 @@ kind: Deployment
 metadata:
   name: resonate-server
 spec:
-  replicas: 1  # Single server coordinates all workers
+  replicas: 1 # Single server coordinates all workers
   selector:
     matchLabels:
       app: resonate-server
@@ -103,47 +104,47 @@ spec:
         app: resonate-server
     spec:
       containers:
-      - name: server
-        image: resonatehq/resonate:latest
-        ports:
-        - containerPort: 8001
-          name: http
-        - containerPort: 50051
-          name: grpc
-        - containerPort: 9090
-          name: metrics
-        env:
-        - name: RESONATE_STORE_POSTGRES_ENABLE
-          value: "true"
-        - name: RESONATE_STORE_POSTGRES_HOST
-          value: "postgres-service"
-        - name: RESONATE_STORE_POSTGRES_DATABASE
-          valueFrom:
-            secretKeyRef:
-              name: postgres-credentials
-              key: database
-        - name: RESONATE_STORE_POSTGRES_USERNAME
-          valueFrom:
-            secretKeyRef:
-              name: postgres-credentials
-              key: username
-        - name: RESONATE_STORE_POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: postgres-credentials
-              key: password
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 8001
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /healthz
-            port: 8001
-          initialDelaySeconds: 5
-          periodSeconds: 5
+        - name: server
+          image: resonatehq/resonate:latest
+          ports:
+            - containerPort: 8001
+              name: http
+            - containerPort: 50051
+              name: grpc
+            - containerPort: 9090
+              name: metrics
+          env:
+            - name: RESONATE_STORE_POSTGRES_ENABLE
+              value: "true"
+            - name: RESONATE_STORE_POSTGRES_HOST
+              value: "postgres-service"
+            - name: RESONATE_STORE_POSTGRES_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: database
+            - name: RESONATE_STORE_POSTGRES_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: RESONATE_STORE_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8001
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 5
 ---
 apiVersion: v1
 kind: Service
@@ -153,15 +154,15 @@ spec:
   selector:
     app: resonate-server
   ports:
-  - name: http
-    port: 8001
-    targetPort: 8001
-  - name: grpc
-    port: 50051
-    targetPort: 50051
-  - name: metrics
-    port: 9090
-    targetPort: 9090
+    - name: http
+      port: 8001
+      targetPort: 8001
+    - name: grpc
+      port: 50051
+      targetPort: 50051
+    - name: metrics
+      port: 9090
+      targetPort: 9090
 ```
 
 ### Worker deployment
@@ -174,7 +175,7 @@ kind: Deployment
 metadata:
   name: resonate-workers
 spec:
-  replicas: 10  # Initial worker count
+  replicas: 10 # Initial worker count
   selector:
     matchLabels:
       app: resonate-worker
@@ -184,20 +185,20 @@ spec:
         app: resonate-worker
     spec:
       containers:
-      - name: worker
-        image: your-app:latest
-        env:
-        - name: RESONATE_URL
-          value: "http://resonate-server:8001"
-        - name: WORKER_GROUP
-          value: "workers"
-        resources:
-          requests:
-            cpu: "500m"
-            memory: "512Mi"
-          limits:
-            cpu: "1000m"
-            memory: "1Gi"
+        - name: worker
+          image: your-app:latest
+          env:
+            - name: RESONATE_URL
+              value: "http://resonate-server:8001"
+            - name: WORKER_GROUP
+              value: "workers"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -211,12 +212,12 @@ spec:
   minReplicas: 5
   maxReplicas: 50
   metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
 ```
 
 The HPA automatically scales worker pods based on CPU utilization.
@@ -278,19 +279,19 @@ export async function handler(event: any) {
 **Deployment (using AWS CDK):**
 
 ```typescript title="worker-stack.ts"
-import * as cdk from 'aws-cdk-lib';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as cdk from "aws-cdk-lib";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 
 export class ResonateWorkerStack extends cdk.Stack {
   constructor(scope: cdk.App, id: string) {
     super(scope, id);
 
-    new lambda.Function(this, 'ResonateWorker', {
+    new lambda.Function(this, "ResonateWorker", {
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'lambda-worker.handler',
-      code: lambda.Code.fromAsset('dist'),
+      handler: "lambda-worker.handler",
+      code: lambda.Code.fromAsset("dist"),
       environment: {
-        RESONATE_URL: 'https://resonate.example.com',
+        RESONATE_URL: "https://resonate.example.com",
       },
       timeout: cdk.Duration.minutes(15),
       memorySize: 512,
@@ -389,10 +390,12 @@ pm2 monit
 You can mix deployment patterns:
 
 **Example:** Server on Kubernetes, workers on Cloud Run
+
 - Central server in GKE for stability
 - Workers on Cloud Run for auto-scaling and cost efficiency
 
 **Example:** Server on VM, workers in Lambda
+
 - Self-hosted server for control
 - Serverless workers for variable load
 
@@ -402,17 +405,18 @@ Resonate doesn't care where workers run as long as they can reach the server.
 
 **Start simple, scale as needed:**
 
-| Use case | Recommended pattern |
-|----------|---------------------|
-| Local development | Docker Compose |
-| Small production (&lt;10 workers) | Docker Compose or single VM |
-| Medium production (10-100 workers) | Kubernetes or Cloud Run |
-| Large production (&gt;100 workers) | Kubernetes with HPA |
-| Variable/unpredictable load | Cloud Run or Fargate |
-| Event-driven workloads | Lambda workers |
-| Cost-sensitive | Cloud Run (scales to zero) |
+| Use case                           | Recommended pattern         |
+| ---------------------------------- | --------------------------- |
+| Local development                  | Docker Compose              |
+| Small production (&lt;10 workers)  | Docker Compose or single VM |
+| Medium production (10-100 workers) | Kubernetes or Cloud Run     |
+| Large production (&gt;100 workers) | Kubernetes with HPA         |
+| Variable/unpredictable load        | Cloud Run or Fargate        |
+| Event-driven workloads             | Lambda workers              |
+| Cost-sensitive                     | Cloud Run (scales to zero)  |
 
 **General guidance:**
+
 - Use managed services for PostgreSQL (RDS, Cloud SQL, etc.)
 - Start with containers (easier debugging than serverless)
 - Add auto-scaling when you understand your load patterns
@@ -421,11 +425,13 @@ Resonate doesn't care where workers run as long as they can reach the server.
 ## Summary
 
 Resonate works in any environment:
+
 - **Containers:** Docker Compose, Kubernetes, Fargate, Cloud Run
 - **Serverless:** Lambda, Cloud Functions
 - **Bare metal:** Systemd, PM2, manual processes
 
 **The pattern is always the same:**
+
 1. Run one Resonate server (coordinates work)
 2. Run N workers (execute your code)
 3. Connect workers to server via `RESONATE_URL`

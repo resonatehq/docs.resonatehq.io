@@ -1,6 +1,6 @@
 ---
 id: index
-title: Deploy
+title: Deploy a Resonate application
 sidebar_label: Overview
 description: Deploy Resonate from development to production.
 sidebar_position: 1
@@ -27,17 +27,23 @@ Resonate has two components:
 
 ### Development
 
-**Local testing** - Docker Compose or `resonate dev`:
-- SQLite for storage (no PostgreSQL needed)
-- 1-2 workers for testing
-- Logs to stdout
-- No authentication
+**Local testing** - Start with `resonate dev`:
+
+- Single command starts server with SQLite
+- No Docker or PostgreSQL required
+- Logs to stdout, hot-reload friendly
+- Perfect for development iteration
+
+**When you need more:**
+- Docker Compose for full stack (server + database + workers together)
+- Useful for testing worker scaling or database behavior
 
 **What matters:** Fast iteration, easy debugging.
 
 ### Staging
 
 **Pre-production testing** - Similar to production but isolated:
+
 - PostgreSQL for realistic behavior
 - Multiple workers to test load distribution
 - Observability setup (logs, metrics)
@@ -48,10 +54,11 @@ Resonate has two components:
 ### Production
 
 **Real workloads** - Scale and reliability matter:
+
 - PostgreSQL with high availability
 - Workers scaled to handle load (5-100+)
 - Full observability (logging, metrics, tracing)
-- Authentication and TLS
+- Authentication enabled
 - Monitoring and alerting
 
 **What matters:** Uptime, performance, security.
@@ -95,10 +102,9 @@ You can't manage what you can't measure:
 
 ### 5. Secure it
 
-Enable authentication and TLS for production:
+Enable authentication for production:
 
 - **Authentication** → Token-based (JWT) or basic auth
-- **TLS** → Secure server communication
 - **Secrets** → Store credentials safely
 
 See [Security](/deploy/security) for details.
@@ -116,14 +122,16 @@ See [Availability](/deploy/availability) for HA patterns.
 ## What to read first
 
 **If you're just starting:**
+
 1. [Run server](/deploy/run-server) - Get the server running locally
 2. [Deployment patterns](/deploy/deployment-patterns) - See your infrastructure options
 3. [Scaling](/deploy/scaling) - Understand how workers scale
 
 **If you're going to production:**
+
 1. [Deployment patterns](/deploy/deployment-patterns) - Choose your infrastructure
 2. [Availability](/deploy/availability) - Set up PostgreSQL HA
-3. [Security](/deploy/security) - Enable auth and TLS
+3. [Security](/deploy/security) - Enable authentication
 4. [Scaling](/deploy/scaling) - Plan for load
 5. [Logging](/deploy/logging), [Metrics](/deploy/metrics), [Tracing](/deploy/tracing) - Observe everything
 
@@ -136,7 +144,7 @@ Not sure where to start? Follow this:
 
 ```
 Are you developing locally?
-  └─ Yes → Use Docker Compose or `resonate dev` with SQLite
+  └─ Yes → Start with `resonate dev` (simplest, no Docker needed)
   └─ No → Continue
 
 Do you need production reliability?
@@ -171,7 +179,7 @@ services:
     image: resonatehq/resonate:latest
     environment:
       RESONATE_STORE_POSTGRES_HOST: your-postgres.rds.amazonaws.com
-  
+
   worker:
     image: your-app:latest
     environment:
@@ -219,6 +227,7 @@ Understanding these principles helps you deploy Resonate effectively:
 ### 1. Server coordinates, workers execute
 
 The server never runs your code. It coordinates work and stores durable promise state. This means:
+
 - Server resource needs are modest (2-4 CPUs, 4-8GB RAM)
 - Workers scale to handle load
 - You can restart workers without losing work
@@ -226,6 +235,7 @@ The server never runs your code. It coordinates work and stores durable promise 
 ### 2. State lives in the database
 
 All execution state is stored in PostgreSQL (or SQLite for dev). This means:
+
 - Server restarts don't lose work
 - Worker failures don't lose work
 - Database availability = system availability
@@ -233,6 +243,7 @@ All execution state is stored in PostgreSQL (or SQLite for dev). This means:
 ### 3. Workers are stateless and interchangeable
 
 Workers poll for tasks and execute them. Any worker in a group can handle any task. This means:
+
 - Workers scale horizontally (add as many as you need)
 - Workers can be restarted safely
 - Load balances automatically
@@ -240,6 +251,7 @@ Workers poll for tasks and execute them. Any worker in a group can handle any ta
 ### 4. Fault tolerance is built-in
 
 Resonate handles worker failures automatically via heartbeat timeouts. This means:
+
 - No manual intervention for worker crashes
 - Work is reassigned automatically
 - Execution resumes from last checkpoint
@@ -259,6 +271,7 @@ These features aren't implemented because **worker horizontal scaling** handles 
 ## Summary
 
 **To deploy Resonate:**
+
 1. Run one server (coordinates all work)
 2. Run N workers (execute your code)
 3. Use PostgreSQL for production

@@ -1,6 +1,6 @@
 ---
 id: index
-title: Debug
+title: Debug a Resonate application
 sidebar_label: Overview
 description: Diagnose and fix issues in Resonate applications.
 sidebar_position: 1
@@ -49,6 +49,7 @@ Common problems and their solutions. Start here if you're seeing unexpected beha
 In traditional systems, when a function fails, its execution state is lost. You see an error but can't inspect where it failed or what it was doing.
 
 With Resonate, execution state is preserved in durable promises. When something fails:
+
 - The promise shows the last successful checkpoint
 - You can inspect input/output of each step
 - You can retry from the failure point (not from scratch)

@@ -2,13 +2,12 @@
 id: security
 title: Security
 sidebar_label: Security
-description: Authentication, TLS, and production security.
+description: Authentication and production security.
 sidebar_position: 6
 tags:
   - deploy
   - security
   - authentication
-  - tls
 ---
 
 This page covers authentication options for securing your Resonate Server and SDK connections.
@@ -198,7 +197,6 @@ console.log(token); // Use this as your RESONATE_TOKEN
 
 Even with authentication enabled, follow network security best practices:
 
-- **Use TLS/HTTPS** in production (configure via reverse proxy like nginx, Caddy, or cloud load balancer)
 - **Restrict network access** with firewalls and security groups
 - **Use private networks** when possible (VPC, private subnets)
 - **Enable rate limiting** at the load balancer or API gateway level
