@@ -1,4 +1,3 @@
----
 id: production
 title: Production deployment
 sidebar_label: Production deployment
@@ -9,7 +8,6 @@ tags:
   - production
   - deployment
   - scaling
----
 
 Production means different things depending on your scale - a small team's production looks different from an enterprise deployment. This guide covers patterns that work today for deploying Resonate reliably at any scale.
 
@@ -23,7 +21,6 @@ Resonate's architecture separates coordination from execution:
 
 **Key insight:** Workers scale horizontally to handle load. The server coordinates but doesn't execute your functions, so it rarely becomes a bottleneck. This design lets you scale execution capacity independently from coordination.
 
----
 
 ## Worker scaling
 
@@ -178,7 +175,6 @@ const resonate = Resonate.remote({
 Containerized workers are easier to debug and cheaper at low scale. Move to serverless when you need auto-scaling or have highly variable load.
 :::
 
----
 
 ## Server reliability
 
@@ -304,7 +300,6 @@ The server's resource needs grow slowly compared to workers. Consider upgrading 
 
 For most deployments, a modest server (2-4 CPUs, 4-8GB RAM) can coordinate hundreds of workers.
 
----
 
 ## Deployment patterns
 
@@ -451,7 +446,6 @@ spec:
           limits:
             cpu: "1000m"
             memory: "1Gi"
----
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -503,9 +497,10 @@ Lambda workers can poll for tasks or be triggered by events. Since Lambda has ex
 Serverless functions (Lambda, Cloud Run) work well for short tasks (under 15 minutes). For longer workflows, use containerized workers that can run indefinitely.
 :::
 
----
 
 ## Monitoring and observability
+
+Resonate exposes metrics, logs, and traces for production monitoring. This section covers what to monitor; see [Observe deployments](/operate/observe) for the complete catalog of available metrics and logs.
 
 ### Metrics
 
@@ -584,7 +579,6 @@ groups:
           summary: "Database connection pool near capacity"
 ```
 
----
 
 ## Security in production
 
@@ -618,7 +612,6 @@ aio:
       query: "sslmode=require"  # Force SSL for database
 ```
 
----
 
 ## What's not covered yet
 
@@ -638,7 +631,6 @@ If you need more server capacity, upgrade server resources (CPU, RAM) rather tha
 In nearly all production scenarios, scaling workers horizontally is the right approach. The server coordinates work but doesn't execute it, so it rarely becomes a bottleneck.
 :::
 
----
 
 ## Summary
 
