@@ -413,6 +413,14 @@ const schedule = await resonate.schedule(
 );
 ```
 
+Registered functions can also schedule themselves directly:
+
+```ts
+const foo = resonate.register("foo", async (ctx, ...args) => { /* ... */ });
+
+await foo.schedule("scheduled-foo", "0 * * * *", ...args);
+```
+
 ### `.options()`
 
 Options can be used with `.run()`, `.beginRun()`, `.rpc()`, `.beginRpc()`, and `.schedule()` as the final argument.
