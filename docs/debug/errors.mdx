@@ -66,41 +66,29 @@ Or reach out via [Discord](https://resonatehq.io/discord) for support.
 
 There was a validation error affecting one or more fields.
 
+### 40100
+
+The request is unauthorized. The authorization header is missing, the token is invalid, or the token has expired.
+
 ### 40300
 
-The promise has already been resolved. Once a promise is resolved it can no longer be modified.
-
-### 40301
-
-The promise has already been rejected. Once a promise is rejected it can no longer be modified.
-
-### 40302
-
-The promise has already been canceled. Once a promise is canceled it can no longer be modified.
-
-### 40303
-
-The promise has already timed out. Once a promise is timed out it can no longer be modified.
-
-### 40304
-
-The lock has already been acquired. Once a lock is acquired it can no longer be acquired.
-
-### 40305
-
-The task has already been claimed. Once a task has been claimed it can no longer be claimed.
+The request is forbidden.
 
 ### 40306
 
-The task has already been completed. Once a task has been completed it can no longer be claimed.
+The task is already claimed. Once a task has been claimed it can no longer be claimed.
 
 ### 40307
 
-A task was attempted to be claimed with the wrong counter.
+The task is already completed. Once a task has been completed it can no longer be claimed.
 
 ### 40308
 
-A task was attempted to be claimed or completed, but the task is in an invalid state.
+The task counter is invalid. A task was attempted to be claimed with the wrong counter.
+
+### 40309
+
+The task state is invalid. A task was attempted to be claimed or completed, but the task is in an invalid state.
 
 ### 40310
 
@@ -114,10 +102,6 @@ A promise with the provided id could not be found.
 
 A schedule with the provided id could not be found.
 
-### 40402
-
-A lock with the provided id could not be found.
-
 ### 40403
 
 A task with the provided id could not be found.
@@ -126,13 +110,17 @@ A task with the provided id could not be found.
 
 A promise with the provided id does not specify a required recv.
 
-### 40900
-
-A promise with the provided id already exists.
-
 ### 40901
 
-A schedule with the provided id already exists.
+The task has not been claimed. The task must be claimed before it can be completed.
+
+### 40902
+
+The task version is invalid.
+
+### 41200
+
+The task precondition failed.
 
 ## Server errors
 
