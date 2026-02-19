@@ -46,7 +46,7 @@ When an error occurs, the response body will contain the following information.
         "message": "attempt to write a readonly database",
         "domain": "server",
         "metadata": {
-          "url": "https://docs.resonatehq.io/reference/error-codes#5002"
+          "url": "https://docs.resonatehq.io/debug/errors#5002"
         }
       }
     ]
@@ -102,6 +102,10 @@ A task was attempted to be claimed with the wrong counter.
 
 A task was attempted to be claimed or completed, but the task is in an invalid state.
 
+### 40310
+
+The request prefix is not authorized. The JWT token's prefix claim does not match the resource being accessed. Verify the prefix claim in your token matches the promise or task ID prefix.
+
 ### 40400
 
 A promise with the provided id could not be found.
@@ -128,11 +132,11 @@ A promise with the provided id already exists.
 
 ### 40901
 
-A schedule with the provided id already exists. |
+A schedule with the provided id already exists.
 
 ## Server errors
 
-These are
+These are known errors related to internal server operations.
 
 **Range: 50000-59999**
 
@@ -184,11 +188,32 @@ The scheduler queue is full. Please try again later.
 
 These are known errors you may encounter when using the Python SDK.
 
-:::tip SDK update required
+If the problem persists, open a [GitHub issue](https://github.com/resonatehq/resonate-sdk-py/issues/new) with details, including the error code and steps to reproduce.
+Or reach out via [Discord](https://resonatehq.io/discord) for support.
 
-And update is required to the Python SDK to support these error codes.
+### 1000
 
-:::
+**REGISTRY_VERSION_INVALID**
+
+Function version must be greater than zero (x provided)
+
+### 1001
+
+**REGISTRY_NAME_REQUIRED**
+
+Function name is required when registering a lambda function
+
+### 1002
+
+**REGISTRY_FUNCTION_ALREADY_REGISTERED**
+
+Function 'x' (version y) is already registered
+
+### 1003
+
+**REGISTRY_FUNCTION_NOT_REGISTERED**
+
+Function 'x' is not registered. Will drop.
 
 ## TypeScript SDK errors
 
