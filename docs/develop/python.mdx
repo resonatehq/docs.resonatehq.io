@@ -290,9 +290,23 @@ handle = resonate.begin_rpc("invocation-id", "foo", arg)
 result = handle.result()
 ```
 
+### `.schedule()`
+
+Resonate's `.schedule()` method registers a function to be invoked on a cron schedule.
+The function will be invoked automatically until the schedule is deleted.
+
+```py
+resonate.schedule(
+    "scheduled-foo",  # schedule ID
+    foo,              # function to schedule
+    "0 * * * *",      # cron expression (every hour)
+    arg,              # arguments
+)
+```
+
 ### `.options()`
 
-Options can be used preceding `.run()`, `.beginRun()`, `.rpc()`, and `.beginRpc()`.
+Options can be used preceding `.run()`, `.begin_run()`, `.rpc()`, `.begin_rpc()`, and `.schedule()`.
 
 ```py
 from resonate.retry_policies import Exponential, Constant, Linear, Never
