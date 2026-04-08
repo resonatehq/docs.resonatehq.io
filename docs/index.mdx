@@ -2,7 +2,7 @@
 id: index
 slug: /
 title: Resonate Documentation
-description: Resonate — reliablility, scalability — and a delightful developer experience.
+description: Resonate — agent-native durable execution. Generated, optimized, absurdly cheap.
 tags:
   - overview
   - documentation
@@ -15,9 +15,15 @@ hide_title: true
 
 ![Resonate documentation banner](/img/resonate-documentation-banner.png)
 
-Resonate is a <span className="spooky">dead simple</span> durable execution framework for building reliable and scalable cloud applications with a delightful developer experience. Build agents, workflows, pipelines, and services without thinking about retries or recovery. Resonate handles the hard parts of distributed systems—you focus on your application logic.
+**Resonate is the durable execution engine that agents build with, deploy on, and operate.** It is the implementation of a distributed async/await programming model: a formal, language- and transport-agnostic protocol for writing functions that survive process restarts, run for hours or months, and coordinate across many machines.
 
-Complex problems, simple code. Write functions that scale across dozens or hundreds of machines and run for hours, days, weeks, or months, in just a few lines of code.
+Resonate is built on three pillars:
+
+- **Agent-native** — The SDK, docs, tool definitions, and operational surface are designed for agent consumption, not just human developers. CLIs over dashboards. Skill files over screenshots. Agents are the new developers, and Resonate is the platform they reach for.
+- **Generated & optimized** — Components are generated per-stack by AI. Zero hand-written code. Minimal state transitions, minimal network chatter. Exactly what your stack needs, nothing more.
+- **Absurdly cheap** — Serverless-native architecture means you pay only for active execution. Workloads that cost ~$80K/year on hosted alternatives can run for under $100/year on Resonate. Orders of magnitude, not percentages.
+
+Build agents, workflows, pipelines, and services without thinking about retries or recovery. Write functions that scale across dozens or hundreds of machines and run for hours, days, weeks, or months — in just a few lines of code.
 
 ```typescript
 // An AI agent that recursively spawns subagents
