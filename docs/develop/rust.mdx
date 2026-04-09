@@ -327,13 +327,13 @@ async fn my_workflow(ctx: &Context) -> Result<String> {
 }
 ```
 
-Use `.spawn()` to run in parallel and get a `DurableFuture` handle:
+For parallel execution, use `ctx.rpc().spawn()` which returns a `RemoteFuture` handle:
 
 ```rust
 #[resonate::function]
 async fn my_workflow(ctx: &Context) -> Result<(String, String)> {
-    let future_a = ctx.run(process, "a".into()).spawn().await?;
-    let future_b = ctx.run(process, "b".into()).spawn().await?;
+    let future_a = ctx.rpc::<String>("process", "a".into()).spawn().await?;
+    let future_b = ctx.rpc::<String>("process", "b".into()).spawn().await?;
 
     let result_a = future_a.await?;
     let result_b = future_b.await?;
