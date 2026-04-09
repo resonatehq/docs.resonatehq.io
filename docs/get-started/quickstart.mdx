@@ -25,6 +25,7 @@ brew install resonatehq/tap/resonate
 <Tabs groupId="language" defaultValue="typescript" values={[
   { label: "TypeScript", value: "typescript" },
   { label: "Python", value: "python" },
+  { label: "Rust", value: "rust" },
 ]}>
 
 <TabItem value="typescript">
@@ -43,6 +44,17 @@ pip install resonate-sdk
 
 </TabItem>
 
+<TabItem value="rust">
+
+```toml title="Cargo.toml"
+[dependencies]
+resonate = { git = "https://github.com/resonatehq/resonate-sdk-rs", branch = "master" }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+```
+
+</TabItem>
+
 </Tabs>
 
 ## Write your first Resonate Function
@@ -52,6 +64,7 @@ A countdown as a loop. Simple, but the function can run for minutes, hours, or d
 <Tabs groupId="language" defaultValue="typescript" values={[
   { label: "TypeScript", value: "typescript" },
   { label: "Python", value: "python" },
+  { label: "Rust", value: "rust" },
 ]}>
 
 <TabItem value="typescript">
@@ -109,6 +122,45 @@ Event().wait()  # Keep the main thread alive
 
 </TabItem>
 
+<TabItem value="rust">
+
+```rust title="src/main.rs"
+use resonate::prelude::*;
+use std::time::Duration;
+
+#[resonate::function]
+async fn countdown(ctx: &Context, count: i32, delay: u64) -> Result<()> {
+    for i in (1..=count).rev() {
+        ctx.run(notify, i).await?;
+        ctx.sleep(Duration::from_secs(delay)).await?;
+    }
+    println!("Done!");
+    Ok(())
+}
+
+#[resonate::function]
+async fn notify(i: i32) -> Result<()> {
+    println!("Countdown: {i}");
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        ..Default::default()
+    });
+    resonate.register(countdown).unwrap();
+    resonate.register(notify).unwrap();
+    // Keep the process alive to receive work
+    tokio::signal::ctrl_c().await.unwrap();
+}
+```
+
+[Working example](https://github.com/resonatehq-examples/example-hello-world-rs)
+
+</TabItem>
+
 </Tabs>
 
 ## Start the server
@@ -122,6 +174,7 @@ resonate dev
 <Tabs groupId="language" defaultValue="typescript" values={[
   { label: "TypeScript", value: "typescript" },
   { label: "Python", value: "python" },
+  { label: "Rust", value: "rust" },
 ]}>
 
 <TabItem value="typescript">
@@ -136,6 +189,14 @@ npx ts-node countdown.ts
 
 ```shell
 python countdown.py
+```
+
+</TabItem>
+
+<TabItem value="rust">
+
+```shell
+cargo run
 ```
 
 </TabItem>
@@ -157,6 +218,7 @@ You will see the countdown in the terminal
 <Tabs groupId="language" defaultValue="typescript" values={[
   { label: "TypeScript", value: "typescript" },
   { label: "Python", value: "python" },
+  { label: "Rust", value: "rust" },
 ]}>
 
 <TabItem value="typescript">
@@ -177,6 +239,20 @@ Done!
 
 ```shell
 python countdown.py
+Countdown: 5
+Countdown: 4
+Countdown: 3
+Countdown: 2
+Countdown: 1
+Done!
+```
+
+</TabItem>
+
+<TabItem value="rust">
+
+```shell
+cargo run
 Countdown: 5
 Countdown: 4
 Countdown: 3
