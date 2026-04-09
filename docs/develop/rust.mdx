@@ -281,20 +281,22 @@ let result = handle.result().await?;
 
 ### `.promises`
 
-The `.promises` sub-client allows you to work with raw durable promises:
+The `.promises` sub-client lets you work directly with durable promises — useful for human-in-the-loop workflows, external coordination, and any pattern where you need to create a promise now and settle it later from a different process.
 
 ```rust
-// Create a promise
-resonate.promises.create("promise-id", timeout_at).await?;
+use serde_json::json;
 
-// Get a promise
+// Create a promise with a timeout, initial parameter, and tags
+resonate.promises.create("promise-id", timeout_at, json!({}), json!({})).await?;
+
+// Get a promise by ID
 let promise = resonate.promises.get("promise-id").await?;
 
-// Resolve a promise (useful for HITL workflows)
-resonate.promises.resolve("promise-id", value).await?;
+// Settle a promise (resolve)
+resonate.promises.settle("promise-id", "resolved", json!("approved")).await?;
 
-// Reject a promise
-resonate.promises.reject("promise-id", value).await?;
+// Settle a promise (reject)
+resonate.promises.settle("promise-id", "rejected", json!("denied")).await?;
 ```
 
 ### `.stop()`
@@ -406,6 +408,10 @@ async fn my_workflow(ctx: &Context) -> Result<String> {
 |---|---|
 | `.timeout(Duration)` | Execution timeout |
 | `.target(&str)` | Target worker group (for `ctx.rpc()`) |
+
+:::note
+Client-side builders (`resonate.run()`, `resonate.rpc()`) also support `.version(u32)` and `.tags(HashMap<String, String>)`. These are not available on Context builders.
+:::
 
 ### Context accessors
 
