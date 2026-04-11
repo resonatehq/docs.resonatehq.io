@@ -261,15 +261,10 @@ resonate = Resonate.remote(
 ```typescript
 import { Resonate } from "@resonatehq/sdk";
 
-const resonate = Resonate.remote({
+const resonate = new Resonate({
+  url: "https://your-domain.com:8001",
   group: "my-app-group",
-  host: "https://your-domain.com",
-  storePort: "8001",
-  messageSourcePort: "8002",
-  auth: {
-    username: "your-username",
-    password: "your-password",
-  },
+  token: "your-jwt-token",
 });
 ```
 
