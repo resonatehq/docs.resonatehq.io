@@ -26,8 +26,7 @@ Resonate is built for that world from the ground up:
 
 - **The SDK is designed for agent consumption.** Predictable APIs, deterministic execution, clear failure modes. An agent reading the SDK reference can build correct distributed workflows on the first try.
 - **The docs are written for both humans and agents.** Skill files (machine-readable agent guidance) sit alongside human tutorials. The CLI reference is canonical and exhaustive.
-- **The operational surface is CLI-first.** Agents do not click. They script. Every operation — provision, deploy, observe, scale, tear down — is a CLI command an agent can call.
-- **Tool definitions are first-class.** Resonate ships tool definitions agents can discover, including (planned) an MCP server for Resonate operations.
+- **The operational surface is CLI-first.** Agents do not click. They script. The Resonate CLI lets agents invoke functions, inspect promises, visualize execution graphs, and manage the server — all without leaving the terminal.
 
 When we say "agent-native," we mean: an autonomous coding agent should be able to build, deploy, and operate a Resonate application end to end without ever loading a web page.
 
@@ -35,9 +34,9 @@ When we say "agent-native," we mean: an autonomous coding agent should be able t
 
 Most durable execution platforms ship a single general-purpose server: hand-written code that has to handle every possible stack, every possible transport, every possible storage backend. Generality has a tax — every workflow pays for abstractions it doesn't use, in state transitions, network requests, and operational chatter.
 
-Resonate takes a different path. Components are **generated per-stack by AI**. You tell us your stack — Kafka or HTTP for transport, Postgres or DynamoDB for state, gRPC or REST for the wire — and we generate a complete Resonate server tailored to it. Zero hand-written code. Minimal state transitions. Exactly what your stack needs, nothing more.
+Resonate takes a different path. The ecosystem is built on **open-source, pluggable components** — transports, storage backends, wire formats — that you can assemble to match your stack. On top of that, we generate **stack-specific components** for customers who need a server tailored to their exact infrastructure. Kafka or HTTP for transport, Postgres or DynamoDB for state, gRPC or REST for the wire — we generate a complete Resonate server that includes only what your stack requires. Minimal state transitions, minimal network chatter, nothing wasted.
 
-This is only possible because the underlying [protocol](https://asynchronous-rpc.io) is fully formal: a JSON Schema specification that an AI can target as a code generation goal. The protocol is the contract; the implementation is generated.
+This is not AI-generated slop. The underlying [Async RPC protocol](https://asynchronous-rpc.io) is a fully formal JSON Schema specification — a machine-verifiable contract that constrains what "correct" means. AI is used throughout our development and testing processes, guided by these specs and protocols, to produce highly optimized software. The protocol is the contract; the implementation is generated against it, verified by [Deterministic Simulation Testing](#quality-is-not-optional), and delivered as production-grade source code.
 
 ### 3. Absurdly cheap
 
