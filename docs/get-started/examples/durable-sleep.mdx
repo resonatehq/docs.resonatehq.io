@@ -73,7 +73,7 @@ def sleeping_workflow(ctx: Context, seconds: int):
 
 ```typescript
 function* sleepingWorkflow(ctx: Context, milliseconds: number) {
-  yield ctx.sleep(milliseconds);
+  yield* ctx.sleep(milliseconds);
 
   // ...
 }

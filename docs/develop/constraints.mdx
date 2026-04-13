@@ -438,7 +438,7 @@ For work that takes hours, days, or weeks, use `ctx.sleep()` or Durable Promises
 
 | Constraint | Why it exists | Solution |
 |------------|---------------|----------|
-| **Deterministic** | Functions are replayed on restart - must produce same results | Use `ctx.random()`, `ctx.time()`, `ctx.run()` |
+| **Deterministic** | Functions are replayed on restart - must produce same results | Use `ctx.math.random()`, `ctx.date.now()`, `ctx.run()` |
 | **Idempotent** | Functions are retried on failure - must be safe to repeat | Use idempotency keys, upserts, deduplication checks |
 | **Process lifetime** | Activations end when process ends - can't outlive it | Use `ctx.sleep()`, Durable Promises for long-running work |
 

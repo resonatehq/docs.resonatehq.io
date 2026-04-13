@@ -459,14 +459,6 @@ await resonate.promises.create(
 );
 ```
 
-### `.promises.get()`
-
-Resonate's `.promises.get()` method allows you to get a promise by ID.
-
-```ts
-const p = await resonate.promises.get("promise-id");
-```
-
 ### `.promises.resolve()`
 
 Resonate's `.promises.resolve()` method allows you to resolve a promise by ID.
@@ -692,7 +684,7 @@ resonate.register("send-reminder", function* (ctx: Context, userId: string) {
   // Pause for five seconds without blocking the worker
   yield* ctx.sleep(5_000);
 
-  yield* ctx.rfc("notify-user", userId);
+  yield* ctx.rpc("notify-user", userId);
 });
 ```
 
@@ -715,7 +707,7 @@ resonate.register("schedule-digest", function* (ctx: Context, userId: string) {
   // Resume exactly at 8am
   yield* ctx.sleep({ until: nextEightAm });
 
-  yield* ctx.rfc("send-digest", userId);
+  yield* ctx.rpc("send-digest", userId);
 });
 ```
 
