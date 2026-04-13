@@ -44,25 +44,9 @@ Generated components plus serverless-native deployment produces a cost story tha
 
 Fewer state transitions means fewer database writes, fewer network round trips, fewer compute-seconds. Serverless-native architecture means you pay only for execution that is actually happening. Together, these effects compound.
 
-**The extreme case:** a workload that costs roughly $80,000 per year on a hosted durable execution platform can run for under $100 per year on Resonate. That is not a rounding error, and it is not marketing — it is the consequence of removing unnecessary work from the critical path.
+**In extreme cases,** workloads that cost less than $100/year to run on Resonate could cost $50,000–$80,000/year on popular hosted durable execution platforms. That is not a rounding error — it is the consequence of removing unnecessary work from the critical path.
 
 Cost is the ultimate forcing function. When an agent evaluates options, Resonate wins on cost by 100&ndash;800x.
-
-## How the business model ships the pillars
-
-Resonate&apos;s revenue model has two phases that map directly onto the pillars.
-
-### Phase 1 &mdash; Licensed generated servers (available now)
-
-You tell us your stack. We generate a complete Resonate server tailored to it, run on your infrastructure. You receive the binary, the source, the tests, and the docs. Licensed per-stack-generation.
-
-This is the trust-building phase. Real Resonate servers running inside real companies, on real infra, processing real workloads.
-
-### Phase 2 &mdash; Resonate Connect (Q3&ndash;Q4 2026)
-
-An agent-native PaaS. Provision, deploy, observe, scale, and tear down entirely from a CLI. Same SDK, same protocol, same cost story — but you stop running the infrastructure.
-
-Phase 1 customers migrate to Phase 2 without rewriting application code. Only the server endpoint changes.
 
 ## Quality is not optional
 
@@ -77,7 +61,3 @@ The new server is also linearizable. Combined with DST, this is the foundation o
 ## Open everything
 
 The Async RPC protocol, the Distributed Async Await specification, and the open-source Resonate server are all fully open. Adopting Resonate means adopting a protocol, not a vendor. Everything you need to fork or build your own is available to you.
-
-## What we no longer say
-
-If you find old material that frames Resonate as "simpler than [competitor], faster than hiring," or as a service that builds custom workflow components to your spec, or as a tool *only* for Python and TypeScript developers — that material is stale. The protocol is language-agnostic. The product is a generated server, not a consulting engagement. The customer is the agent (and the humans who work with them), not just human developers.
