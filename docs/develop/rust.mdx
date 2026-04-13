@@ -155,6 +155,11 @@ This is convenient for unit tests or quick experiments that do not require a Res
 - JWT token for authenticated requests.
 - Default is _unset_ (anonymous requests).
 
+#### `RESONATE_SCHEME`
+
+- URL scheme used when constructing the server URL from `RESONATE_HOST` and `RESONATE_PORT`.
+- Default is `http`.
+
 #### `RESONATE_PREFIX`
 
 - Prefix prepended to all promise and task IDs.
@@ -291,12 +296,13 @@ The `.promises` sub-client lets you work directly with durable promises — usef
 use serde_json::json;
 
 // Create a promise with a timeout, initial parameter, and tags
+// timeout_at is i64 milliseconds since the Unix epoch
 resonate.promises.create("promise-id", timeout_at, json!({}), json!({})).await?;
 
 // Get a promise by ID
 let promise = resonate.promises.get("promise-id").await?;
 
-// Settle a promise (resolve)
+// Settle a promise — valid states: "resolved", "rejected", "rejected_canceled", "rejected_timedout"
 resonate.promises.settle("promise-id", "resolved", json!("approved")).await?;
 
 // Settle a promise (reject)
@@ -411,7 +417,7 @@ async fn my_workflow(ctx: &Context) -> Result<String> {
 | Method | Description |
 |---|---|
 | `.timeout(Duration)` | Execution timeout |
-| `.target(&str)` | Target worker group (for `ctx.rpc()`) |
+| `.target(&str)` | Target worker group — only valid on `ctx.rpc()` builders |
 
 :::note
 Client-side builders (`resonate.run()`, `resonate.rpc()`) also support `.version(u32)` and `.tags(HashMap<String, String>)`. These are not available on Context builders.

@@ -26,6 +26,8 @@ The Resonate Python SDK API reference is available [here](https://resonatehq.git
 
 **How to install the Resonate Python SDK into your project.**
 
+The Resonate Python SDK requires **Python ≥3.12**.
+
 To install the Resonate Python SDK, you can use any of your favorite package managers.
 
 import Tabs from "@theme/Tabs";
@@ -113,90 +115,21 @@ The default configuration uses the Resonate Server as the promise store and uses
 A Resonate Client can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
 The Poller is a great starting place however, as it will long-poll for messages from the Resonate Server without any additional setup.
 
-### Authentication
+:::caution
+Python SDK v0.6.7 works with the **legacy Resonate server** only. Support for server v0.9.x is coming in a future release.
+:::
 
-The Python SDK currently supports **basic authentication** (username/password). Token-based authentication is planned for a future release.
-
-#### Basic authentication
-
-Pass credentials as a tuple when connecting to a secured Resonate Server:
+To connect to a specific host and port, pass them explicitly:
 
 ```py
-import os
 from resonate import Resonate
 
 resonate = Resonate.remote(
-    url="http://localhost:8001",
-    auth=(os.getenv("RESONATE_USERNAME"), os.getenv("RESONATE_PASSWORD")),
+    host="localhost",
+    store_port=8001,
+    message_source_port=8001,
 )
 ```
-
-The SDK will automatically read `RESONATE_USERNAME` and `RESONATE_PASSWORD` environment variables if the `auth` parameter is not provided:
-
-```py
-from resonate import Resonate
-
-# Automatically uses RESONATE_USERNAME and RESONATE_PASSWORD from environment
-resonate = Resonate.remote(url="http://localhost:8001")
-```
-
-:::note Token authentication
-Token-based authentication (JWT bearer tokens) is **not yet supported** in the Python SDK. We recommend monitoring the [Python SDK releases](https://github.com/resonatehq/resonate-sdk-py/releases) for updates.
-
-For comprehensive security configuration and best practices, see the [Security & Authentication](/deploy/security) guide.
-:::
-
-### Environment Variables
-
-Environment variables can be used to configure the Resonate Client.
-These environment variables follow the following priority pattern:
-
-Explicit parameter passed to constructor (highest priority)
-Service-specific environment variable (e.g., RESONATE_HOST_STORE)
-Generic environment variable (e.g., RESONATE_HOST)
-Default hardcoded value (lowest priority)
-
-#### `RESONATE_HOST`
-
-Generic fallback host for Resonate services.
-
-Defaults to "http://localhost".
-
-#### `RESONATE_HOST_STORE`
-
-Specific host for the Store service.
-
-Defaults to RESONATE_HOST, then "http://localhost".
-
-#### `RESONATE_HOST_MESSAGE_SOURCE`
-
-Specific host for the Message Source service.
-
-Defaults to RESONATE_HOST, then "http://localhost".
-
-#### `RESONATE_PORT_STORE`
-
-Port for the Store service
-
-Defaults to port "8001", the default port exposed by the Resonate Server Store service.
-
-#### `RESONATE_PORT_MESSAGE_SOURCE`
-
-Port for the Message Source service
-
-Defaults to port "8002", the default port exposed by the Resonate Server Message Source service.
-
-#### `RESONATE_USERNAME`
-
-Username for HTTP Basic Authentication
-
-Defaults to "" (empty string) if variable exists, None if not set.
-
-#### `RESONATE_PASSWORD`
-
-Password for HTTP Basic Authentication
-
-Defaults to "" (empty string) if RESONATE_USERNAME exists, None otherwise.
 
 ## Client APIs
 
@@ -292,7 +225,7 @@ result = handle.result()
 
 ### `.options()`
 
-Options can be used preceding `.run()`, `.beginRun()`, `.rpc()`, and `.beginRpc()`.
+Options can be used preceding `.run()`, `.begin_run()`, `.rpc()`, and `.begin_rpc()`.
 
 ```py
 from resonate.retry_policies import Exponential, Constant, Linear, Never
@@ -436,7 +369,7 @@ def foo(ctx: Context, arg: str) -> str:
     # synchronous invocation of bar
     result = yield ctx.rpc("bar", arg)
     # do more stuff
-    result = yield promise
+    # ...
 
 
 # process y
@@ -485,7 +418,7 @@ def foo(ctx, arg):
 
 ### `.options()`
 
-Options can be used following `.run()`, `.beginRun()`, `.rpc()`, `.beginRpc()`, and `.detached()`.
+Options can be used following `.run()`, `.begin_run()`, `.rpc()`, `.begin_rpc()`, and `.detached()`.
 
 ```py
 from resonate.retry_policies import Exponential, Constant, Linear, Never
@@ -547,7 +480,7 @@ The sleep method accepts a float value in seconds.
 @resonate.register
 def foo(ctx, arg):
     # ...
-    yield ctx.sleep(5.0) // sleep for 5 seconds
+    yield ctx.sleep(5.0)  # sleep for 5 seconds
     # do more stuff
     # ...
 ```
