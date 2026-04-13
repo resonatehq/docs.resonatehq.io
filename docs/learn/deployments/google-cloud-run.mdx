@@ -72,7 +72,7 @@ When there is auth support, this tutorial will be updated accordingly.
 
 You will need to run the following command twice:
 
-The first time you deploy the Resonate Server, you will not yet have a server URL to pass to the `--system-url` argument.
+The first time you deploy the Resonate Server, you will not yet have a server URL to pass to the `--server-url` argument.
 After the first deployment, you will get the service URL from the output and then re-deploy the Resonate Server with that URL.
 
 **First deployment**
@@ -107,7 +107,7 @@ Service [resonate-server] revision [<revision>] has been deployed and is serving
 Service URL: <your-service-url>
 ```
 
-Now, redeploy the Resonate Server this time setting the `--system-url` flag with the Service URL.
+Now, redeploy the Resonate Server this time setting the `--server-url` flag with the Service URL.
 This lets the Resonate Server know its public address.
 
 ```shell title="Redeploy the Resonate Server with the correct system URL"
@@ -117,7 +117,7 @@ gcloud run deploy resonate-server \
   --platform=managed \
   --allow-unauthenticated \
   --port=8001 \
-  --args="serve","--system-url","your-server-url"," \
+  --args="serve","--server-url","your-server-url"," \
   --scaling=1
 ```
 
