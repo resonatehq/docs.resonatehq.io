@@ -51,11 +51,11 @@ The Resonate Server sends the invoke message to the Cloud Function, basically ca
 The Cloud Function runs, storing state (checkpointing) via promises in the Resonate Server.
 Whenever the Cloud Function runs, it starts from the beginning of the countdown function, replaying everything up to the current point, but using the stored state to skip over already-completed steps.
 
-As you will see below, Resonate makes it incredible straight forward to write a locially long-running worklow like this that can pause and resume without holding onto compute resources.
+As you will see below, Resonate makes it incredibly straightforward to write a locially long-running worklow like this that can pause and resume without holding onto compute resources.
 
 ## Deploy the Resonate Server
 
-To deploy the Resonate Server on Cloud Run, you will use the GCloudud CLI to create a new service within your project using the official Resonate container image (`resonatehqio/resonate`).
+To deploy the Resonate Server on Cloud Run, you will use the GCloud CLI to create a new service within your project using the official Resonate container image (`resonatehqio/resonate`).
 
 :::tip Auth in development
 
@@ -110,14 +110,14 @@ Service URL: <your-service-url>
 Now, redeploy the Resonate Server this time setting the `--server-url` flag with the Service URL.
 This lets the Resonate Server know its public address.
 
-```shell title="Redeploy the Resonate Server with the correct system URL"
+```shell title="Redeploy the Resonate Server with the correct server URL"
 gcloud run deploy resonate-server \
   --image=resonatehqio/resonate \
   --region=<your-region> \
   --platform=managed \
   --allow-unauthenticated \
   --port=8001 \
-  --args="serve","--server-url","your-server-url"," \
+  --args="serve","--server-url","your-server-url" \
   --scaling=1
 ```
 

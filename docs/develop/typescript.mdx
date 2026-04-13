@@ -13,7 +13,7 @@ Whether you are a human or an AI agent, this skill guide will help you develop a
 Though this _is_ a skill guide, and not a detailed API reference and you will still likely need to refer to the detailed [Resonate TypeScript SDK API reference](https://resonatehq.github.io/resonate-sdk-ts/) for type definitions, defaults, and other technical details.
 
 This skill sheet assumes that you already know Resonate is a good fit for your use case.
-If you are unsure, please refer to [When to use Resonate to build apps](/evaluate/why-resonate#systems-engineering-for-).
+If you are unsure, please refer to [Why Resonate](/evaluate/why-resonate#the-three-pillars).
 
 It's important to think about the potential architecture of your application as it ties to your use case.
 This can determine which APIs and options you will use for function activations.
@@ -134,22 +134,6 @@ const resonate = new Resonate({
 });
 ```
 
-#### Basic authentication
-
-Use username and password credentials:
-
-```ts title="index.ts"
-import { Resonate } from "@resonatehq/sdk";
-
-const resonate = new Resonate({
-  url: "https://localhost:8001",
-  auth: {
-    username: process.env.RESONATE_USERNAME,
-    password: process.env.RESONATE_PASSWORD,
-  },
-});
-```
-
 :::tip
 Token-based authentication is recommended for production. See the [Security & Authentication](/deploy/security) guide for detailed configuration, best practices, and server setup.
 :::
@@ -190,12 +174,6 @@ The following order is used when determining the remote endpoint:
 2. `RESONATE_URL` environment variable.
 3. `RESONATE_SCHEME`, `RESONATE_HOST`, and `RESONATE_PORT` environment variables.
 4. Built-in local development mode (no remote network).
-
-Similarly, authentication credentials resolve in this order:
-
-1. `auth` argument supplied to the constructor.
-2. `RESONATE_USERNAME` and `RESONATE_PASSWORD` environment variables.
-3. No authentication (anonymous requests).
 
 :::tip No URL means local mode (zero-dependency development)
 
@@ -251,29 +229,6 @@ This is convenient for unit tests or quick experiments that do not require a Res
 - Port number to use when building the URL from scheme/host/port.
   Ignored if `RESONATE_URL` is provided.
 - Default is `8001`.
-
-#### `RESONATE_USERNAME`
-
-- Username for HTTP basic authentication.
-  When set (even without a password) it enables authenticated requests.
-- Default is _unset_.
-
-#### `RESONATE_PASSWORD`
-
-- Password paired with `RESONATE_USERNAME`.
-  Defaults to an empty string when the username is set but no password is supplied.
-- Default is an empty string.
-- Example:
-
-  ```bash
-  export RESONATE_USERNAME=my-user
-  export RESONATE_PASSWORD=super-secret
-  ```
-
-  ```ts
-  const resonate = new Resonate();
-  // uses { username: "my-user", password: "super-secret" }
-  ```
 
 **Troubleshooting tips**
 
@@ -457,6 +412,14 @@ await resonate.promises.create(
   "promise-id",
   Date.now() + 30000 // 30 seconds in the future
 );
+```
+
+### `.promises.get()`
+
+Resonate's `.promises.get()` method allows you to get a promise by ID.
+
+```ts
+const p = await resonate.promises.get("promise-id");
 ```
 
 ### `.promises.resolve()`
