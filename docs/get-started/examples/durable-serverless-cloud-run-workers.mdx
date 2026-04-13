@@ -55,14 +55,16 @@ import TabItem from "@theme/TabItem";
     <TabItem value="typescript" >
 
 ```typescript
-import { Context, resonate } from "@resonatehq/server";
+import { Resonate } from "@resonatehq/sdk";
+import type { Context } from "@resonatehq/sdk";
 
 export function* cloudRunWorker(ctx: Context, jobId: string) {
-  const result = yield ctx.run(processJob, jobId);
+  const result = yield* ctx.run(processJob, jobId);
 
-  yield ctx.run(writeResult, jobId, result);
+  yield* ctx.run(writeResult, jobId, result);
 }
 
+const resonate = new Resonate();
 resonate.register("cloudRunWorker", cloudRunWorker);
 ```
 

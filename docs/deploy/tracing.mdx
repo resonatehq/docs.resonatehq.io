@@ -57,13 +57,10 @@ const otel = new ResonateOpenTelemetry({
 });
 
 // Create Resonate instance with tracing
-const resonate = Resonate.remote({
+const resonate = new Resonate({
   url: "http://localhost:8001",
   // OpenTelemetry context automatically propagated
 });
-
-// Start your application
-await resonate.start();
 ```
 
 ### OTLP Exporter endpoint
@@ -170,9 +167,9 @@ const otel = new ResonateOpenTelemetry({
 Every Resonate function creates a span:
 
 ```typescript
-resonate.register("processOrder", async (ctx, order) => {
+resonate.register("processOrder", function* (ctx, order) {
   // Span: "processOrder" (duration = function execution time)
-  const result = await ctx.run(() => validateOrder(order));
+  const result = yield* ctx.run(validateOrder, order);
   return result;
 });
 ```
@@ -187,18 +184,18 @@ resonate.register("processOrder", async (ctx, order) => {
 Each `ctx.run()`, `ctx.sleep()`, etc. creates child spans:
 
 ```typescript
-resonate.register("checkout", async (ctx, cart) => {
+resonate.register("checkout", function* (ctx, cart) {
   // Parent span: "checkout"
-  
-  const validated = await ctx.run(() => validateCart(cart));
+
+  const validated = yield* ctx.run(validateCart, cart);
   // Child span: "validateCart"
-  
-  await ctx.sleep(1000);
+
+  yield* ctx.sleep(1000);
   // Child span: "sleep(1000ms)"
-  
-  const charged = await ctx.run(() => chargeCard(cart.total));
+
+  const charged = yield* ctx.run(chargeCard, cart.total);
   // Child span: "chargeCard"
-  
+
   return charged;
 });
 ```

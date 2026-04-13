@@ -3,85 +3,61 @@ id: why-resonate
 title: Why Resonate
 sidebar_label: Why Resonate
 sidebar_position: 1
-description: There are a lot of reasons why you should consider adopting Resonate.
+description: Resonate is the durable execution engine that agents build with, deploy on, and operate — at a fraction of the cost of anything else.
 tags:
   - evaluate
+  - positioning
+  - agent-native
 ---
 
-**What problem does Resonate solve?**
+**Resonate is the durable execution engine that agents build with, deploy on, and operate &mdash; at a fraction of the cost of anything else.**
 
-## Complexity is pain
+It is the implementation of a [distributed async/await](https://distributed-async-await.io) programming model: a formal, language- and transport-agnostic protocol for writing functions that survive process restarts, run for hours or months, and coordinate across many machines.
 
-Resonate is fundamentally about reducing complexity for developers building reliable and scalable software systems.
+This page explains the three pillars that make Resonate different, the business model that ships those pillars, and what this means for agents and the humans who work with them.
 
-Developers still experience a great deal of pain from all the complexity that's crammed in at the application level —
-Complexity, which is added, to solve for reliability and scalability.
+## The three pillars
 
-Practically, this means that failure retry, crash recovery, idempotency, service discovery, load balancing, asynchronous messages, etc, are things that developers have to repeatedly think about and solve for alongside their use case.
+### 1. Agent-native
 
-More or less, the complexity and the pain, stem from a system's desire to be concurrent and distributed.
-_Why?_ So the system is scalable and reliable!
-Concurrency and distribution enable scalability and reliability.
-However, the more concurrency and distribution there is, the more complex the code becomes.
-When the code becomes distributed and complex - the system becomes hard to build, hard to maintain, and hard to reason about.
-These challenges can erode the confidence, speed, and joy of development.
+Agents are the new developers. Increasingly, software is selected, written, configured, and deployed by AI agents — not by humans choosing platforms and libraries by hand. The platform that agents reach for is the platform that wins.
 
-Resonate addresses this pain holistically.
-Resonate pushes all that complexity (failure retry, crash recovery, idempotency guarantees, service discovery, load balancing, asynchronous messages, etc.) into the platform and provides developers with a simple set of APIs to use at the application level.
+Resonate is built for that world from the ground up:
 
-_Using Resonate makes reliable and scalable applications dead simple to develop, dead simple to deploy, and dead simple to operate._
+- **The SDK is designed for agent consumption.** Predictable APIs, deterministic execution, clear failure modes. An agent reading the SDK reference can build correct distributed workflows on the first try.
+- **The docs are written for both humans and agents.** Skill files (machine-readable agent guidance) sit alongside human tutorials. The CLI reference is canonical and exhaustive.
+- **The operational surface is CLI-first.** Agents do not click. They script. The Resonate CLI lets agents invoke functions, inspect promises, visualize execution graphs, and manage the server — all without leaving the terminal.
 
-**When to use Resonate?**
+When we say "agent-native," we mean: an autonomous coding agent should be able to build, deploy, and operate a Resonate application end to end without ever loading a web page.
 
-## Systems engineering for ...
+### 2. Generated &amp; optimized
 
-_Use Resonate as soon as you realize you need or have a software system!_
+Most durable execution platforms ship a single general-purpose server: hand-written code that has to handle every possible stack, every possible transport, every possible storage backend. Generality has a tax — every workflow pays for abstractions it doesn't use, in state transitions, network requests, and operational chatter.
 
-The [Distributed Async Await spec](https://distributed-async-await.io), and its underlying [Async RPC protocol](https://asynchronous-rpc.io), was intended to be a general-purpose programming and execution model for building reliable and scalable software systems.
-As an implementation of that spec, Resonate has successfully inherited that intended trait.
-For example...
+Resonate takes a different path. The ecosystem is built on **open-source, pluggable components** — transports, storage backends, wire formats — that you can assemble to match your stack. On top of that, we generate **stack-specific components** for customers who need a server tailored to their exact infrastructure. Kafka or HTTP for transport, Postgres or DynamoDB for state, gRPC or REST for the wire — we generate a complete Resonate server that includes only what your stack requires. Minimal state transitions, minimal network chatter, nothing wasted.
 
-- **Autonomous systems & agentic applications**: Dominik Tornow breaks it all down in his online book [Systems Engineering for Agentic Applications](https://systems-engineering-for-agentic-applications.resonatehq.io/)
-- **Function-as-a-Service**: Whether you are building a Function-as-a-Service (FaaS) platform, see [Building a Demo FaaS Platform with Resonate](https://journal.resonatehq.io/p/building-a-demo-faas-platform-with) or using one, see [GCP countdown workflow example application](https://github.com/resonatehq-examples/example-countdown-ts-gcp), Resonate's execution model makes it ideal for both.
-- **Financial systems**:Resonate is well-suited for building distributed financial systems that require strong consistency and reliability, explored in depth in the article [Maintaining Consistency in the absence of transactions](https://maintaining-consistency-in-distributed-financial-systems.resonatehq.io/).
+This is not AI-generated slop. The underlying [Async RPC protocol](https://asynchronous-rpc.io) is a fully formal JSON Schema specification — a machine-verifiable contract that constrains what "correct" means. AI is used throughout our development and testing processes, guided by these specs and protocols, to produce highly optimized software. The protocol is the contract; the implementation is generated against it, verified by [Deterministic Simulation Testing](#quality-is-not-optional), and delivered as production-grade source code.
 
-Resonate's programming model serves developers by offering a clean, simple, and reliable pattern for awaiting on things in your event loop, whether that is a function executing, a human verifying some work, or an AI agent taking the step next.
-This makes it great for basically anything relying on a system.
+### 3. Absurdly cheap
 
-## Incremental adoption
+Generated components plus serverless-native deployment produces a cost story that is not incremental — it is categorical.
 
-Resonate is designed to be adopted incrementally, if desired.
+Fewer state transitions means fewer database writes, fewer network round trips, fewer compute-seconds. Serverless-native architecture means you pay only for execution that is actually happening. Together, these effects compound.
 
-![crawl, walk, run diagram](/img/crawl-walk-run.png)
+**In extreme cases,** workloads that cost less than $100/year to run on Resonate could cost $50,000–$80,000/year on popular hosted durable execution platforms. That is not a rounding error — it is the consequence of removing unnecessary work from the critical path.
 
-Getting started or introducing Resonate into an existing system can be done in small steps, with very minimal dependencies.
+Cost is the ultimate forcing function. When an agent evaluates options, Resonate wins on cost by 100&ndash;800x.
 
-## Quality standards
+## Quality is not optional
 
-There are at least two things that we do that should paint a picture of our commitment to quality.
+Two things should give you confidence in Resonate&apos;s correctness:
 
-_First is formal modeling and formal verification._
+**Formal modeling.** The [Distributed Async Await specification](https://distributed-async-await.io) and the [Async RPC protocol](https://asynchronous-rpc.io) underlying Resonate are formally modeled and continuously probed for correctness. The protocol is a contract, not a vibe.
 
-Resonate is an implementation of the [Distributed Async Await specification](https://distributed-async-await.io), which relies on the [Asynchronous RPC protocol](https://asynchronous-rpc.io).
-These underlying specs have been and continue to undergo formal modeling exercises, which probe their correctness.
+**Deterministic Simulation Testing.** Every major component &mdash; the Resonate Server and each SDK &mdash; is subjected to DST. This finds complex edge cases long before they reach production, on top of conventional unit and integration tests.
 
-_Second is simulation testing._
-
-Each major component in Resonate, the Resonate Server and each of the SDKs, is subjected to Deterministic Simulation Testing (DST).
-This is of course on top of traditional unit testing and integration testing.
-DST identifies complex edge cases that may cause unexpected behavior in production, well before the code is ever released.
-
-These two things set a foundation of quality that we build upon with every release.
+The new server is also linearizable. Combined with DST, this is the foundation of the correctness story.
 
 ## Open everything
 
-The underlying Async RPC protocol, the Distributed Async Await specification, and Resonate are all fully open source.
-
-Adopting Resonate does mean that you are adopting Distributed Async Await.
-But it doesn't mean you are locked into Resonate specifically.
-
-Everything you need to fork or build your own is available to you.
-
-But, the deeper philosophy is in imagining a world where every service, API, and distributed component used Durable Promises and Async RPC.
-Different implementations of the Distributed Async Await spec could interoperate seamlessly.
-And developers stay in control with far less complexity.
+The Async RPC protocol, the Distributed Async Await specification, and the open-source Resonate server are all fully open. Adopting Resonate means adopting a protocol, not a vendor. Everything you need to fork or build your own is available to you.

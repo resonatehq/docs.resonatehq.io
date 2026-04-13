@@ -58,7 +58,7 @@ If you do not, install it now:
 brew install resonatehq/tap/resonate
 ```
 
-This tutorial was written and tested with Resonate Server v0.7.13 and Resonate TypeScript SDK v0.6.3.
+This tutorial was written and tested with Resonate Server v0.7.13 and Resonate TypeScript SDK v0.10.0.
 
 Part 5 of this tutorial assumes you have [Ollama](https://ollama.com/) installed and model "llama3.1" running locally on your machine.
 
@@ -100,12 +100,12 @@ import type { Context } from "@resonatehq/sdk";
 
 const resonate = new Resonate();
 
-async function baz(_: Context, greetee: string): string {
+async function baz(_: Context, greetee: string): Promise<string> {
   console.log("running baz");
   return `Hello ${greetee} from baz!`;
 }
 
-async function bar(_: Context, greetee: string): string {
+async function bar(_: Context, greetee: string): Promise<string> {
   console.log("running bar");
   return `Hello ${greetee} from bar!`;
 }
@@ -180,12 +180,12 @@ import type { Context } from "@resonatehq/sdk";
 
 const resonate = new Resonate();
 
-async function download(_: Context, url: string): string {
+async function download(_: Context, url: string): Promise<string> {
   console.log("running download");
   return `content of ${url}`;
 }
 
-async function summarize(_: Context, content: string): string {
+async function summarize(_: Context, content: string): Promise<string> {
   console.log("running summarize");
   return `summary of ${content}`;
 }
@@ -224,7 +224,7 @@ Next, lets explore Resonate's automatic retries by adding some code to steps `do
 
 Use `Math.random()` to generate the random numbers.
 Here we are intentionally making the functions non-deterministic to simulate transient failures.
-If you wanted deterministic number generation then you would use `ctx.Math.random()` instead.
+If you wanted deterministic number generation then you would use `ctx.math.random()` instead.
 
 ```ts title="worker.ts"
 import { Context, Resonate } from "@resonatehq/sdk";
@@ -461,7 +461,7 @@ In the config, specify the same Resonate Server URL and a group name (e.g. "clie
 import { Resonate } from "@resonatehq/sdk";
 
 const config = {
-  url: "https://localhost:8001", // url of the Resonate Server
+  url: "http://localhost:8001", // url of the Resonate Server
   group: "client", // group this process belongs to
 };
 const resonate = new Resonate(config);
@@ -561,7 +561,7 @@ bun run worker.ts
 ```
 
 ```shell
-bun run invoke.ts
+bun run client.ts
 ```
 
 The client will block while the workflow waits for the approval promise to be resolved.
@@ -726,10 +726,10 @@ async function sendEmail(
   console.log(`Sending email to ${email}`);
   console.log(`SUMMARY:\n${summary}`);
   console.log(
-    `APPROVAL LINK: http://localhost:5000/confirm?promiseId=${promiseId}&confirm=true`
+    `APPROVAL LINK: http://localhost:3000/confirm?promiseId=${promiseId}&confirm=true`
   );
   console.log(
-    `REJECTION LINK: http://localhost:5000/confirm?promiseId=${promiseId}&confirm=false`
+    `REJECTION LINK: http://localhost:3000/confirm?promiseId=${promiseId}&confirm=false`
   );
 }
 
@@ -765,7 +765,7 @@ Now run the full application.
 Send a request to kick off the workflow:
 
 ```shell
-curl -X POST http://localhost:5000/summarize \
+curl -X POST http://localhost:3000/summarize \
   -H "Content-Type: application/json" \
   -d '{"url": "https://resonatehq.io", "email": "someone@example.com"}'
 ```
@@ -775,7 +775,7 @@ Watch the worker logs to see each step execute and the "email preview" output.
 Open the `Approve` link printed in the logs (or use curl) to confirm the summary:
 
 ```shell
-curl "http://localhost:3000/confirm?promise_id=<approval-id>&confirm=true"
+curl "http://localhost:3000/confirm?promiseId=<approval-id>&confirm=true"
 ```
 
 Once confirmed, the workflow completes and the promise resolves.

@@ -264,7 +264,7 @@ Lambda workers can run as functions that poll for tasks or respond to events:
 ```typescript title="lambda-worker.ts"
 import { Resonate } from "@resonatehq/sdk";
 
-const resonate = Resonate.remote({
+const resonate = new Resonate({
   url: process.env.RESONATE_URL!,
   group: "lambda-workers",
 });

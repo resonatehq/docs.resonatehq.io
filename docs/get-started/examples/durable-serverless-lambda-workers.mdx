@@ -56,17 +56,18 @@ import TabItem from "@theme/TabItem";
     <TabItem value="typescript" >
 
 ```typescript
-import { resonate } from "@resonatehq/server";
+import { Resonate } from "@resonatehq/sdk";
 import type { Context } from "@resonatehq/sdk";
 
 export function* lambdaWorker(ctx: Context, task: TaskPayload) {
-  const attempt = yield ctx.run(startExecution, task);
+  const attempt = yield* ctx.run(startExecution, task);
 
-  const outcome = yield ctx.run(waitForDependency, attempt.id);
+  const outcome = yield* ctx.run(waitForDependency, attempt.id);
 
-  yield ctx.run(finalizeTask, outcome);
+  yield* ctx.run(finalizeTask, outcome);
 }
 
+const resonate = new Resonate();
 resonate.register("lambdaWorker", lambdaWorker);
 ```
 

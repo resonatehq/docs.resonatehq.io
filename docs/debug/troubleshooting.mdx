@@ -138,7 +138,7 @@ See [Server configuration](/deploy/run-server#customize-configuration) for valid
 
 1. **Verify server URL:**
 ```typescript
-const resonate = Resonate.remote({
+const resonate = new Resonate({
   url: "http://resonate-server:8001",  // Must match server address
   group: "workers",
 });
@@ -156,15 +156,10 @@ curl http://resonate-server:8001/healthz
 If server has auth enabled, workers must provide credentials:
 
 ```typescript
-const resonate = Resonate.remote({
+const resonate = new Resonate({
   url: "http://resonate-server:8001",
   group: "workers",
-  auth: {
-    basic: {
-      username: "user",
-      password: "pass",
-    },
-  },
+  token: "your-jwt-token",
 });
 ```
 
@@ -193,7 +188,7 @@ resonate serve --log-level debug
 1. **Verify group names match:**
 ```typescript
 // When registering worker:
-const resonate = Resonate.remote({
+const resonate = new Resonate({
   group: "workers",  // Note the group name
 });
 
@@ -217,8 +212,7 @@ resonate.register("processOrder", async (ctx, data) => {
   // Task execution
 });
 
-// Start polling
-await resonate.start();
+// Worker polls automatically after registration
 ```
 
 3. **Inspect promise state:**
@@ -426,14 +420,9 @@ If creating many promises, batch them when possible to reduce database round-tri
 
 1. **Verify credentials:**
 ```typescript
-const resonate = Resonate.remote({
+const resonate = new Resonate({
   url: "http://resonate-server:8001",
-  auth: {
-    basic: {
-      username: "user",  // Check these match server config
-      password: "pass",
-    },
-  },
+  token: "your-jwt-token",  // Check this matches server config
 });
 ```
 
