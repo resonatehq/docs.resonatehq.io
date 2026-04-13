@@ -11,64 +11,28 @@ tags:
   - configuration
 ---
 
-Resonate supports transport plugins for message communication between Clients and Servers.
+Resonate supports transport plugins for message communication between Clients and Servers. In v0.9.3, the only supported non-HTTP message transport is GCP Pub/Sub. Kafka and SQS transports are not yet available in the current server release.
+
+### GCP Pub/Sub server plugin
+
+What does it do?
+
+This plugin enables the server to put messages (containing task information) onto GCP Pub/Sub topics for consumption by SDK Clients using the SDK's Pub/Sub transport plugin.
+
+Where to find it?
+
+The GCP Pub/Sub transport is built into the v0.9.3 server binary — no rebuild required. The server is written in Rust and configured via CLI flags (there is no YAML config file).
+
+Enable the plugin at runtime with the `--transports-gcps-project` flag:
+
+```shell
+./resonate serve --transports-gcps-project my-gcp-project-id
+```
 
 ### Kafka server plugin
 
-What does it do?
-
-This plugin enables the server to put messages (containing task information) onto Kafka topics for consumption by SDK Clients using the SDK's Kafka transport plugin.
-
-Where to find it?
-
-The Kafka transport plugin is currently behind a build tag.
-If your binary does not already include it, rebuild with the `kafka` (or `all`) build tag:
-
-```shell
-go build -tags kafka -o resonate
-```
-
-Enable the plugin at runtime with the Kafka flags:
-
-```shell
-./resonate serve --aio-kafka-enable \
-  --aio-kafka-brokers localhost:9092 \
-  --aio-kafka-timeout 30s
-```
-
-Or, config keys: `aio.plugins.kafka.enabled`, `aio.plugins.kafka.config`.
-
-### Kafka SDK plugin
-
-What does it do?
-
-This plugin enables SDK Clients to consume messages from Kafka topics produced by the Resonate server's Kafka transport plugin.
-
-Where to find it?
-
-- [resonatehq/resonate-transport-kafka-ts](https://github.com/resonatehq/resonate-transport-kafka-ts)
+**Not available in v0.9.3.** Kafka transport support is planned for a future release. The Kafka SDK plugin ([resonatehq/resonate-transport-kafka-ts](https://github.com/resonatehq/resonate-transport-kafka-ts)) exists for use with future server versions once server-side support is added.
 
 ### SQS server plugin
 
-What does it do?
-
-This plugin enables the server to put messages (containing task information) onto AWS SQS queues for consumption by SDK Clients using the SDK's SQS transport plugin.
-
-Where to find it?
-
-This transport is behind a build tag.
-If your binary does not already include it, rebuild with the `sqs`, `aws`, or `all` build tag:
-
-```shell
-go build -tags sqs -o resonate
-```
-
-Enable it with the SQS flags:
-
-```shell
-./resonate serve --aio-sqs-enable \
-  --aio-sqs-timeout 30s \
-  --aio-sqs-workers 1
-```
-
-Or, config keys: `aio.plugins.sqs.enabled`, `aio.plugins.sqs.config`.
+**Not available in v0.9.3.** AWS SQS transport support is planned for a future release.

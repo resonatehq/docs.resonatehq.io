@@ -50,23 +50,15 @@ For shared, multi-tenant deployments, PostgreSQL provides better concurrency and
 
 ```bash title="Start server with PostgreSQL"
 resonate serve \
-  --aio-store-postgres-enable \
-  --aio-store-postgres-host localhost \
-  --aio-store-postgres-database resonate \
-  --aio-store-postgres-username resonate \
-  --aio-store-postgres-password secret
+  --storage-type postgres \
+  --storage-postgres-url "postgres://resonate:secret@localhost:5432/resonate" \
+  --storage-postgres-pool-size 20
 ```
 
-```yaml title="resonate.yaml"
-aio:
-  store:
-    postgres:
-      enable: true
-      host: "postgres.example.com"
-      database: "resonate"
-      username: "resonate"
-      password: "secret"
-      query: "sslmode=require"
+For SSL connections, include `sslmode` in the connection string:
+
+```bash
+--storage-postgres-url "postgres://resonate:secret@postgres.example.com:5432/resonate?sslmode=require"
 ```
 
 ## PostgreSQL high availability
@@ -124,13 +116,15 @@ archive_command = 'cp %p /mnt/wal_archive/%f'
 
 Monitor server health to detect issues before they impact availability:
 
-### Health check endpoint
+### Health check
+
+The server does not expose a dedicated `/healthz` endpoint.
+Use `GET /` which returns `405 Method Not Allowed` — this confirms the server is alive and accepting connections.
 
 ```bash title="Check server health"
-curl http://localhost:8001/healthz
+curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/
+# Returns 405 when healthy
 ```
-
-Returns `200 OK` when the server is healthy. Use this in load balancer health checks and monitoring systems.
 
 ### Prometheus metrics
 
@@ -202,10 +196,10 @@ kill -TERM $(pgrep resonate)
 sleep 12
 
 # Start server again
-resonate serve --config resonate.yaml
+resonate serve
 ```
 
-The `timeout` configuration option controls how long the server waits during graceful shutdown (default: 10s). See [Server configuration](/deploy/run-server#customize-configuration).
+See [Server configuration](/deploy/run-server#cli-flags-reference) for the full list of server flags.
 
 ### Rolling updates
 

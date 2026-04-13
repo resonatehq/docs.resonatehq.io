@@ -459,11 +459,8 @@ curl http://localhost:9090/metrics
 Should return Prometheus-formatted metrics.
 
 **Check metrics port configuration:**
-```yaml title="resonate.yaml"
-api:
-  metrics:
-    port: 9090  # Must be accessible to Prometheus
-```
+
+The metrics port defaults to `:9090`. The server does not use a YAML config file — configure it via CLI flags when starting the server (e.g., `resonate serve --metrics-addr :9090`). See `resonate serve --help` for all available flags.
 
 ### Prometheus not scraping metrics
 

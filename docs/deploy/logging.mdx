@@ -155,6 +155,8 @@ In production, collect logs from all servers and workers into a centralized syst
 ```yaml
 services:
   resonate-server:
+    # Note: there is no official Docker image for the Resonate server.
+    # Build your own image using the Dockerfile instructions at /deploy/run-server.
     image: resonatehq/resonate:latest
     logging:
       driver: "json-file"
@@ -178,6 +180,8 @@ metadata:
 spec:
   containers:
   - name: server
+    # Note: there is no official Docker image for the Resonate server.
+    # Build your own image using the Dockerfile instructions at /deploy/run-server.
     image: resonatehq/resonate:latest
 ```
 

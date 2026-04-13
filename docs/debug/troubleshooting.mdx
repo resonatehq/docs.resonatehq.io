@@ -66,7 +66,7 @@ psql -h localhost -U postgres -c "CREATE DATABASE resonate;"
 - Logs show `address already in use` or `bind: address already in use`
 
 **Cause:**
-Another process is using port 8001 (HTTP) or 50051 (gRPC).
+Another process is using port 8001 (HTTP).
 
 **Solutions:**
 
@@ -80,10 +80,9 @@ kill -9 <PID>
 ```
 
 2. **Use a different port:**
-```yaml title="resonate.yaml"
-api:
-  http:
-    port: 8002  # Change to unused port
+Pass `--http-addr` to `resonate serve` to bind to a different port:
+```bash
+resonate serve --http-addr :8003
 ```
 
 ### Configuration file errors
@@ -147,9 +146,9 @@ const resonate = new Resonate({
 2. **Test connectivity:**
 ```bash
 # From worker machine, test server reachability
-curl http://resonate-server:8001/healthz
+curl -s -o /dev/null -w "%{http_code}" http://resonate-server:8001/
 
-# Should return 200 OK
+# Should return 405 (server is alive, endpoint is POST-only)
 ```
 
 3. **Check authentication:**
@@ -166,7 +165,7 @@ const resonate = new Resonate({
 4. **Check server logs:**
 ```bash
 # Look for worker registration messages
-resonate serve --log-level debug
+resonate serve --level debug
 
 # Should see: "worker registered" or similar
 ```
@@ -427,13 +426,18 @@ const resonate = new Resonate({
 ```
 
 2. **Check server auth config:**
-```yaml title="resonate.yaml"
-api:
-  http:
-    auth:
-      basic:
-        username: "user"
-        password: "pass"
+
+The server is configured via CLI flags — there is no YAML config file. Set the auth token when starting the server:
+```bash
+resonate serve --http-auth-token your-token
+```
+
+In the SDK, pass the matching token via `token:`:
+```typescript
+const resonate = new Resonate({
+  url: "http://resonate-server:8001",
+  token: "your-token",
+});
 ```
 
 3. **For JWT tokens, verify:**
@@ -511,7 +515,7 @@ If these troubleshooting steps don't resolve your issue:
 1. **Check error codes:** See [Errors](/debug/errors) for detailed error information
 2. **Enable debug logging:**
 ```bash
-resonate serve --log-level debug
+resonate serve --level debug
 ```
 3. **Collect diagnostics:**
    - Server logs

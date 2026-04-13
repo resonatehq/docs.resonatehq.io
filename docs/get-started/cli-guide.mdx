@@ -49,7 +49,6 @@ resonate dev
 
 The server starts on:
 - HTTP API: `http://localhost:8001`
-- gRPC API: `localhost:50051`
 - Metrics: `http://localhost:9090`
 
 See `resonate dev --help` for options.
@@ -62,11 +61,8 @@ resonate serve --aio-store-sqlite-path /var/lib/resonate/resonate.db
 
 ```shell title="Start with PostgreSQL"
 resonate serve \
-  --aio-store-postgres-enable \
-  --aio-store-postgres-host localhost \
-  --aio-store-postgres-database resonate \
-  --aio-store-postgres-username resonate \
-  --aio-store-postgres-password secret
+  --storage-type postgres \
+  --storage-postgres-url "postgres://resonate:secret@localhost:5432/resonate"
 ```
 
 See `resonate serve --help` for all configuration options.
@@ -158,34 +154,18 @@ export RESONATE_PASSWORD="secret"
 resonate promises get order-123  # Uses env vars automatically
 ```
 
-## Configuration files
+## Configuration
 
-Instead of passing flags every time, create a configuration file:
+The Resonate server (v0.9.3+) is configured entirely via CLI flags — there is no `resonate.yaml` or `resonate.yml` config file. Pass all options directly to `resonate serve`:
 
-```yaml title="resonate.yaml"
-api:
-  http:
-    addr: ":8001"
-    auth:
-      admin: "secret"
-  
-aio:
-  store:
-    postgres:
-      enable: true
-      host: "localhost"
-      database: "resonate"
-      username: "resonate"
-      password: "secret"
+```shell title="Example: serve with auth and PostgreSQL"
+resonate serve \
+  --http-auth-token secret \
+  --storage-type postgres \
+  --storage-postgres-url "postgres://resonate:secret@localhost:5432/resonate"
 ```
 
-Then start the server with the config:
-
-```shell title="Use configuration file"
-resonate serve --config resonate.yaml
-```
-
-See the [server configuration reference](/deploy/run-server#customize-configuration) for all available options.
+Run `resonate serve --help` for all available flags.
 
 ## Tips and tricks
 
