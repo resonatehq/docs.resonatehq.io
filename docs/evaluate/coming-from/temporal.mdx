@@ -124,7 +124,7 @@ resonate = Resonate.local()
 ```typescript
 import { Resonate } from "@resonatehq/sdk";
 
-const resonate = Resonate.local();
+const resonate = new Resonate();
 
 // ...
 ```
@@ -192,7 +192,7 @@ function* foo(context: Context) {
 
 ```typescript
 // client.ts
-await resonate.promises.resolve({ id: promiseId, data: JSON.stringify(data) });
+await resonate.promises.settle(promiseId, "resolved", { data: JSON.stringify(data) });
 ```
 
     </TabItem>
@@ -247,14 +247,16 @@ See it in action: [example-load-balancing-ts](https://github.com/resonatehq-exam
 
 ```typescript
 // worker.ts
-const resonate = Resonate.remote({
+const resonate = new Resonate({
+  url: "http://localhost:8001",
   group: "workers",
 });
 ```
 
 ```typescript
 //client.ts
-const resonate = Resonate.remote({
+const resonate = new Resonate({
+  url: "http://localhost:8001",
   group: "client",
 });
 

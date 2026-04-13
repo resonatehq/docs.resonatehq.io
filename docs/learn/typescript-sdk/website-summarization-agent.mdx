@@ -58,7 +58,7 @@ If you do not, install it now:
 brew install resonatehq/tap/resonate
 ```
 
-This tutorial was written and tested with Resonate Server v0.7.13 and Resonate TypeScript SDK v0.10.0.
+This tutorial was written and tested with Resonate Server v0.9.3 and Resonate TypeScript SDK v0.10.0.
 
 Part 5 of this tutorial assumes you have [Ollama](https://ollama.com/) installed and model "llama3.1" running locally on your machine.
 
@@ -642,7 +642,7 @@ app.get("/confirm", async (req: Request, res: Response) => {
     const confirm = req.query.confirm as string;
     assert(promiseId, "promiseId is required");
     assert(confirm, "confirm is required");
-    await resonate.promises.resolve(promiseId, { data: confirm });
+    await resonate.promises.settle(promiseId, "resolved", { data: confirm });
     res.status(200).send("promise resolved.");
   } catch (e) {
     console.error(e);
