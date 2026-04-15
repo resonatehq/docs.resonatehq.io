@@ -302,11 +302,14 @@ resonate.promises.create("promise-id", timeout_at, json!({}), json!({})).await?;
 // Get a promise by ID
 let promise = resonate.promises.get("promise-id").await?;
 
-// Settle a promise — valid states: "resolved", "rejected", "rejected_canceled", "rejected_timedout"
-resonate.promises.settle("promise-id", "resolved", json!("approved")).await?;
+// Resolve a promise (value is serialized into the promise record)
+resonate.promises.resolve("promise-id", json!("approved")).await?;
 
-// Settle a promise (reject)
-resonate.promises.settle("promise-id", "rejected", json!("denied")).await?;
+// Reject a promise
+resonate.promises.reject("promise-id", json!("denied")).await?;
+
+// Cancel a promise (settles as "rejected_canceled")
+resonate.promises.cancel("promise-id", json!(null)).await?;
 ```
 
 ### `.stop()`

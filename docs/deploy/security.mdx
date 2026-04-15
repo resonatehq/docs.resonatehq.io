@@ -152,8 +152,10 @@ const resonate = new Resonate({
 import os
 from resonate import Resonate
 
-resonate = Resonate(
-    url="http://localhost:8001",
+resonate = Resonate.remote(
+    host="http://localhost",
+    store_port="8001",
+    message_source_port="8001",
     auth=(os.getenv("RESONATE_USERNAME"), os.getenv("RESONATE_PASSWORD")),
 )
 ```
@@ -173,7 +175,8 @@ export RESONATE_PASSWORD="password1"
 from resonate import Resonate
 
 # Will automatically use RESONATE_USERNAME and RESONATE_PASSWORD
-resonate = Resonate(url="http://localhost:8001")
+# along with RESONATE_HOST_STORE / RESONATE_PORT_STORE if set.
+resonate = Resonate.remote()
 ```
 
 ## Production best practices
