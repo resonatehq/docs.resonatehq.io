@@ -131,12 +131,7 @@ If your server requires JWT auth, pass a bearer token with every CLI call:
 resonate promises get order-123 --token YOUR_TOKEN
 ```
 
-Or set it once in the environment:
-
-```shell title="Set auth via environment"
-export RESONATE_TOKEN="YOUR_TOKEN"
-resonate promises get order-123
-```
+The `--token` flag is a global option — it works on every subcommand.
 
 See [Security](/deploy/security) for how to enable JWT auth on the server.
 

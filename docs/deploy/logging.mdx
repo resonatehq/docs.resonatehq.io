@@ -43,40 +43,43 @@ resonate serve --level debug
 
 #### Debug – detailed flow diagnostics
 
-Enabled with `logLevel: debug`.
+Enabled with `RESONATE_LEVEL=debug` or `--level debug`.
 
-Useful for tracing queue activity or individual requests.
+Useful for tracing individual request outcomes, especially around promise lifecycle and task dispatch.
 
-- API queues: api:sqe:enqueue, api:sqe:dequeue, api:cqe:enqueue, and api:cqe:dequeue show requests moving through the API buffers with request IDs and payload metadata.
-- AIO queues: aio:sqe:enqueue, aio:cqe:enqueue, and aio:cqe:dequeue mirror queue flow inside asynchronous subsystems.
-- Scheduler lifecycle: scheduler:add and scheduler:rmv mark coroutine scheduling, including coroutine name and generated ID.
-- Per-request traces: HTTP middleware logs http method, URL, and status; the gRPC interceptor logs grpc method names and returned errors.
+- Promise lifecycle: messages like `Promise not found`, `Promise created already timedout`, `Promise settle: promise not found`, and `Promise settle: TOCTOU race detected, treating as not found` explain why an incoming promise request returned what it did.
+- Task lifecycle: `Task acquire: task not found`, `Task continue: not found`, `Task fulfill rejected: version mismatch or invalid state`, `Task fence rejected: task not found`.
+- Listener / callback registration: `Listener registration: awaited promise not found`, `Callback registration: awaited promise not found`.
+- Schedule lookups: `Schedule not found`, `Schedule delete: not found`.
+
+Every debug line includes structured fields such as `promise_id`, `task_id`, `schedule_id`, `version`, and (where relevant) `fenced_action`.
 
 #### Info – lifecycle and service announcements
 
-Emitted regardless of log level unless you choose warn/error, which suppress lower levels.
+Emitted by default (the default `level` is `info`).
 
 - Server startup: `Resonate Server starting` reports the listener port; `Operational config` and `Transport config` follow with the resolved configuration.
-- Storage initialization: `SQLite initialized` or `PostgreSQL initialized`.
-- Auth state: `Auth disabled — all requests accepted` or `Auth enabled` (with the public key path).
-- Controlled shutdowns: shutdown signal records the signal value before the server begins graceful cleanup.
+- Storage initialization: `SQLite initialized` or `PostgreSQL initialized` (`PostgreSQL pool configured` lists the pool size).
+- Auth state: `Auth disabled — all requests accepted`, or `Auth enabled` with the public key path (and `Auth issuer configured` / `Auth audience configured` when those claims are enforced).
+- Transport state: `GCP Pub/Sub transport enabled` when `[transports.gcps]` is configured.
+- Task recovery: `Task continued from halted state` indicates a previously halted task resumed.
 
 #### Warn – recoverable or throttling conditions
 
-Warnings surface when Resonate recovers automatically but an operator may want to intervene.
+Warnings surface when Resonate recovers automatically but an operator may want to know.
 
-- Capacity limits: scheduler queue full fires when coroutine capacity is exhausted, signaling the need to increase buffers or investigate load spikes.
-- Metrics shutdown issues: error stopping metrics server appears if the Prometheus endpoint does not close cleanly during shutdown.
-- Task processing quirks: Warnings such as failed to parse task, failed to parse promise, error decoding task, or failed to enqueue task highlight malformed data or transient delivery issues detected by background workers.
-- Router misses: failed to match promise is logged when no routing rule claims a new promise; Resonate continues by creating the promise without a task
+- Auth in unsigned mode: `Auth enabled — unsigned mode (no signature verification)` when `[auth].publickey = "none"`. Fine for dev, dangerous in prod.
+- Task dispatch quirk: `Task fulfilled but promise not found` — the task completed but its promise record has since disappeared.
+- Shutdown pressure: `Background tasks did not finish within shutdown timeout, forcing exit` when the graceful shutdown window was exceeded.
 
 #### Error – actionable failures
 
-Error logs identify conditions that usually require operator action.
+Errors identify conditions that usually require operator action.
 
-- Critical startup failures: failed to start api, failed to start aio, or control loop failed abort the serve command and indicate fatal initialization issues.
-- Shutdown triggers: api error received, shutting down or aio error received, shutting down explain why an emergency shutdown began.
-- Data-layer problems: Errors such as failed to read promise propagate exceptions returned by the storage layer, including the triggering command for root-cause analysis.
+- Startup failures: `Fatal: ...` to stderr plus an `ERROR` record describing what aborted `resonate serve` (for example, `storage.type=postgres requires RESONATE_STORAGE__POSTGRES__URL`).
+- Metrics bind failures: `Failed to bind metrics port` with the port that was in use.
+- Background loop failures: `Background timeout processing failed: storage error` indicates the background timeout scanner hit a storage-layer problem.
+- Readiness probe failures: `Readiness check failed: storage database unavailable` is emitted each time `GET /ready` returns 503.
 
 ### Log output format
 
@@ -221,38 +224,37 @@ Always monitor these log messages:
 
 **Server startup failures:**
 ```
-level=ERROR msg="failed to start api"
-level=ERROR msg="failed to start aio"
+ERROR resonate: Fatal: storage.type=postgres requires RESONATE_STORAGE__POSTGRES__URL
+ERROR resonate: Failed to bind metrics port port=9090
 ```
-**Action:** Check configuration and database connectivity.
+**Action:** Check configuration and that required ports are free.
 
-**Worker heartbeat failures:**
+**Readiness failures:**
 ```
-level=WARN msg="worker heartbeat timeout" workerId="abc123"
+ERROR resonate: Readiness check failed: storage database unavailable
 ```
-**Action:** Investigate worker health. Normal during rolling deployments, concerning if sustained.
+**Action:** Investigate database health — `GET /ready` is returning 503 until storage recovers.
 
-**Database errors:**
+**Background loop failures:**
 ```
-level=ERROR msg="failed to read promise"
-level=ERROR msg="failed to write promise"
+ERROR resonate: Background timeout processing failed: storage error
 ```
-**Action:** Check database health and connection pool.
+**Action:** Check database health and connection pool; sustained failures block timeout handling.
 
-**Capacity issues:**
+**Shutdown pressure:**
 ```
-level=WARN msg="scheduler queue full"
+WARN resonate: Background tasks did not finish within shutdown timeout, forcing exit
 ```
-**Action:** Increase server resources or optimize workload.
+**Action:** Consider raising `[server].shutdown_timeout` or investigating what's blocking shutdown.
 
 ### Normal operational events
 
 These logs indicate healthy operation:
 
 ```
-level=INFO msg="starting http server"
-level=INFO msg="starting grpc server"
-level=INFO msg="shutdown signal received, shutting down"
+INFO resonate: Resonate Server starting port=8001
+INFO resonate: PostgreSQL initialized
+INFO resonate: Auth disabled — all requests accepted
 ```
 
 ## Log retention and storage

@@ -97,16 +97,16 @@ export default resonate;
 ### Rust SDK
 
 ```rust title="main.rs"
-use resonate::Resonate;
+use resonate::{Resonate, ResonateConfig};
 
-let resonate = Resonate::new(resonate::ResonateConfig {
-    token: Some(std::env::var("RESONATE_TOKEN").ok()),
+let resonate = Resonate::new(ResonateConfig {
+    token: std::env::var("RESONATE_TOKEN").ok(),
     url: Some("http://localhost:8001".into()),
     ..Default::default()
-})?;
+});
 ```
 
-The Rust SDK also reads `RESONATE_TOKEN` from the environment automatically.
+`ResonateConfig::token` is `Option<String>`, so `std::env::var("RESONATE_TOKEN").ok()` is the idiomatic way to populate it from the environment. `Resonate::new` returns `Resonate` directly (not a `Result`).
 
 ## Production best practices
 
@@ -178,10 +178,10 @@ For a working example of authenticated applications:
 - [Deploy to production](/deploy/run-server) with authentication enabled
 - [Set up observability](/deploy/logging) to monitor auth events
 - [Configure message transports](/deploy/message-transports) for distributed workers
-- Review [server configuration](/deploy/run-server#cli-flags-reference) for all server flags
+- Review [server configuration](/deploy/run-server#configuration) for all server flags
 
 ## Related documentation
 
 - [Develop with TypeScript SDK](/develop/typescript) — SDK reference with auth examples
 - [Develop with Rust SDK](/develop/rust) — SDK reference with auth examples
-- [Server configuration](/deploy/run-server#cli-flags-reference) — Complete server flag reference
+- [Server configuration](/deploy/run-server#configuration) — Complete server flag reference

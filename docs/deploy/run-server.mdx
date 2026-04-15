@@ -38,9 +38,10 @@ resonate serve
 
 You will see log output like the following:
 
-```shell
-Resonate Server starting port=8001
-Operational config ...
+```
+INFO resonate: Resonate Server starting port=8001
+INFO resonate: Using SQLite backend path="resonate.db"
+INFO resonate: Auth disabled — all requests accepted
 ```
 
 The HTTP API is on port `8001` and the Prometheus metrics endpoint is on port `9090`.

@@ -209,33 +209,22 @@ Update the ports and domain if you chose different values.
 ## Connect your application
 
 Finally, update your application to point at the Droplet.
-The examples below show how to target the public endpoints you just exposed and supply the same credentials you configured in the systemd unit flags.
+The examples below show how to target the public HTTPS endpoint you just exposed.
+
+:::info SDK compatibility
+The Resonate Server v0.9.x speaks the v0.10.0 protocol. Use the **TypeScript SDK v0.10.0** or **Rust SDK** — both speak this protocol.
+
+The Python SDK v0.6.7 is protocol-compatible with the legacy Go server only and cannot connect to this deployment.
+:::
 
 <Tabs
     groupId="sdk-language"
-    defaultValue="python"
+    defaultValue="typescript"
     values={[
-        { label: "Python", value: "python" },
         { label: "TypeScript", value: "typescript" },
+        { label: "Rust", value: "rust" },
     ]}
 >
-
-    <TabItem value="python">
-
-```python
-from resonate import Resonate
-
-# Python SDK v0.6.7 works with the legacy Resonate server only.
-# Support for server v0.9.x is coming in a future release.
-resonate = Resonate.remote(
-    group="my-app-group",
-    host="your-domain.com",
-    store_port="443",
-    message_source_port="443",
-)
-```
-
-    </TabItem>
 
     <TabItem value="typescript">
 
@@ -245,7 +234,20 @@ import { Resonate } from "@resonatehq/sdk";
 const resonate = new Resonate({
   url: "https://your-domain.com",
   group: "my-app-group",
-  token: process.env.RESONATE_TOKEN,
+});
+```
+
+    </TabItem>
+
+    <TabItem value="rust">
+
+```rust
+use resonate::{Resonate, ResonateConfig};
+
+let resonate = Resonate::new(ResonateConfig {
+    url: Some("https://your-domain.com".into()),
+    group: Some("my-app-group".into()),
+    ..Default::default()
 });
 ```
 
@@ -253,7 +255,7 @@ const resonate = new Resonate({
 
 </Tabs>
 
-For TypeScript workers, set the `RESONATE_TOKEN` environment variable before starting the process so the client sends the same auth token configured in the systemd unit. If you exposed additional subsystems, repeat the pattern for each port.
+If you enabled JWT auth (added an `[auth]` section to `resonate.toml`), clients need to present a signed bearer token. Set it via `token:` in the TypeScript SDK, or via `RESONATE_TOKEN` in the environment for the Rust SDK. See [Security](/deploy/security) for the full auth setup.
 
 ## Troubleshooting
 
