@@ -192,7 +192,7 @@ function* foo(context: Context) {
 
 ```typescript
 // client.ts
-await resonate.promises.settle(promiseId, "resolved", { data: JSON.stringify(data) });
+await resonate.promises.resolve(promiseId, { data: JSON.stringify(data) });
 ```
 
     </TabItem>

@@ -108,7 +108,7 @@ import { Resonate } from "@resonatehq/sdk";
 import type { Context } from "@resonatehq/sdk";
 
 // Initialize worker as part of "workers" group
-const resonate = Resonate.remote({
+const resonate = new Resonate({
   group: "workers",
 });
 

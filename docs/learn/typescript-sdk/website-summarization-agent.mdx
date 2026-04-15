@@ -642,7 +642,7 @@ app.get("/confirm", async (req: Request, res: Response) => {
     const confirm = req.query.confirm as string;
     assert(promiseId, "promiseId is required");
     assert(confirm, "confirm is required");
-    await resonate.promises.settle(promiseId, "resolved", { data: confirm });
+    await resonate.promises.resolve(promiseId, { data: confirm });
     res.status(200).send("promise resolved.");
   } catch (e) {
     console.error(e);

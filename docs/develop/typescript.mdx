@@ -416,22 +416,39 @@ await resonate.promises.create(
 );
 ```
 
-### `.promises.settle()`
+### `.promises.resolve()`
 
-Resonate's `.promises.settle()` method allows you to resolve or reject a promise by ID.
+Resonate's `.promises.resolve()` method resolves a promise by ID.
 
-This is useful for HITL use cases where you want to wait for a human to approve or reject a function execution.
+This is useful for HITL use cases where you want to wait for a human to approve a function execution.
 It works well in conjunction with the [`.promise()`](#promise) method.
 
 ```ts
 // Resolve a promise
-await resonate.promises.settle("promise-id", "resolved");
+await resonate.promises.resolve("promise-id");
 
 // Resolve with data
-await resonate.promises.settle("promise-id", "resolved", { data: { approved: true } });
+await resonate.promises.resolve("promise-id", { data: JSON.stringify({ approved: true }) });
+```
 
+### `.promises.reject()`
+
+Resonate's `.promises.reject()` method rejects a promise by ID.
+
+```ts
 // Reject a promise
-await resonate.promises.settle("promise-id", "rejected");
+await resonate.promises.reject("promise-id");
+
+// Reject with data
+await resonate.promises.reject("promise-id", { data: JSON.stringify({ reason: "denied" }) });
+```
+
+### `.promises.cancel()`
+
+Resonate's `.promises.cancel()` method cancels a promise by ID (settles it as `rejected_canceled`).
+
+```ts
+await resonate.promises.cancel("promise-id");
 ```
 
 ## Context APIs
@@ -585,7 +602,7 @@ Context's `.promise()` method allows you to get or create a promise that can be 
 A new promise is created and its ID is generated automatically.
 
 This is very useful for HITL (Human-In-The-Loop) use cases where you want to block progress until a human has taken an action or provided data.
-It works well in conjunction with the [`.promises.settle()`](#promisessettle) method.
+It works well in conjunction with the [`.promises.resolve()`](#promisesresolve) method.
 
 ```ts
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
