@@ -156,7 +156,7 @@ function* deposit(ctx: Context, userId: string, amount: number) {
   yield* ctx.run(saveBalance, userId, newBalance);
   
   // Option 2: Durable Promise for workflow state
-  const balancePromise = yield* ctx.promise(`balance-${userId}`);
+  const balancePromise = yield* ctx.promise();
   // ... resolve when ready
   
   return newBalance;
@@ -193,22 +193,22 @@ In Resonate, this is just a function with a Durable Promise:
 
 ```typescript title="Resonate workflow function"
 function* orderWorkflow(ctx: Context, orderId: string, order: Order) {
-  const approvalPromise = yield* ctx.promise(`approval-${orderId}`);
+  // ctx.promise() creates a child promise with ID `${ctx.id}.<seq>`.
+  // Because the workflow was invoked with orderId as the execution ID,
+  // the approval promise ID is deterministic: `${orderId}.0`.
+  const approvalPromise = yield* ctx.promise<boolean>();
   const approved = yield* approvalPromise;
-  
+
   if (approved) {
     yield* ctx.run(fulfillOrder, order);
   }
-  
+
   return "complete";
 }
 
-// Approve from anywhere
+// Approve from anywhere — the caller reconstructs the ID from orderId.
 async function approveOrder(orderId: string) {
-  await resonate.promises.resolve({
-    id: `approval-${orderId}`,
-    value: true
-  });
+  await resonate.promises.resolve(`${orderId}.0`, { data: JSON.stringify(true) });
 }
 ```
 
@@ -269,12 +269,13 @@ await ctx.promise("user-decision").resolve("approved");
 **Resonate:** Uses Durable Promises
 
 ```typescript title="Resonate Durable Promise"
-// In function
-const approvalPromise = yield* ctx.promise("approval-123");
+// In function — ctx.promise() creates `${ctx.id}.<seq>` deterministically.
+const approvalPromise = yield* ctx.promise<string>();
 const decision = yield* approvalPromise;
 
-// From anywhere
-await resonate.promises.resolve({ id: "approval-123", value: "approved" });
+// From anywhere — use the caller's known execution ID (e.g. `order-123`)
+// to reconstruct the approval promise ID as `${orderId}.<seq>`.
+await resonate.promises.resolve(`${orderId}.0`, { data: JSON.stringify("approved") });
 ```
 
 Same concept, similar API. Resonate's version works with any function, not just Workflows.

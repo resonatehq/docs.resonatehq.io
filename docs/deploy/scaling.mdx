@@ -21,7 +21,7 @@ Workers register with the Resonate server using a **group name**. All workers in
 ```typescript title="TypeScript worker registration"
 import { Resonate } from "@resonatehq/sdk";
 
-const resonate = Resonate.remote({
+const resonate = new Resonate({
   url: "http://resonate-server:8001",
   group: "workers", // All workers in this group can handle the same tasks
 });
@@ -189,7 +189,7 @@ Workers can run as serverless functions that wake up to claim tasks:
 
 ```typescript title="Cloud Run worker"
 // Worker runs on Cloud Run, polls for tasks
-const resonate = Resonate.remote({
+const resonate = new Resonate({
   url: process.env.RESONATE_URL,
   group: "cloud-run-workers",
 });
