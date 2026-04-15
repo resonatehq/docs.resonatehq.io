@@ -14,30 +14,30 @@ Both the Resonate Server and Resonate SDK emit structured logs that can help you
 
 ## Server logs
 
-Resonate emits structured logs through Go’s `slog` package.
-When the Server starts, it installs a text handler that writes key/value records to standard output at the operator-selected minimum log level.
+Resonate emits structured logs via the Rust `tracing` ecosystem.
+On startup the server installs a text subscriber that writes key/value records to standard output at the operator-selected minimum log level.
 
 ### Configuring the log level
 
-Log levels: `debug`, `info`, `warn`, or `error`.
+Log levels: `debug`, `info`, `warn`, or `error`. The default is `info`.
 
-You can set the log level via the `resonate.yml` configuration file.
-The default is `info` if the field is omitted.
+Set it in `resonate.toml`:
 
-```yml
-logLevel: debug
+```toml title="resonate.toml"
+level = "debug"
 ```
 
-You can also set the log level via the `--log-level` CLI flag when starting the server:
+Or via environment variable:
 
 ```shell
-resonate serve --log-level debug
+RESONATE_LEVEL=debug
 ```
 
-The CLI flag takes precedence over the configuration file.
+Or via CLI flag (takes precedence over the file and env):
 
-Resonate validates the string before applying it.
-An unrecognized value raises "failed to parse log level" and prevents startup.
+```shell
+resonate serve --level debug
+```
 
 ### Log levels and common messages
 
@@ -56,9 +56,10 @@ Useful for tracing queue activity or individual requests.
 
 Emitted regardless of log level unless you choose warn/error, which suppress lower levels.
 
-- Startup of subsystems: starting http server, starting grpc server, and starting poll server announce listener addresses when the respective subsystems come online.
-- Metrics endpoint: starting metrics server indicates the Prometheus exporter is listening.
-- Controlled shutdowns: shutdown signal received, shutting down records the signal value before the server begins graceful cleanup.
+- Server startup: `Resonate Server starting` reports the listener port; `Operational config` and `Transport config` follow with the resolved configuration.
+- Storage initialization: `SQLite initialized` or `PostgreSQL initialized`.
+- Auth state: `Auth disabled — all requests accepted` or `Auth enabled` (with the public key path).
+- Controlled shutdowns: shutdown signal records the signal value before the server begins graceful cleanup.
 
 #### Warn – recoverable or throttling conditions
 
@@ -79,19 +80,20 @@ Error logs identify conditions that usually require operator action.
 
 ### Log output format
 
-Logs are written to stdout in key-value format:
+Logs are written to stdout in `tracing`'s default key-value text format:
 
 ```
-time=2026-02-04T10:30:00.123Z level=INFO msg="starting http server" addr=":8001"
-time=2026-02-04T10:30:01.456Z level=INFO msg="starting grpc server" addr=":50051"
-time=2026-02-04T10:30:01.789Z level=INFO msg="starting metrics server" addr=":9090"
+2026-04-15T10:30:00.123Z  INFO resonate: Resonate Server starting port=8001
+2026-04-15T10:30:00.456Z  INFO resonate: Using SQLite backend path="resonate.db"
+2026-04-15T10:30:00.789Z  INFO resonate: Auth disabled — all requests accepted
 ```
 
 **Fields:**
-- `time` - ISO 8601 timestamp with millisecond precision
-- `level` - Log level (DEBUG, INFO, WARN, ERROR)
-- `msg` - Human-readable message
-- Additional fields - Context-specific data (addr, id, method, status, etc.)
+- ISO 8601 timestamp with millisecond precision
+- Level (`DEBUG`, `INFO`, `WARN`, `ERROR`)
+- Target (e.g. `resonate`)
+- Human-readable message plus structured key=value fields
+
 
 ## SDK logs
 
@@ -155,9 +157,7 @@ In production, collect logs from all servers and workers into a centralized syst
 ```yaml
 services:
   resonate-server:
-    # Note: there is no official Docker image for the Resonate server.
-    # Build your own image using the Dockerfile instructions at /deploy/run-server.
-    image: resonatehq/resonate:latest
+    image: resonatehqio/resonate:v0.9.3
     logging:
       driver: "json-file"
       options:
@@ -180,9 +180,7 @@ metadata:
 spec:
   containers:
   - name: server
-    # Note: there is no official Docker image for the Resonate server.
-    # Build your own image using the Dockerfile instructions at /deploy/run-server.
-    image: resonatehq/resonate:latest
+    image: resonatehqio/resonate:v0.9.3
 ```
 
 Or use Fluent Bit / Fluentd as a DaemonSet to forward logs to your aggregation system.

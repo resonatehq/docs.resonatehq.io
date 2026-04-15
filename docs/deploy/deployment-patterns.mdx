@@ -38,17 +38,22 @@ services:
       retries: 5
 
   resonate-server:
-    # No official image is published yet — build from source using a custom Dockerfile.
-    # See /deploy/run-server#run-with-docker for the Dockerfile reference.
-    build: ./resonate-server
+    image: resonatehqio/resonate:v0.9.3
     ports:
       - "8001:8001"
       - "9090:9090"
     environment:
-      DATABASE_URL: postgres://resonate:secret@postgres:5432/resonate
+      RESONATE_SERVER__BIND: "0.0.0.0"
+      RESONATE_STORAGE__TYPE: postgres
+      RESONATE_STORAGE__POSTGRES__URL: postgres://resonate:secret@postgres:5432/resonate
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8001/health || exit 1"]
+      interval: 5s
+      retries: 10
+      start_period: 30s
 
   worker:
     image: your-app:latest
@@ -103,31 +108,31 @@ spec:
     spec:
       containers:
         - name: server
-          # No official image is published yet — build from source using a custom Dockerfile.
-          # See /deploy/run-server#run-with-docker for the Dockerfile reference.
-          image: your-resonate-server:latest
+          image: resonatehqio/resonate:v0.9.3
           ports:
             - containerPort: 8001
               name: http
-            - containerPort: 50051
-              name: grpc
             - containerPort: 9090
               name: metrics
           env:
-            - name: DATABASE_URL
+            - name: RESONATE_SERVER__BIND
+              value: "0.0.0.0"
+            - name: RESONATE_STORAGE__TYPE
+              value: "postgres"
+            - name: RESONATE_STORAGE__POSTGRES__URL
               valueFrom:
                 secretKeyRef:
                   name: postgres-credentials
                   key: url
           livenessProbe:
             httpGet:
-              path: /healthz
+              path: /health
               port: 8001
-            initialDelaySeconds: 30
+            initialDelaySeconds: 5
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /ready
               port: 8001
             initialDelaySeconds: 5
             periodSeconds: 5
@@ -143,9 +148,6 @@ spec:
     - name: http
       port: 8001
       targetPort: 8001
-    - name: grpc
-      port: 50051
-      targetPort: 50051
     - name: metrics
       port: 9090
       targetPort: 9090
@@ -340,10 +342,12 @@ After=network.target postgresql.service
 [Service]
 Type=simple
 User=resonate
-WorkingDirectory=/opt/resonate
-ExecStart=/usr/local/bin/resonate serve --config /etc/resonate/config.yaml
+WorkingDirectory=/etc/resonate
+ExecStart=/usr/local/bin/resonate serve
 Restart=on-failure
 RestartSec=10
+# Configuration is loaded from /etc/resonate/resonate.toml (the working directory).
+# Secrets can be injected as environment variables, e.g. RESONATE_STORAGE__POSTGRES__URL.
 
 [Install]
 WantedBy=multi-user.target

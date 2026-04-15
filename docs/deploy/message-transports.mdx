@@ -21,13 +21,22 @@ This plugin enables the server to put messages (containing task information) ont
 
 Where to find it?
 
-The GCP Pub/Sub transport is built into the v0.9.3 server binary — no rebuild required. The server is written in Rust and configured via CLI flags (there is no YAML config file).
+The GCP Pub/Sub transport is built into the v0.9.3 server binary — no rebuild required.
 
 Enable the plugin at runtime with the `--transports-gcps-project` flag:
 
 ```shell
-./resonate serve --transports-gcps-project my-gcp-project-id
+resonate serve --transports-gcps-project my-gcp-project-id
 ```
+
+Or in `resonate.toml`:
+
+```toml
+[transports.gcps]
+project = "my-gcp-project-id"
+```
+
+Or via env var: `RESONATE_TRANSPORTS__GCPS__PROJECT=my-gcp-project-id`.
 
 ### Kafka server plugin
 

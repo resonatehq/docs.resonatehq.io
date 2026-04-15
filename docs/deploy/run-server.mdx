@@ -39,137 +39,124 @@ resonate serve
 You will see log output like the following:
 
 ```shell
-resonate: Server listening port=8001
-resonate: Metrics server listening port=9090
+Resonate Server starting port=8001
+Operational config ...
 ```
 
-The output indicates that the server has an HTTP API available at port 8001 and a metrics endpoint at port 9090.
-
-These are the default ports and can be changed via CLI flags.
+The HTTP API is on port `8001` and the Prometheus metrics endpoint is on port `9090`.
+Both default ports can be changed.
 
 ## Run with Docker
 
-There is no official Docker image yet.
-To run the server in Docker, wrap the release tarball in a Dockerfile.
+The Resonate Server is published as an official image on Docker Hub at [`resonatehqio/resonate`](https://hub.docker.com/r/resonatehqio/resonate).
+Tags track the server release versions (e.g. `v0.9.3`) plus a rolling `latest`.
 
-:::caution GLIBC requirement
-The Resonate binary requires **glibc ≥ 2.38**. Use `debian:trixie-slim` or `ubuntu:24.04` as the base image. Older images like `debian:bookworm` or `ubuntu:22.04` will fail.
-:::
-
-```dockerfile title="Dockerfile"
-ARG RESONATE_VERSION=v0.9.3
-
-FROM debian:trixie-slim AS fetch
-ARG RESONATE_VERSION
-ARG TARGETARCH=x86_64
-RUN apt-get update \
- && apt-get install -y --no-install-recommends curl ca-certificates tar \
- && rm -rf /var/lib/apt/lists/*
-WORKDIR /src
-RUN TARBALL="resonate_linux_${TARGETARCH}.tar.gz" \
- && curl -fsSL -O "https://github.com/resonatehq/resonate/releases/download/${RESONATE_VERSION}/${TARBALL}" \
- && tar -xzf "${TARBALL}" \
- && test -x ./resonate
-
-FROM debian:trixie-slim AS runtime
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates \
- && rm -rf /var/lib/apt/lists/* \
- && groupadd -r resonate && useradd -r -g resonate -d /app -s /usr/sbin/nologin resonate
-WORKDIR /app
-COPY --from=fetch /src/resonate /usr/local/bin/resonate
-USER resonate
-EXPOSE 8001
-
-CMD ["resonate", "serve", \
-     "--server-host", "0.0.0.0", \
-     "--server-port", "8001", \
-     "--level", "info"]
+```shell title="Run the Resonate Server in Docker"
+docker run --rm -p 8001:8001 -p 9090:9090 resonatehqio/resonate:v0.9.3
 ```
 
-Build and run:
+`resonate serve` is the default command. Override only when you need to change behavior:
 
-```shell
-docker build -t resonate-server .
-docker run -p 8001:8001 resonate-server
+```shell title="Use Postgres storage"
+docker run --rm -p 8001:8001 -p 9090:9090 \
+  -e RESONATE_STORAGE__TYPE=postgres \
+  -e RESONATE_STORAGE__POSTGRES__URL="postgres://user:pass@host:5432/resonate" \
+  resonatehqio/resonate:v0.9.3
 ```
 
-To use PostgreSQL, pass the storage flags:
+The image exposes both `8001` (HTTP API) and `9090` (Prometheus metrics).
+
+## Configuration
+
+The server is configured by layering, in this order — each layer overrides the previous:
+
+1. Built-in defaults
+2. `resonate.toml` (optional, looked up in the working directory)
+3. Environment variables prefixed with `RESONATE_` using `__` to nest
+4. CLI flags passed to `resonate serve`
+
+The recommended approach for any non-trivial deployment is a `resonate.toml` file checked into your infra repo, with secrets injected via environment variables.
+
+### `resonate.toml`
+
+```toml title="resonate.toml"
+level = "info"
+
+[server]
+host = "localhost"
+port = 8001
+
+[storage]
+type = "sqlite"
+
+[storage.sqlite]
+path = "resonate.db"
+
+[tasks]
+lease_timeout = 15000
+retry_timeout = 30000
+```
+
+For Postgres, swap the `[storage]` section:
+
+```toml title="resonate.toml — Postgres"
+[storage]
+type = "postgres"
+
+[storage.postgres]
+url = "postgres://user:pass@host:5432/resonate"
+pool_size = 20
+```
+
+To enable JWT auth, add an `[auth]` section:
+
+```toml title="resonate.toml — auth enabled"
+[auth]
+publickey = "/etc/resonate/auth/public.pem"
+```
+
+### Environment variables
+
+Every config field is also reachable as an environment variable. The convention is `RESONATE_<SECTION>__<FIELD>`, with `__` separating nested keys:
 
 ```shell
-docker run -p 8001:8001 resonate-server \
-  resonate serve \
-  --server-host 0.0.0.0 \
-  --server-port 8001 \
+RESONATE_LEVEL=info
+RESONATE_SERVER__PORT=8001
+RESONATE_STORAGE__TYPE=postgres
+RESONATE_STORAGE__POSTGRES__URL=postgres://user:pass@host:5432/resonate
+RESONATE_AUTH__PUBLICKEY=/etc/resonate/auth/public.pem
+```
+
+This is the form used in the [official Docker Compose file](https://github.com/resonatehq/resonate/blob/main/docker-compose.yml) and is the right choice for container platforms that prefer env-var injection.
+
+### CLI flags
+
+Most settings can also be passed as CLI flags — useful for ad-hoc overrides:
+
+```shell
+resonate serve \
   --storage-type postgres \
-  --storage-postgres-url "postgres://user:pass@host:5432/resonate"
+  --storage-postgres-url "postgres://user:pass@localhost:5432/resonate" \
+  --storage-postgres-pool-size 20
 ```
 
-## Deploy to GCP Cloud Run
+Run `resonate serve --help` for the full list. Common flags:
 
-To deploy an instance of the Resonate Server to Google Cloud Run, start by deploying a new service.
-Select "Deploy container" from the Cloud Run dashboard.
-
-![Deploy container](/img/cloud-run-dashboard.png)
-
-On the configuration screen, select "Deploy one revision from an existing container image".
-
-Build and push the Dockerfile above to your container registry, then enter the image URL.
-
-![Docker image URL](/img/docker-image-url.png)
-
-Set the "Container port" to "8001", which is the default port for the Resonate Server's HTTP API.
-
-And ensure that there is just 1 instance of the server running.
-Use "Manual scaling" and set "Number of instances" to "1".
-
-![Cloud Run instance settings](/img/cloud-run-service-scaling.png)
-
-Set the following environment variables:
-
-| Variable | Value |
-|----------|-------|
-| `RESONATE_SERVER_HOST` | `0.0.0.0` |
-| `RESONATE_SERVER_PORT` | `8001` |
-| `DATABASE_URL` | Your Postgres connection string |
-
-You should be able to customize the rest of the settings as needed for your deployment.
-
-## Build from source
-
-If you don't have Homebrew, you can build from source using Rust.
-Run the following commands to download the repository and build the server:
-
-```shell
-git clone https://github.com/resonatehq/resonate
-cd resonate
-cargo build --release
-```
-
-After it is built, run the binary directly:
-
-```shell
-./target/release/resonate serve
-```
-
-## CLI flags reference
-
-The server is configured via CLI flags.
-Run `resonate serve --help` for a full list.
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--server-host` | string | `0.0.0.0` | HTTP server bind address |
-| `--server-port` | int | `8001` | HTTP server port |
-| `--server-url` | string | — | Server's externally-reachable URL (required for distributed deployments where workers call back to the server) |
-| `--level` | string | `info` | Log level: `debug`, `info`, `warn`, `error` |
-| `--tasks-retry-timeout` | int (ms) | `30000` | Suspend/wake retry interval. Lower values (e.g. `500`) significantly reduce latency for chained or recursive workflows |
-| `--storage-type` | string | `sqlite` | Storage backend: `sqlite` or `postgres` |
-| `--storage-sqlite-path` | string | `/tmp/resonate.db` | Path to SQLite database file |
-| `--storage-postgres-url` | string | — | Postgres connection string (e.g. `postgres://user:pass@host:5432/resonate`). Required when `--storage-type postgres` |
-| `--storage-postgres-pool-size` | int | `10` | Postgres connection pool size |
-| `--auth-publickey` | string | — | Path to JWT public key (PEM format) for authentication |
-| `--transports-gcps-project` | string | — | GCP Pub/Sub project ID for message transport |
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--server-host` | `localhost` | HTTP server host |
+| `--server-port` | `8001` | HTTP server port |
+| `--server-bind` | `0.0.0.0` | Bind address |
+| `--server-url` | `http://{host}:{port}` | Externally-reachable URL (required for distributed deployments where workers call back to the server) |
+| `--level` | `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `--storage-type` | `sqlite` | Storage backend: `sqlite` or `postgres` |
+| `--storage-postgres-url` | — | Postgres connection string |
+| `--storage-postgres-pool-size` | `10` | Postgres connection pool size |
+| `--auth-publickey` | — | Path to JWT public key (PEM format) for authentication |
+| `--tasks-lease-timeout` | `15000` (ms) | Task lease timeout |
+| `--tasks-retry-timeout` | `30000` (ms) | Suspend/wake retry interval. Lower values (e.g. `500`) significantly reduce latency for chained or recursive workflows |
+| `--observability-metrics-port` | `9090` | Prometheus metrics port (`0` to disable) |
+| `--transports-gcps-project` | — | GCP Pub/Sub project ID for message transport |
 
 :::tip tasks-retry-timeout
 The default `--tasks-retry-timeout` of 30 seconds adds significant latency to chained workflows (sagas, recursive fan-out).
@@ -178,7 +165,20 @@ For most deployments, set this to `500` (milliseconds) to keep suspend/wake cycl
 
 ## Run with PostgreSQL
 
-For production deployments, use PostgreSQL as the storage backend:
+For production deployments, use PostgreSQL as the storage backend.
+
+With a `resonate.toml` (recommended):
+
+```toml title="resonate.toml"
+[storage]
+type = "postgres"
+
+[storage.postgres]
+url = "postgres://user:pass@localhost:5432/resonate"
+pool_size = 20
+```
+
+Or with CLI flags:
 
 ```shell
 resonate serve \
@@ -191,9 +191,26 @@ Migrations are applied automatically on first startup.
 
 See the [Availability](/deploy/availability) guide for high-availability PostgreSQL configuration.
 
+## Deploy to GCP Cloud Run
+
+Cloud Run can pull the official image directly:
+
+```shell
+gcloud run deploy resonate-server \
+  --image=resonatehqio/resonate:v0.9.3 \
+  --region=<your-region> \
+  --port=8001 \
+  --allow-unauthenticated \
+  --max-instances=1
+```
+
+Set the `--server-url` flag in the container args (or `RESONATE_SERVER__URL` env var) to your service URL after the first deploy so workers can call back correctly. For Postgres, set `RESONATE_STORAGE__TYPE=postgres` and `RESONATE_STORAGE__POSTGRES__URL`.
+
+For a worked end-to-end tutorial, see [Deploy a Countdown Workflow to Google Cloud Run](/learn/deployments/google-cloud-run).
+
 ## Run on Kubernetes
 
-The recommended Kubernetes deployment strategy is a single-replica deployment:
+The recommended Kubernetes deployment is a single-replica Deployment that pulls the official image:
 
 ```yaml
 ---
@@ -207,6 +224,8 @@ spec:
   ports:
     - port: 8001
       name: api
+    - port: 9090
+      name: metrics
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -224,23 +243,36 @@ spec:
     spec:
       containers:
         - name: resonate
-          image: your-registry/resonate-server:v0.9.3
-          command: ["resonate", "serve"]
-          args:
-            - "--server-host=0.0.0.0"
-            - "--server-port=8001"
-            - "--storage-type=postgres"
-            - "--storage-postgres-url=$(DATABASE_URL)"
-            - "--tasks-retry-timeout=500"
+          image: resonatehqio/resonate:v0.9.3
           env:
-            - name: DATABASE_URL
+            - name: RESONATE_SERVER__BIND
+              value: "0.0.0.0"
+            - name: RESONATE_STORAGE__TYPE
+              value: "postgres"
+            - name: RESONATE_STORAGE__POSTGRES__URL
               valueFrom:
                 secretKeyRef:
                   name: resonate-secrets
                   key: database-url
+            - name: RESONATE_TASKS__RETRY_TIMEOUT
+              value: "500"
           ports:
             - name: api
               containerPort: 8001
+            - name: metrics
+              containerPort: 9090
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 5
 ```
 
 Create a file named `resonate-k8s.yaml` and apply the manifest:
@@ -255,14 +287,34 @@ To remove Resonate from your cluster:
 kubectl delete -f resonate-k8s.yaml
 ```
 
-:::info Health checks
-The server does not expose a `/healthz` endpoint.
-A health probe can use `GET /` which returns `405 Method Not Allowed` — this confirms the server is alive and accepting connections.
-:::
+## Health and readiness
+
+The server exposes two HTTP endpoints for liveness and readiness checks:
+
+| Endpoint | Returns | Use for |
+|----------|---------|---------|
+| `GET /health` | `200 OK` always (as long as the process is up) | Liveness probes |
+| `GET /ready` | `200 OK` if storage is reachable, `503` otherwise | Readiness probes |
+
+```shell title="Quick health check"
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8001/health
+# 200
+```
+
+## Build from source
+
+If you don't have Homebrew, you can build the server from source. The server is written in Rust:
+
+```shell
+git clone https://github.com/resonatehq/resonate
+cd resonate
+cargo build --release
+./target/release/resonate serve
+```
 
 ## Ports
 
-The server binds two ports:
+The server binds two ports by default:
 
 | Port | Purpose |
 |------|---------|
@@ -270,6 +322,6 @@ The server binds two ports:
 | `:9090` | Prometheus metrics |
 
 :::caution PaaS port routing
-On platforms like Railway, Render, or Fly.io, explicitly set `PORT=8001` or `RESONATE_SERVER_PORT=8001`.
-Without this, the platform may auto-detect the metrics port (`:9090`) as the primary port and route all traffic there, resulting in 502 errors.
+On platforms like Railway, Render, or Fly.io that auto-detect a single primary port, explicitly route to `8001`.
+Without this, the platform may pick the metrics port (`9090`) and route all traffic there, resulting in 502 errors.
 :::

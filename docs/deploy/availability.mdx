@@ -118,12 +118,14 @@ Monitor server health to detect issues before they impact availability:
 
 ### Health check
 
-The server does not expose a dedicated `/healthz` endpoint.
-Use `GET /` which returns `405 Method Not Allowed` — this confirms the server is alive and accepting connections.
+The server exposes two endpoints on the HTTP API port (`:8001`):
+
+- `GET /health` — returns `200 OK` whenever the process is up. Use for liveness probes.
+- `GET /ready` — returns `200 OK` when storage is reachable, `503` otherwise. Use for readiness probes.
 
 ```bash title="Check server health"
-curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/
-# Returns 405 when healthy
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8001/health
+# 200
 ```
 
 ### Prometheus metrics

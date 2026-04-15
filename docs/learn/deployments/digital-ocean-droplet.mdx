@@ -77,8 +77,33 @@ chmod +x resonate
 The Resonate binary requires **glibc ≥ 2.38**. Ubuntu 24.04+ satisfies this. If you’re on Ubuntu 22.04, you may need to upgrade or build from source.
 :::
 
-The Resonate server is configured entirely via CLI flags — there is no config file.
-Nginx terminates TLS on port `443` and forwards traffic to the server’s internal HTTP port.
+The Resonate server reads configuration from a `resonate.toml` in its working directory, then layers `RESONATE_*` environment variables and CLI flags on top.
+Nginx terminates TLS on port `443` and forwards traffic to the server's internal HTTP port.
+
+Drop a `resonate.toml` in `/etc/resonate/` so the systemd unit can load it from a stable location:
+
+```shell
+sudo mkdir -p /etc/resonate
+sudo tee /etc/resonate/resonate.toml >/dev/null <<'EOF'
+level = "info"
+
+[server]
+host = "127.0.0.1"
+port = 8001
+url = "https://your-domain.com"
+
+[storage]
+type = "sqlite"
+
+[storage.sqlite]
+path = "/var/lib/resonate/resonate.db"
+
+[tasks]
+retry_timeout = 500
+EOF
+
+sudo mkdir -p /var/lib/resonate
+```
 
 Next create a systemd Service unit to manage the Resonate Server process.
 
@@ -86,20 +111,15 @@ Daemonizing Resonate under systemd keeps it running across reboots, and systemd 
 Add a unit file to formalize that lifecycle:
 
 ```shell
-sudo tee /etc/systemd/system/resonate.service >/dev/null <<’EOF’
+sudo tee /etc/systemd/system/resonate.service >/dev/null <<'EOF'
 [Unit]
 Description=Resonate Server
 After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/root
-ExecStart=/root/resonate serve \
-  --server-host 127.0.0.1 \
-  --server-port 8001 \
-  --server-url https://your-domain.com \
-  --level info \
-  --tasks-retry-timeout 500
+WorkingDirectory=/etc/resonate
+ExecStart=/root/resonate serve
 Restart=always
 User=root
 
@@ -180,8 +200,8 @@ Before wiring clients to the Droplet, confirm the service is running, the intern
 ```shell
 sudo systemctl status resonate.service
 sudo lsof -i :8001
-curl -s -o /dev/null -w "%{http_code}" https://your-domain.com/
-# Returns 405 when healthy (server is alive, endpoint is POST-only)
+curl -s -o /dev/null -w "%{http_code}\n" https://your-domain.com/health
+# Returns 200 when the server is healthy
 ```
 
 Update the ports and domain if you chose different values.
@@ -239,7 +259,7 @@ For TypeScript workers, set the `RESONATE_TOKEN` environment variable before sta
 
 | Problem                                     | Likely cause                     | Suggested fix                                                                                    |
 | ------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `bind: address already in use`              | Another process owns the port    | Update the ports in the systemd unit `ExecStart` flags and Nginx                                 |
+| `bind: address already in use`              | Another process owns the port    | Change `[server].port` in `resonate.toml` (or `RESONATE_SERVER__PORT`) and update Nginx          |
 | `Failed to start resonate.service`          | Invalid config or missing binary | Check `journalctl -u resonate.service` for errors                                                |
 | `curl` fails with TLS errors                | Certbot certificate mismatch     | Re-run `certbot --nginx` for the correct domain                                                  |
 | `Invalid config path or permissions`        | Unit cannot read files           | Verify binary path and permissions in the systemd unit                                           |

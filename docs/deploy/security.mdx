@@ -50,6 +50,16 @@ Start the server with the public key:
 resonate serve --auth-publickey public.pem
 ```
 
+Or set it in `resonate.toml`:
+
+```toml title="resonate.toml"
+[auth]
+publickey = "/etc/resonate/auth/public.pem"
+# Optional: enforce expected claims
+# iss = "your-issuer"
+# aud = "your-audience"
+```
+
 When auth is enabled, all API requests must include a valid JWT token in the `Authorization: Bearer <token>` header.
 
 ### TypeScript SDK
