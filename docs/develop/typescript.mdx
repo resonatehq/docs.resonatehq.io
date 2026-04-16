@@ -9,6 +9,8 @@ tags:
   - resonate-sdk
 ---
 
+**Requires Node.js 22 or later.**
+
 Whether you are a human or an AI agent, this skill guide will help you develop applications using the Resonate TypeScript SDK.
 Though this _is_ a skill guide, and not a detailed API reference and you will still likely need to refer to the detailed [Resonate TypeScript SDK API reference](https://resonatehq.github.io/resonate-sdk-ts/) for type definitions, defaults, and other technical details.
 
@@ -414,31 +416,39 @@ await resonate.promises.create(
 );
 ```
 
-### `.promises.get()`
-
-Resonate's `.promises.get()` method allows you to get a promise by ID.
-
-```ts
-const p = await resonate.promises.get("promise-id");
-```
-
 ### `.promises.resolve()`
 
-Resonate's `.promises.resolve()` method allows you to resolve a promise by ID.
+Resonate's `.promises.resolve()` method resolves a promise by ID.
 
-This is useful for HITL use cases where you want to wait for a human to approve or reject a function execution.
+This is useful for HITL use cases where you want to wait for a human to approve a function execution.
 It works well in conjunction with the [`.promise()`](#promise) method.
 
 ```ts
+// Resolve a promise
 await resonate.promises.resolve("promise-id");
+
+// Resolve with data
+await resonate.promises.resolve("promise-id", { data: JSON.stringify({ approved: true }) });
 ```
 
 ### `.promises.reject()`
 
-Resonate's `.promises.reject()` method allows you to reject a promise by ID.
+Resonate's `.promises.reject()` method rejects a promise by ID.
 
 ```ts
+// Reject a promise
 await resonate.promises.reject("promise-id");
+
+// Reject with data
+await resonate.promises.reject("promise-id", { data: JSON.stringify({ reason: "denied" }) });
+```
+
+### `.promises.cancel()`
+
+Resonate's `.promises.cancel()` method cancels a promise by ID (settles it as `rejected_canceled`).
+
+```ts
+await resonate.promises.cancel("promise-id");
 ```
 
 ## Context APIs
@@ -577,7 +587,6 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
     bar,
     ...args,
     ctx.options({
-      id: "custom-id",
       timeout: 60_000, // 1 minute in ms
       target: "poll://any@workers",
       tags: { key: "value" },
@@ -590,8 +599,7 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
 
 Context's `.promise()` method allows you to get or create a promise that can be awaited on.
 
-If no ID is provided, one is generated and a new promise is created.
-If an ID is provided and a promise already exists with that ID, then the existing promise is returned.
+A new promise is created and its ID is generated automatically.
 
 This is very useful for HITL (Human-In-The-Loop) use cases where you want to block progress until a human has taken an action or provided data.
 It works well in conjunction with the [`.promises.resolve()`](#promisesresolve) method.
@@ -599,7 +607,7 @@ It works well in conjunction with the [`.promises.resolve()`](#promisesresolve) 
 ```ts
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
   // ...
-  const promise = yield* ctx.promise({ id: "promise-id" });
+  const promise = yield* ctx.promise();
   // do more stuff
   const result = yield* promise;
   // ...
@@ -626,9 +634,9 @@ This API accepts either a millisecond duration or an options object.
 The options object can specify a duration with the `for` property or an absolute wake-up time with the `until` property.
 
 ```ts
-ctx.sleep(5_000); // wait 5 seconds
-ctx.sleep({ for: 5_000 }); // identical to passing the number
-ctx.sleep({ until: new Date() });
+yield* ctx.sleep(5_000); // wait 5 seconds
+yield* ctx.sleep({ for: 5_000 }); // identical to passing the number
+yield* ctx.sleep({ until: new Date() });
 ```
 
 Passing a number or `for` value always measures the delay in milliseconds from "now".

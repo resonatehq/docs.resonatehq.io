@@ -106,9 +106,10 @@ result = research.run("research.1", "What are distributed systems", depth=2)
     <TabItem value="typescript" >
 
 ```typescript title="agent.ts"
-import type { Context } from "@resonatehq/sdk";
+import { Resonate, type Context } from "@resonatehq/sdk";
 import OpenAI from "openai";
 
+const resonate = new Resonate();
 const aiclient = new OpenAI();
 
 export function* research(
@@ -156,6 +157,8 @@ export function* research(
     }
   }
 }
+
+resonate.register("research", research);
 ```
 
   </TabItem>
