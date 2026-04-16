@@ -38,16 +38,15 @@ pg_isready -h localhost -p 5432
 ```
 
 2. **Verify connection string:**
-```yaml title="resonate.yaml"
-aio:
-  store:
-    postgres:
-      enable: true
-      host: "localhost"  # Check this matches your DB host
-      database: "resonate"  # Database must exist
-      username: "resonate"  # User must exist
-      password: "secret"  # Check credentials
+```toml title="resonate.toml"
+[storage]
+type = "postgres"
+
+[storage.postgres]
+url = "postgres://resonate:secret@localhost:5432/resonate"
 ```
+
+Or set `RESONATE_STORAGE__POSTGRES__URL` in the environment. Check the host, port, database, user, and password all match what your Postgres instance expects.
 
 3. **Create database if missing:**
 ```bash
@@ -66,7 +65,7 @@ psql -h localhost -U postgres -c "CREATE DATABASE resonate;"
 - Logs show `address already in use` or `bind: address already in use`
 
 **Cause:**
-Another process is using port 8001 (HTTP) or 50051 (gRPC).
+Another process is using port 8001 (HTTP).
 
 **Solutions:**
 
@@ -80,44 +79,34 @@ kill -9 <PID>
 ```
 
 2. **Use a different port:**
-```yaml title="resonate.yaml"
-api:
-  http:
-    port: 8002  # Change to unused port
+Pass `--server-port` to `resonate serve` to bind a different port:
+```bash
+resonate serve --server-port 8003
 ```
 
 ### Configuration file errors
 
 **Symptoms:**
-- Server fails to parse config
-- Logs show `failed to parse config` or YAML errors
+- Server fails to start
+- Logs show a TOML parse error from `figment` or an unknown field name
 
 **Cause:**
-Invalid YAML syntax or unknown configuration options.
+Invalid TOML syntax in `resonate.toml`, or a field name that doesn't match the schema.
 
 **Solutions:**
 
-1. **Validate YAML syntax:**
+1. **Validate TOML syntax** with any TOML linter, or paste it into [toml-lint.com](https://www.toml-lint.com/).
+
+2. **Check section and field names** against [Run a server](/deploy/run-server#configuration). Sections are nested with dots: `[storage.postgres]`, not `[storage_postgres]`.
+
+3. **Check env var nesting.** Environment variables use the `RESONATE_` prefix and `__` (double underscore) for nesting:
 ```bash
-# Use a YAML validator
-yamllint resonate.yaml
+# WRONG — single underscore
+RESONATE_STORAGE_POSTGRES_URL=...
 
-# Or check online: https://www.yamllint.com/
+# RIGHT — double underscore between sections
+RESONATE_STORAGE__POSTGRES__URL=...
 ```
-
-2. **Check for typos:**
-```yaml
-# WRONG: aoi (typo)
-aoi:
-  store:
-
-# RIGHT: aio
-aio:
-  store:
-```
-
-3. **Verify config options:**
-See [Server configuration](/deploy/run-server#customize-configuration) for valid options.
 
 ## Workers not receiving tasks
 
@@ -147,9 +136,9 @@ const resonate = new Resonate({
 2. **Test connectivity:**
 ```bash
 # From worker machine, test server reachability
-curl http://resonate-server:8001/healthz
+curl -s -o /dev/null -w "%{http_code}\n" http://resonate-server:8001/health
 
-# Should return 200 OK
+# Should return 200 when the server is alive
 ```
 
 3. **Check authentication:**
@@ -166,7 +155,7 @@ const resonate = new Resonate({
 4. **Check server logs:**
 ```bash
 # Look for worker registration messages
-resonate serve --log-level debug
+resonate serve --level debug
 
 # Should see: "worker registered" or similar
 ```
@@ -365,7 +354,7 @@ kubectl top pods -l app=resonate-worker
 ping resonate-server
 
 # Test HTTP latency
-time curl http://resonate-server:8001/healthz
+time curl -s http://resonate-server:8001/health
 ```
 
 ### High database load
@@ -388,12 +377,10 @@ time curl http://resonate-server:8001/healthz
 - Use managed PostgreSQL with auto-scaling
 
 2. **Tune connection pool:**
-```yaml title="resonate.yaml"
-aio:
-  store:
-    postgres:
-      maxOpenConns: 50  # Increase pool size
-      maxIdleConns: 10
+```toml title="resonate.toml"
+[storage.postgres]
+url = "postgres://resonate:secret@localhost:5432/resonate"
+pool_size = 50  # Increase pool size (default: 10)
 ```
 
 3. **Add database indexes:**
@@ -427,21 +414,32 @@ const resonate = new Resonate({
 ```
 
 2. **Check server auth config:**
-```yaml title="resonate.yaml"
-api:
-  http:
-    auth:
-      basic:
-        username: "user"
-        password: "pass"
+
+The server uses JWT bearer auth signed with an Ed25519 key. Start the server with the public key path:
+```bash
+resonate serve --auth-publickey /etc/resonate/auth/public.pem
+```
+
+Or in `resonate.toml`:
+```toml
+[auth]
+publickey = "/etc/resonate/auth/public.pem"
+```
+
+In the SDK, pass a JWT signed by the matching private key:
+```typescript
+const resonate = new Resonate({
+  url: "http://resonate-server:8001",
+  token: process.env.RESONATE_TOKEN,
+});
 ```
 
 3. **For JWT tokens, verify:**
 - Token hasn't expired
-- JWT secret matches between server and client
-- Token payload is valid
+- Signature was produced with the private key matching the server's public key
+- `iss` / `aud` claims match what the server expects (if configured)
 
-See [Security](/deploy/security) for auth setup.
+See [Security](/deploy/security) for the full auth setup.
 
 ## Development workflow issues
 
@@ -492,17 +490,17 @@ rm -rf __pycache__ && pip install -r requirements.txt
 SQLite doesn't handle high concurrency well. Multiple processes/threads trying to write simultaneously.
 
 **Solution:**
-Use PostgreSQL for any deployment with >1 worker or concurrent access:
+Use PostgreSQL for any deployment with concurrent writers:
 
-```yaml title="resonate.yaml"
-aio:
-  store:
-    postgres:
-      enable: true
-      # ... connection details
+```toml title="resonate.toml"
+[storage]
+type = "postgres"
+
+[storage.postgres]
+url = "postgres://resonate:secret@localhost:5432/resonate"
 ```
 
-SQLite is only suitable for development with a single worker.
+SQLite is best for development and single-tenant deployments where there is no concurrent write contention against the server.
 
 ## Getting more help
 
@@ -511,7 +509,7 @@ If these troubleshooting steps don't resolve your issue:
 1. **Check error codes:** See [Errors](/debug/errors) for detailed error information
 2. **Enable debug logging:**
 ```bash
-resonate serve --log-level debug
+resonate serve --level debug
 ```
 3. **Collect diagnostics:**
    - Server logs
@@ -527,15 +525,15 @@ resonate serve --log-level debug
 
 When debugging, check these in order:
 
-- [ ] Server running and reachable (`curl http://server:8001/healthz`)
-- [ ] Database connected and accessible
+- [ ] Server running and reachable (`curl http://server:8001/health` returns `200`)
+- [ ] Storage reachable (`curl http://server:8001/ready` returns `200`)
 - [ ] Workers registered with server (check logs)
 - [ ] Worker group names match task routing
 - [ ] Authentication configured (if enabled)
 - [ ] Network/firewall allows communication
 - [ ] Adequate resources (CPU, memory, IOPS)
 - [ ] No port conflicts
-- [ ] Configuration file syntax valid
+- [ ] `resonate.toml` syntax valid (and env-var nesting uses `__`)
 - [ ] Using recent Resonate version
 
 Most issues fall into one of these categories. Work through the checklist systematically.

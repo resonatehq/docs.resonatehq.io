@@ -14,77 +14,72 @@ This page covers authentication options for securing your Resonate Server and SD
 
 ## Overview
 
-Resonate supports two authentication methods:
-
-- **Token-based authentication (recommended)** - JWT bearer tokens for modern, stateless auth
-- **Basic authentication** - Username/password credentials for simpler setups
+Resonate uses **JWT token-based authentication** for securing server and SDK connections.
 
 Authentication is **optional by default** but strongly recommended for production deployments.
 
-:::tip
-Use **token-based auth** for production. It's more secure, easier to rotate, and doesn't require password management.
-:::
-
 ## SDK Support Matrix
 
-| Authentication Method | Server | TypeScript SDK | Python SDK |
-|-----------------------|--------|----------------|------------|
-| Token-based (JWT)     | ✅     | ✅             | ❌ (planned) |
-| Basic (username/password) | ✅  | ✅             | ✅         |
+| Authentication Method | Server | TypeScript SDK | Rust SDK | Python SDK |
+|-----------------------|--------|----------------|----------|------------|
+| Token-based (JWT)     | ✅     | ✅             | ✅       | ❌ (planned) |
 
 :::tip Python SDK users
-The Python SDK currently only supports basic authentication. Token-based auth support is planned for a future release.
+The Python SDK does not yet support token-based authentication. Token auth support is planned for a future release.
+The Python SDK currently works with the legacy Resonate server only.
 :::
 
 ## Token-based authentication
 
-Token-based authentication uses JWT bearer tokens in the `Authorization` header. This is the recommended approach for production deployments.
+Token-based authentication uses JWT bearer tokens signed with Ed25519 keys. The server validates tokens using a public key; clients sign tokens using the corresponding private key.
+
+### Generate keys
+
+Generate an Ed25519 key pair:
+
+```bash title="Generate key pair"
+openssl genpkey -algorithm Ed25519 -out private.pem
+openssl pkey -in private.pem -pubout -out public.pem
+```
 
 ### Server configuration
 
-Enable token authentication by setting the `token` configuration option:
+Start the server with the public key:
 
-```yaml title="resonate.yaml"
-api:
-  http:
-    token: "your-secure-token-here"
+```bash title="Enable JWT auth"
+resonate serve --auth-publickey public.pem
 ```
 
-Or via environment variable:
+Or set it in `resonate.toml`:
 
-```bash title="Set token via environment variable"
-export RESONATE_TOKEN="your-secure-token-here"
-resonate serve --config resonate.yaml
+```toml title="resonate.toml"
+[auth]
+publickey = "/etc/resonate/auth/public.pem"
+# Optional: enforce expected claims
+# iss = "your-issuer"
+# aud = "your-audience"
 ```
 
-:::tip Important
-- Generate a strong, random token for production (minimum 32 characters recommended)
-- Store tokens securely (environment variables, secrets manager, etc.)
-- Rotate tokens periodically
-- Never commit tokens to version control
-:::
+When auth is enabled, all API requests must include a valid JWT token in the `Authorization: Bearer <token>` header.
 
 ### TypeScript SDK
-
-Configure the SDK to use token authentication:
 
 ```typescript title="index.ts"
 import { Resonate } from "@resonatehq/sdk";
 
 const resonate = new Resonate({
   url: "http://localhost:8001",
-  token: process.env.RESONATE_TOKEN, // Load from environment
+  token: process.env.RESONATE_TOKEN,
 });
 ```
 
-With TypeScript, tokens are passed as `Bearer` tokens in the `Authorization` header automatically.
+The SDK sends the token as a `Bearer` token in the `Authorization` header automatically.
 
 #### Example: Secure production setup
 
 ```typescript title="resonate-client.ts"
 import { Resonate } from "@resonatehq/sdk";
 
-// Load token from environment or secrets manager
 const token = process.env.RESONATE_TOKEN;
 
 if (!token) {
@@ -94,107 +89,33 @@ if (!token) {
 const resonate = new Resonate({
   url: process.env.RESONATE_URL || "http://localhost:8001",
   token: token,
-  timeout: 30000, // 30 second timeout
 });
 
 export default resonate;
 ```
 
-### Python SDK
+### Rust SDK
 
-Token-based authentication is **not yet supported** in the Python SDK. Use basic authentication instead (see below).
+```rust title="main.rs"
+use resonate::{Resonate, ResonateConfig};
 
-We recommend monitoring the [Python SDK releases](https://github.com/resonatehq/resonate-sdk-py/releases) for updates on token auth support.
-
-## Basic authentication
-
-Basic authentication uses username and password credentials encoded in the `Authorization` header. While simpler to set up, it requires credential management and is less flexible than token-based auth.
-
-### Server configuration
-
-Enable basic authentication by setting username/password pairs:
-
-```yaml title="resonate.yaml"
-api:
-  http:
-    auth:
-      user1: "password1"
-      user2: "password2"
-```
-
-Or via command-line flags:
-
-```bash title="Enable basic auth via command line"
-resonate serve --auth user1=password1 --auth user2=password2
-```
-
-:::tip
-When basic auth is enabled, **gRPC is automatically disabled** for security reasons. If you need gRPC, consider using token-based authentication or a reverse proxy with auth.
-:::
-
-### TypeScript SDK
-
-```typescript title="index.ts"
-import { Resonate } from "@resonatehq/sdk";
-
-const resonate = new Resonate({
-  url: "http://localhost:8001",
-  auth: {
-    username: process.env.RESONATE_USERNAME,
-    password: process.env.RESONATE_PASSWORD,
-  },
+let resonate = Resonate::new(ResonateConfig {
+    token: std::env::var("RESONATE_TOKEN").ok(),
+    url: Some("http://localhost:8001".into()),
+    ..Default::default()
 });
 ```
 
-### Python SDK
-
-```python title="main.py"
-import os
-from resonate import Resonate
-
-resonate = Resonate.remote(
-    host="http://localhost",
-    store_port="8001",
-    message_source_port="8001",
-    auth=(os.getenv("RESONATE_USERNAME"), os.getenv("RESONATE_PASSWORD")),
-)
-```
-
-The Python SDK uses a tuple `(username, password)` for basic auth credentials.
-
-#### Environment variables
-
-The Python SDK automatically reads credentials from environment variables if not explicitly provided:
-
-```bash title="Set credentials via environment variables"
-export RESONATE_USERNAME="user1"
-export RESONATE_PASSWORD="password1"
-```
-
-```python title="main.py"
-from resonate import Resonate
-
-# Will automatically use RESONATE_USERNAME and RESONATE_PASSWORD
-# along with RESONATE_HOST_STORE / RESONATE_PORT_STORE if set.
-resonate = Resonate.remote()
-```
+`ResonateConfig::token` is `Option<String>`, so `std::env::var("RESONATE_TOKEN").ok()` is the idiomatic way to populate it from the environment. `Resonate::new` returns `Resonate` directly (not a `Result`).
 
 ## Production best practices
 
 ### Token management
 
-1. **Generate strong tokens** - Use cryptographically secure random tokens (32+ characters)
-2. **Store securely** - Use environment variables, AWS Secrets Manager, Google Secret Manager, etc.
-3. **Rotate regularly** - Implement token rotation policies (e.g., every 90 days)
-4. **Scope appropriately** - Use different tokens for different environments (dev, staging, prod)
-
-Example token generation (Node.js):
-
-```javascript title="generate-token.js"
-const crypto = require('crypto');
-const token = crypto.randomBytes(32).toString('hex');
-console.log(token); // Use this as your RESONATE_TOKEN
-```
+1. **Generate strong tokens** — Use properly signed JWTs with appropriate claims and expiry
+2. **Store securely** — Use environment variables, AWS Secrets Manager, Google Secret Manager, etc.
+3. **Rotate regularly** — Implement key rotation policies
+4. **Scope appropriately** — Use different keys for different environments (dev, staging, prod)
 
 ### Network security
 
@@ -208,10 +129,9 @@ Even with authentication enabled, follow network security best practices:
 
 Monitor authentication failures and suspicious activity:
 
-- Enable server logging with appropriate log levels
+- Enable server logging with `--level debug` to see auth events
 - Set up alerts for repeated auth failures
 - Track token usage patterns
-- Monitor for unusual API access patterns
 
 See the [Observability](/deploy/logging) documentation for logging configuration.
 
@@ -229,20 +149,6 @@ RESONATE_URL=https://resonate.yourcompany.com
 RESONATE_TOKEN=prod-token-from-secrets-manager
 ```
 
-Load environment-specific configuration:
-
-```typescript title="config.ts"
-import * as dotenv from 'dotenv';
-
-// Load .env file based on NODE_ENV
-dotenv.config({ path: `.env.${process.env.NODE_ENV || 'development'}` });
-
-export const config = {
-  resonateUrl: process.env.RESONATE_URL!,
-  resonateToken: process.env.RESONATE_TOKEN!,
-};
-```
-
 ## Troubleshooting
 
 ### "401 Unauthorized" errors
@@ -250,55 +156,32 @@ export const config = {
 **Symptom**: SDK requests fail with 401 status code
 
 **Common causes**:
-- Token/credentials not provided
-- Token/credentials mismatch between server and SDK
-- Token expired (if using time-limited JWTs)
+- Token not provided
+- Token signature doesn't match the server's public key
+- Token expired
 - Environment variable not loaded correctly
 
 **Solution**:
-1. Verify server configuration includes the token/credentials
-2. Verify SDK configuration matches server
-3. Check environment variables are loaded (add `console.log` or `print` statements)
-4. Review server logs for auth failure details
-
-### "gRPC disabled" warnings
-
-**Symptom**: gRPC connections fail when basic auth is enabled
-
-**Explanation**: Resonate automatically disables gRPC when basic HTTP auth is enabled for security reasons.
-
-**Solution**:
-- Use token-based authentication instead (supports gRPC)
-- Use HTTP API only (most common)
-- Set up a reverse proxy with auth if gRPC is required
-
-### Python SDK token authentication
-
-**Symptom**: Can't find token auth option in Python SDK
-
-**Explanation**: Token-based authentication is not yet implemented in the Python SDK.
-
-**Solution**:
-- Use basic authentication for now
-- Track [Python SDK GitHub issues](https://github.com/resonatehq/resonate-sdk-py/issues) for token auth updates
-- Consider contributing the feature if it's urgent for your use case
+1. Verify the server was started with `--auth-publickey` pointing to the correct public key
+2. Verify the SDK token was signed with the matching private key
+3. Check token expiry claims
+4. Review server logs (`--level debug`) for auth failure details
 
 ## Examples and tutorials
 
-For working examples of authenticated applications:
+For a working example of authenticated applications:
 
-- **TypeScript**: See the [token authentication example](https://github.com/resonatehq/example-token-auth-ts) repository
-- **Python**: Check the SDK [integration tests](https://github.com/resonatehq/resonate-sdk-py/tree/main/tests) for basic auth examples
+- **TypeScript**: See the [token authentication example](https://github.com/resonatehq-examples/example-token-auth-ts) repository
 
 ## Next steps
 
 - [Deploy to production](/deploy/run-server) with authentication enabled
 - [Set up observability](/deploy/logging) to monitor auth events
 - [Configure message transports](/deploy/message-transports) for distributed workers
-- Review [server configuration](/deploy/run-server#customize-configuration) for all security options
+- Review [server configuration](/deploy/run-server#configuration) for all server flags
 
 ## Related documentation
 
-- [Develop with TypeScript SDK](/develop/typescript) - SDK reference with auth examples
-- [Develop with Python SDK](/develop/python) - SDK reference with auth examples
-- [Server configuration](/deploy/run-server#customize-configuration) - Complete server config options
+- [Develop with TypeScript SDK](/develop/typescript) — SDK reference with auth examples
+- [Develop with Rust SDK](/develop/rust) — SDK reference with auth examples
+- [Server configuration](/deploy/run-server#configuration) — Complete server flag reference

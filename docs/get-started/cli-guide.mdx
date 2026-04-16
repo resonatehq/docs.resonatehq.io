@@ -49,27 +49,19 @@ resonate dev
 
 The server starts on:
 - HTTP API: `http://localhost:8001`
-- gRPC API: `localhost:50051`
 - Metrics: `http://localhost:9090`
 
 See `resonate dev --help` for options.
 
 ### Start a production server
 
-```shell title="Start with persistent SQLite storage"
-resonate serve --aio-store-sqlite-path /var/lib/resonate/resonate.db
-```
-
 ```shell title="Start with PostgreSQL"
 resonate serve \
-  --aio-store-postgres-enable \
-  --aio-store-postgres-host localhost \
-  --aio-store-postgres-database resonate \
-  --aio-store-postgres-username resonate \
-  --aio-store-postgres-password secret
+  --storage-type postgres \
+  --storage-postgres-url "postgres://resonate:secret@localhost:5432/resonate"
 ```
 
-See `resonate serve --help` for all configuration options.
+See `resonate serve --help` for all flags, or [Run a server](/deploy/run-server) for the full configuration story (`resonate.toml` + env vars + flags).
 
 ### Invoke a function
 
@@ -133,59 +125,41 @@ resonate schedules delete hourly-sync
 
 ## Authentication
 
-If your server requires authentication, pass credentials with every command:
-
-**Token authentication:**
+If your server requires JWT auth, pass a bearer token with every CLI call:
 
 ```shell title="Use bearer token"
 resonate promises get order-123 --token YOUR_TOKEN
 ```
 
-**Basic authentication:**
+The `--token` flag is a global option — it works on every subcommand.
 
-```shell title="Use username and password"
-resonate promises get order-123 --username admin --password secret
+See [Security](/deploy/security) for how to enable JWT auth on the server.
+
+## Configuration
+
+The Resonate server is configured by layering, in this order: defaults → `resonate.toml` (optional) → `RESONATE_*` env vars → CLI flags. Any of the four can override the previous.
+
+```shell title="Example: serve with auth and PostgreSQL via flags"
+resonate serve \
+  --auth-publickey /etc/resonate/auth/public.pem \
+  --storage-type postgres \
+  --storage-postgres-url "postgres://resonate:secret@localhost:5432/resonate"
 ```
 
-Or set environment variables:
+The same configuration as a [`resonate.toml`](/deploy/run-server#resonatetoml):
 
-```shell title="Set auth via environment"
-export RESONATE_TOKEN="YOUR_TOKEN"
-# or
-export RESONATE_USERNAME="admin"
-export RESONATE_PASSWORD="secret"
+```toml title="resonate.toml"
+[auth]
+publickey = "/etc/resonate/auth/public.pem"
 
-resonate promises get order-123  # Uses env vars automatically
+[storage]
+type = "postgres"
+
+[storage.postgres]
+url = "postgres://resonate:secret@localhost:5432/resonate"
 ```
 
-## Configuration files
-
-Instead of passing flags every time, create a configuration file:
-
-```yaml title="resonate.yaml"
-api:
-  http:
-    addr: ":8001"
-    auth:
-      admin: "secret"
-  
-aio:
-  store:
-    postgres:
-      enable: true
-      host: "localhost"
-      database: "resonate"
-      username: "resonate"
-      password: "secret"
-```
-
-Then start the server with the config:
-
-```shell title="Use configuration file"
-resonate serve --config resonate.yaml
-```
-
-See the [server configuration reference](/deploy/run-server#customize-configuration) for all available options.
+Run `resonate serve --help` for all available flags.
 
 ## Tips and tricks
 
@@ -206,7 +180,8 @@ Useful for scripting and automation.
 ### Check server health
 
 ```shell title="Verify server is running"
-curl http://localhost:8001/healthz
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8001/health
+# 200 when healthy
 ```
 
 ### View metrics

@@ -35,7 +35,7 @@ Start by refreshing the package index and pulling in the tooling you’ll need t
 
 ```shell
 sudo apt update
-sudo apt install -y nginx certbot python3-certbot-nginx curl git unzip
+sudo apt install -y nginx certbot python3-certbot-nginx curl git tar
 ```
 
 If you’re using UFW, open only the ports you plan to expose so the Droplet isn’t reachable over unintended services, then enable the firewall to enforce those rules:
@@ -54,60 +54,56 @@ Resonate publishes prebuilt binaries per architecture. Confirm the Droplet’s C
 uname -m
 ```
 
-- `x86_64` → download the `linux-amd64` build.
-- `aarch64` or `arm64` → download the `linux-arm64` build.
+- `x86_64` → download the `linux-x86_64` build.
+- `aarch64` or `arm64` → download the `linux-aarch64` build.
 
 Fetch the latest release from the [Resonate GitHub releases](https://github.com/resonatehq/resonate/releases) page:
 
 ```shell
 cd /root
-wget https://github.com/resonatehq/resonate/releases/download/vX.Y.Z/resonate-linux-amd64.zip
+wget https://github.com/resonatehq/resonate/releases/download/v0.9.3/resonate_linux_x86_64.tar.gz
 ```
 
-Replace `vX.Y.Z` with the release you want to run and swap the filename if you’re targeting ARM.
+Replace `v0.9.3` with the release you want to run and swap `x86_64` for `aarch64` if you’re targeting ARM.
 Unpack the archive and make the binary executable so systemd can launch it later:
 
 ```shell
-unzip resonate-linux-amd64.zip
+tar -xzf resonate_linux_x86_64.tar.gz
 chmod +x resonate
 ./resonate --version
 ```
 
-Create `/root/resonate.yml` to define how the server listens, which URLs clients use, and which credentials gate access.
-Keeping this configuration explicit makes it easy to audit which services are exposed:
+:::caution GLIBC requirement
+The Resonate binary requires **glibc ≥ 2.38**. Ubuntu 24.04+ satisfies this. If you’re on Ubuntu 22.04, you may need to upgrade or build from source.
+:::
 
-```yaml
-metricsAddr: ":9103"
+The Resonate server reads configuration from a `resonate.toml` in its working directory, then layers `RESONATE_*` environment variables and CLI flags on top.
+Nginx terminates TLS on port `443` and forwards traffic to the server's internal HTTP port.
 
-system:
-  url: "https://your-domain.com:8001"
+Drop a `resonate.toml` in `/etc/resonate/` so the systemd unit can load it from a stable location:
 
-api:
-  subsystems:
-    http:
-      config:
-        addr: ":18001"
-        auth:
-          your-username: your-password
+```shell
+sudo mkdir -p /etc/resonate
+sudo tee /etc/resonate/resonate.toml >/dev/null <<'EOF'
+level = "info"
 
-    grpc:
-      config:
-        addr: ":51051"
+[server]
+host = "127.0.0.1"
+port = 8001
+url = "https://your-domain.com"
 
-aio:
-  subsystems:
-    sender:
-      config:
-        plugins:
-          poll:
-            config:
-              addr: ":18002"
-              auth:
-                your-username: your-password
+[storage]
+type = "sqlite"
+
+[storage.sqlite]
+path = "/var/lib/resonate/resonate.db"
+
+[tasks]
+retry_timeout = 500
+EOF
+
+sudo mkdir -p /var/lib/resonate
 ```
-
-This configuration keeps the store (`:18001`) and poller (`:18002`) bound to localhost.
-Nginx terminates TLS on ports `8001` and `8002` and forwards traffic to these internal services.
 
 Next create a systemd Service unit to manage the Resonate Server process.
 
@@ -122,8 +118,8 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/root
-ExecStart=/root/resonate serve --config /root/resonate.yml
+WorkingDirectory=/etc/resonate
+ExecStart=/root/resonate serve
 Restart=always
 User=root
 
@@ -173,29 +169,13 @@ Now update the Nginx configuration at `/etc/nginx/sites-available/your-domain` s
 
 ```text
 server {
-    listen 8001 ssl http2;
+    listen 443 ssl http2;
     server_name your-domain.com;
     ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
 
     location / {
-        proxy_pass http://127.0.0.1:18001;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_buffering off;
-        proxy_read_timeout 3600;
-        proxy_send_timeout 75s;
-    }
-}
-
-server {
-    listen 8002 ssl http2;
-    server_name your-domain.com;
-    ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
-
-    location / {
-        proxy_pass http://127.0.0.1:18002;
+        proxy_pass http://127.0.0.1:8001;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
         proxy_buffering off;
@@ -205,7 +185,7 @@ server {
 }
 ```
 
-Each server block terminates TLS on a public port, removes hop-by-hop headers that can interfere with streaming responses, and forwards traffic to the matching internal subsystem.
+The server block terminates TLS on port 443, removes hop-by-hop headers that can interfere with SSE streaming responses, and forwards traffic to the Resonate Server's HTTP API on port 8001.
 
 Link the site file into `sites-enabled`, test the configuration so syntax issues don’t take Nginx down, and reload to apply the new listeners:
 
@@ -219,9 +199,9 @@ Before wiring clients to the Droplet, confirm the service is running, the intern
 
 ```shell
 sudo systemctl status resonate.service
-sudo lsof -i :18001
 sudo lsof -i :8001
-curl -k https://your-domain.com:8001/health
+curl -s -o /dev/null -w "%{http_code}\n" https://your-domain.com/health
+# Returns 200 when the server is healthy
 ```
 
 Update the ports and domain if you chose different values.
@@ -229,32 +209,22 @@ Update the ports and domain if you chose different values.
 ## Connect your application
 
 Finally, update your application to point at the Droplet.
-The examples below show how to target the public endpoints you just exposed and supply the same credentials you configured in `resonate.yml`.
+The examples below show how to target the public HTTPS endpoint you just exposed.
+
+:::info SDK compatibility
+The Resonate Server v0.9.x speaks the v0.10.0 protocol. Use the **TypeScript SDK v0.10.0** or **Rust SDK** — both speak this protocol.
+
+The Python SDK v0.6.7 is protocol-compatible with the legacy Go server only and cannot connect to this deployment.
+:::
 
 <Tabs
     groupId="sdk-language"
-    defaultValue="python"
+    defaultValue="typescript"
     values={[
-        { label: "Python", value: "python" },
         { label: "TypeScript", value: "typescript" },
+        { label: "Rust", value: "rust" },
     ]}
 >
-
-    <TabItem value="python">
-
-```python
-from resonate import Resonate
-
-resonate = Resonate.remote(
-    group="my-app-group",
-    host="https://your-domain.com",
-    store_port="8001",
-    message_source_port="8002",
-    auth=("your-username", "your-password"),
-)
-```
-
-    </TabItem>
 
     <TabItem value="typescript">
 
@@ -262,9 +232,22 @@ resonate = Resonate.remote(
 import { Resonate } from "@resonatehq/sdk";
 
 const resonate = new Resonate({
-  url: "https://your-domain.com:8001",
+  url: "https://your-domain.com",
   group: "my-app-group",
-  token: "your-jwt-token",
+});
+```
+
+    </TabItem>
+
+    <TabItem value="rust">
+
+```rust
+use resonate::{Resonate, ResonateConfig};
+
+let resonate = Resonate::new(ResonateConfig {
+    url: Some("https://your-domain.com".into()),
+    group: Some("my-app-group".into()),
+    ..Default::default()
 });
 ```
 
@@ -272,18 +255,18 @@ const resonate = new Resonate({
 
 </Tabs>
 
-For TypeScript workers, set the `RESONATE_USERNAME` and `RESONATE_PASSWORD` environment variables before starting the process so the client sends the same Basic Auth credentials defined in `resonate.yml`. If you exposed additional subsystems, repeat the pattern for each port.
+If you enabled JWT auth (added an `[auth]` section to `resonate.toml`), clients need to present a signed bearer token. Set it via `token:` in the TypeScript SDK, or via `RESONATE_TOKEN` in the environment for the Rust SDK. See [Security](/deploy/security) for the full auth setup.
 
 ## Troubleshooting
 
 | Problem                                     | Likely cause                     | Suggested fix                                                                                    |
 | ------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `bind: address already in use`              | Another process owns the port    | Update the ports in `resonate.yml` and Nginx                                                     |
+| `bind: address already in use`              | Another process owns the port    | Change `[server].port` in `resonate.toml` (or `RESONATE_SERVER__PORT`) and update Nginx          |
 | `Failed to start resonate.service`          | Invalid config or missing binary | Check `journalctl -u resonate.service` for errors                                                |
 | `curl` fails with TLS errors                | Certbot certificate mismatch     | Re-run `certbot --nginx` for the correct domain                                                  |
-| `Invalid config path or permissions`        | Unit cannot read files           | Verify `/root/resonate.yml` and binary permissions                                               |
+| `Invalid config path or permissions`        | Unit cannot read files           | Verify binary path and permissions in the systemd unit                                           |
 | `nginx: [emerg] no ssl_certificate defined` | TLS directives missing           | Confirm your server blocks include the Certbot `ssl_certificate` and `ssl_certificate_key` paths |
-| Client cannot connect                       | Firewall or URL mismatch         | Confirm UFW allows ports 8001/8002 and verify the client host URL                                |
+| Client cannot connect                       | Firewall or URL mismatch         | Confirm UFW allows port 443 and verify the client host URL                                       |
 
 ## Conclusion
 

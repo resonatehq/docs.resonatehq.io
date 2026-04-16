@@ -122,7 +122,7 @@ Open http://localhost:9091 to query metrics and build dashboards.
 version: '3.8'
 services:
   resonate-server:
-    image: resonatehq/resonate:latest
+    image: resonatehqio/resonate:v0.9.3
     ports:
       - "8001:8001"
       - "9090:9090"  # Metrics endpoint
@@ -459,11 +459,15 @@ curl http://localhost:9090/metrics
 Should return Prometheus-formatted metrics.
 
 **Check metrics port configuration:**
-```yaml title="resonate.yaml"
-api:
-  metrics:
-    port: 9090  # Must be accessible to Prometheus
+
+The metrics port defaults to `:9090`. Override via `resonate.toml`:
+
+```toml
+[observability]
+metrics_port = 9091
 ```
+
+via env var (`RESONATE_OBSERVABILITY__METRICS_PORT=9091`), or via CLI flag (`resonate serve --observability-metrics-port 9091`). Set the port to `0` to disable the metrics endpoint entirely.
 
 ### Prometheus not scraping metrics
 
