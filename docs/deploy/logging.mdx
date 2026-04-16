@@ -129,8 +129,10 @@ from resonate import Resonate
 logging.basicConfig(level=logging.INFO)
 
 resonate = Resonate.remote(
-    url="http://localhost:8001",
-    log_level="info",  # debug | info | warn | error
+    host="http://localhost",
+    store_port="8001",
+    message_source_port="8001",
+    log_level="DEBUG",  # DEBUG | INFO | WARNING | ERROR | CRITICAL (or a logging.* int)
 )
 ```
 

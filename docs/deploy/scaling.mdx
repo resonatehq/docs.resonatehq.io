@@ -31,7 +31,9 @@ const resonate = new Resonate({
 from resonate import Resonate
 
 resonate = Resonate.remote(
-    url="http://resonate-server:8001",
+    host="http://resonate-server",
+    store_port="8001",
+    message_source_port="8001",
     group="workers",  # All workers in this group can handle the same tasks
 )
 ```

@@ -54,14 +54,14 @@ from fastapi import FastAPI
 from resonate import Resonate
 
 app = FastAPI()
-resonate = Resonate().remote(group="gateway")
+resonate = Resonate.remote(group="gateway")
 
 @app.post("/begin")
 def begin(data=None, id=None):
     # Start durable execution on a worker
     handle = resonate.options(
         target="poll://any@worker"
-    ).begin_rpc(func="foo", id=id, data=data)
+    ).begin_rpc(id, "foo", data)
     
     return {
         "promise": handle.id,
@@ -88,7 +88,7 @@ def wait(id: str):
 ```python title="worker.py - Background Worker"
 from resonate import Context, Resonate
 
-resonate = Resonate().remote(group="worker")
+resonate = Resonate.remote(group="worker")
 
 @resonate.register
 def foo(context: Context, data):
