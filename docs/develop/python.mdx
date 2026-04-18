@@ -139,14 +139,27 @@ The pool size is controlled by the `workers` parameter:
 ```py
 from resonate import Resonate
 
-# Default: min(32, os.cpu_count()) threads
-resonate = Resonate()
+# Local mode — default: min(32, os.cpu_count()) threads
+resonate = Resonate.local()
+
+# Remote mode — same default thread pool
+resonate = Resonate.remote(host="http://localhost", store_port="8001", message_source_port="8001")
 
 # Limit to 4 concurrent function executions
-resonate = Resonate(workers=4)
+resonate = Resonate.remote(
+    host="http://localhost",
+    store_port="8001",
+    message_source_port="8001",
+    workers=4,
+)
 
 # Single-threaded: one function at a time
-resonate = Resonate(workers=1)
+resonate = Resonate.remote(
+    host="http://localhost",
+    store_port="8001",
+    message_source_port="8001",
+    workers=1,
+)
 ```
 
 Setting `workers=1` is useful when your worker holds in-process state that cannot be shared across concurrent tasks (for example, a browser automation session or a stateful protocol connection).
