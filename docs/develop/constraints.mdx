@@ -173,14 +173,14 @@ function* getUserData(ctx: Context, userId: string) {
 
     <TabItem value="python" >
 
-```python title="Wrap external calls with ctx.lfc"
+```python title="Wrap external calls with ctx.run"
 @resonate.register
 def get_user_data(ctx: Context, user_id: str):
-    def fetch_user():
+    def fetch_user(ctx):
         response = requests.get(f"https://api.example.com/users/{user_id}")
         return response.json()
     
-    user_data = yield ctx.lfc(fetch_user)  # ✅ Result recorded, replays use recorded value
+    user_data = yield ctx.run(fetch_user)  # ✅ Result recorded, replays use recorded value
     # ...
 ```
 
@@ -411,7 +411,7 @@ def approval_workflow(ctx: Context, request_id: str):
     approval_promise = yield ctx.promise()
     
     # Send approval request email with promise ID
-    yield ctx.lfc(send_approval_email, approval_promise.id)
+    yield ctx.run(send_approval_email, approval_promise.id)
     
     # Wait for human to resolve the promise (could be hours/days)
     approved = yield approval_promise  # ✅ Survives process restarts
