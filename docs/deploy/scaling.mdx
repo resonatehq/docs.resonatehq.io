@@ -56,6 +56,89 @@ resonate.rpc(
 
 The server automatically load-balances across workers. You don't need to implement distribution logic.
 
+## Worker concurrency
+
+A single worker process handles multiple tasks concurrently.
+When the server dispatches a task to a worker, the worker begins executing it immediately — it does not wait for prior tasks to finish first.
+Understanding this behavior is important for designing your application, especially when workers hold in-process state.
+
+### TypeScript
+
+The TypeScript SDK runs on the Node.js event loop.
+All incoming tasks are processed concurrently via `async/await` — each task progresses independently whenever it hits an `await` point.
+There is no built-in concurrency limit.
+
+```typescript title="Default: unlimited concurrent tasks"
+const resonate = new Resonate({
+  url: "http://resonate-server:8001",
+  group: "workers",
+  // No concurrency config — all tasks run concurrently on the event loop
+});
+```
+
+This means a single TypeScript worker can handle many tasks at once, which is efficient for I/O-bound work (HTTP calls, database queries, file reads).
+CPU-intensive tasks will block the event loop and starve other in-flight tasks — offload heavy computation to worker threads or separate processes.
+
+### Python
+
+The Python SDK uses a thread pool to execute functions concurrently.
+The pool size is controlled by the `workers` parameter:
+
+```python title="Configure thread pool size"
+from resonate import Resonate
+
+# Default: min(32, os.cpu_count()) threads
+resonate = Resonate.remote(
+    host="http://resonate-server",
+    store_port="8001",
+    message_source_port="8001",
+)
+
+# Explicit: limit to 4 concurrent function executions
+resonate = Resonate.remote(
+    host="http://resonate-server",
+    store_port="8001",
+    message_source_port="8001",
+    workers=4,
+)
+```
+
+The default is `min(32, os.cpu_count())` — on a 4-core machine that's 4 threads, on a 16-core machine it's 16, with a hard cap at 32.
+Each thread executes one function at a time, so `workers=4` means up to 4 functions run in parallel within that single process.
+
+### When concurrency matters
+
+For most applications, per-worker concurrency is beneficial — it keeps the worker busy while individual tasks wait on I/O.
+
+However, if your worker holds **in-process state** that cannot be shared across tasks (for example, a browser automation session, a stateful protocol connection, or a GPU context), concurrent tasks will interfere with each other.
+
+**Strategies for stateful workers:**
+
+1. **Scale horizontally instead.** Run multiple single-purpose worker processes, each handling one task at a time. Resonate's load balancing distributes tasks across them automatically.
+2. **In Python, set `workers=1`** to limit the thread pool to a single thread. This ensures only one function executes at a time within the process.
+3. **Design for isolation.** If tasks can each create their own isolated state (for example, each task launches its own browser context), concurrency is safe.
+
+```python title="Single-threaded worker for stateful workloads"
+from resonate import Resonate
+
+# Only one function runs at a time in this process
+resonate = Resonate.remote(
+    host="http://resonate-server",
+    store_port="8001",
+    message_source_port="8001",
+    workers=1,
+)
+```
+
+```bash title="Scale horizontally with multiple single-threaded workers"
+# Each process handles one task at a time
+# Resonate load-balances across all of them
+python worker.py &
+python worker.py &
+python worker.py &
+python worker.py &
+```
+
 ## When to scale workers
 
 Scale workers horizontally when you observe:

@@ -131,6 +131,41 @@ resonate = Resonate.remote(
 )
 ```
 
+### Concurrency
+
+A single Python worker process executes multiple functions concurrently using a thread pool.
+The pool size is controlled by the `workers` parameter:
+
+```py
+from resonate import Resonate
+
+# Local mode — default: min(32, os.cpu_count()) threads
+resonate = Resonate.local()
+
+# Remote mode — same default thread pool
+resonate = Resonate.remote(host="http://localhost", store_port="8001", message_source_port="8001")
+
+# Limit to 4 concurrent function executions
+resonate = Resonate.remote(
+    host="http://localhost",
+    store_port="8001",
+    message_source_port="8001",
+    workers=4,
+)
+
+# Single-threaded: one function at a time
+resonate = Resonate.remote(
+    host="http://localhost",
+    store_port="8001",
+    message_source_port="8001",
+    workers=1,
+)
+```
+
+Setting `workers=1` is useful when your worker holds in-process state that cannot be shared across concurrent tasks (for example, a browser automation session or a stateful protocol connection).
+
+See [Scaling — Worker concurrency](/deploy/scaling#worker-concurrency) for more on concurrency strategies.
+
 ## Client APIs
 
 Registration
