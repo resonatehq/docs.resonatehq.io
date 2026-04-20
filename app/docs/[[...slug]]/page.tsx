@@ -122,8 +122,25 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const page = source.getPage(slug);
   if (!page) return {};
 
+  const title = page.data.title;
+  const description = page.data.description || `${title} — Resonate documentation`;
+
   return {
-    title: page.data.title,
-    description: page.data.description,
+    title,
+    description,
+    openGraph: {
+      title: `${title} — Resonate Docs`,
+      description,
+      url: `https://docs.resonatehq.io${page.url}`,
+      type: "article",
+    },
+    twitter: {
+      card: "summary",
+      title: `${title} — Resonate Docs`,
+      description,
+    },
+    alternates: {
+      canonical: `https://docs.resonatehq.io${page.url}`,
+    },
   };
 }

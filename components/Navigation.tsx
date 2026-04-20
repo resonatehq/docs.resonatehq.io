@@ -9,7 +9,7 @@ import SearchDialog from "./SearchDialog";
 const navLinks = [
   { label: "Home", href: "https://www.resonatehq.io" },
   { label: "Pricing", href: "https://www.resonatehq.io/pricing" },
-  { label: "Discord", href: "https://resonatehq.io/discord", external: true },
+  { label: "Discord", href: "https://www.resonatehq.io/discord", external: true },
 ];
 
 export default function Navigation() {

@@ -29,11 +29,12 @@ const sansation = localFont({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://docs.resonatehq.io"),
   title: {
     template: "%s — Resonate Docs",
     default: "Resonate Documentation",
   },
-  description: "Documentation for Resonate — durable execution, dead simple.",
+  description: "Documentation for Resonate — durable execution, dead simple. Guides for TypeScript, Python, and Rust SDKs.",
   icons: {
     icon: "/images/favicon.png",
   },
@@ -42,8 +43,17 @@ export const metadata: Metadata = {
     description: "Documentation for Resonate — durable execution, dead simple.",
     url: "https://docs.resonatehq.io",
     siteName: "Resonate Docs",
-    images: [{ url: "https://docs.resonatehq.io/images/resonate-documentation-banner.png" }],
+    images: [{ url: "/images/resonate-documentation-banner.png", width: 1200, height: 630 }],
     type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Resonate Documentation",
+    description: "Documentation for Resonate — durable execution, dead simple.",
+    images: ["/images/resonate-documentation-banner.png"],
+  },
+  alternates: {
+    canonical: "https://docs.resonatehq.io",
   },
 };
 
