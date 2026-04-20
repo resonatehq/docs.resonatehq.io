@@ -25,7 +25,7 @@ export function CodeTabs({ children, labels, defaultValue }: CodeTabsProps) {
 
   return (
     <div className="my-4 border border-primary/10">
-      <div className="flex border-b border-primary/10 bg-surface-elevated" role="tablist">
+      <div className="flex border-b border-primary/10 bg-bright-gray-50 dark:bg-surface-elevated" role="tablist">
         {tabLabels.map((label: string) => (
           <button
             key={label}

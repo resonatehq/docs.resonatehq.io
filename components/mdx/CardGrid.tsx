@@ -13,7 +13,7 @@ export function Card({ title, description, href, icon }: CardProps) {
   return (
     <Link
       href={href}
-      className="group block p-5 border border-primary/10 hover:border-secondary/30 bg-surface-elevated dark:bg-surface-elevated bg-bright-gray-50 hover:bg-bright-gray-100 dark:hover:bg-surface-subtle transition focus-visible:outline-2 focus-visible:outline-secondary"
+      className="group block p-5 border border-primary/10 hover:border-secondary/30 bg-bright-gray-50 dark:bg-surface-elevated hover:bg-bright-gray-100 dark:hover:bg-surface-subtle transition focus-visible:outline-2 focus-visible:outline-secondary"
     >
       <div className="flex items-start justify-between">
         <div>
