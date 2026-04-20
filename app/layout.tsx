@@ -74,6 +74,8 @@ export default function RootLayout({
             gtag('config', 'G-0660YY8LZF');
           `}
         </Script>
+        {/* Echo AI assistant — currently Kapa.ai widget, will be swapped to native Echo when echo-agent initiative ships */}
+        <Script src="/scripts/echo.js" strategy="afterInteractive" />
       </body>
     </html>
   );

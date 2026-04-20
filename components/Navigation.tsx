@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, Menu, X, Github } from "lucide-react";
+import { Menu, X, Github } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
+import SearchDialog from "./SearchDialog";
 
 const navLinks = [
   { label: "Home", href: "https://www.resonatehq.io" },
@@ -58,6 +59,7 @@ export default function Navigation() {
                 {link.label}
               </a>
             ))}
+            <SearchDialog />
             <a
               href="https://github.com/resonatehq"
               target="_blank"
