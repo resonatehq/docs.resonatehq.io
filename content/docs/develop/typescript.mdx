@@ -133,9 +133,9 @@ const resonate = new Resonate({
 });
 ```
 
-:::tip
-Token-based authentication is recommended for production. See the [Security & Authentication](/deploy/security) guide for detailed configuration, best practices, and server setup.
-:::
+<Callout type="tip" title="Token-based authentication is recommended for production. See the [Security & Authentication](/deploy/security) guide for detailed configuration, best practices, and server setup.">
+
+</Callout>
 
 ### Message sources
 
@@ -174,12 +174,10 @@ The following order is used when determining the remote endpoint:
 3. `RESONATE_SCHEME`, `RESONATE_HOST`, and `RESONATE_PORT` environment variables.
 4. Built-in local development mode (no remote network).
 
-:::tip No URL means local mode (zero-dependency development)
-
+<Callout type="tip" title="No URL means local mode (zero-dependency development)">
 If neither an argument nor environment variable produces a URL, the client falls back to a local in-memory network.
 This is convenient for unit tests or quick experiments that do not require a Resonate server.
-
-:::
+</Callout>
 
 #### `RESONATE_URL`
 

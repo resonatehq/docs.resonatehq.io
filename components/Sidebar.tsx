@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, PanelLeftClose, PanelLeft } from "lucide-react";
+import Link from "next/link";
+import { ChevronRight, PanelLeft, PanelLeftClose } from "lucide-react";
 import type { PageTree } from "fumadocs-core/server";
 
 interface SidebarProps {
@@ -38,18 +39,18 @@ function SidebarNode({
   if (node.type === "page") {
     const isActive = node.url === currentPath;
     return (
-      <a
+      <Link
         href={node.url}
-        className={`block py-1.5 text-sm transition-colors ${
+        className={`block py-1.5 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-secondary ${
           depth > 0 ? "pl-4" : ""
         } ${
           isActive
             ? "text-secondary font-medium"
-            : "text-muted hover:text-primary"
+            : "text-muted hover:text-bright-gray-900 dark:hover:text-primary"
         }`}
       >
         {node.name}
-      </a>
+      </Link>
     );
   }
 
@@ -58,12 +59,12 @@ function SidebarNode({
       <div>
         <button
           onClick={() => setOpen(!open)}
-          className={`flex items-center justify-between w-full py-1.5 text-sm text-left transition-colors ${
+          className={`flex items-center justify-between w-full py-1.5 text-sm text-left transition-colors focus-visible:outline-2 focus-visible:outline-secondary ${
             depth > 0 ? "pl-4" : ""
           } ${
             isAncestor(node, currentPath)
-              ? "text-primary font-medium"
-              : "text-muted hover:text-primary"
+              ? "text-bright-gray-900 dark:text-primary font-medium"
+              : "text-muted hover:text-bright-gray-900 dark:hover:text-primary"
           }`}
         >
           <span>{node.name}</span>
@@ -101,23 +102,34 @@ function isAncestor(node: PageTree.Node, path: string): boolean {
 }
 
 export default function Sidebar({ tree, currentPath }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [open, setOpen] = useState(false);
 
   return (
     <>
       {/* Mobile toggle */}
       <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="lg:hidden fixed bottom-4 left-4 z-50 p-3 bg-surface-elevated border border-primary/10 text-primary hover:text-secondary transition"
-        aria-label="Toggle sidebar"
+        onClick={() => setOpen(!open)}
+        className="lg:hidden fixed bottom-4 left-4 z-50 p-3 bg-surface-elevated border border-primary/10 text-bright-gray-900 dark:text-primary hover:text-secondary transition focus-visible:outline-2 focus-visible:outline-secondary"
+        aria-label={open ? "Close sidebar" : "Open sidebar"}
       >
-        {collapsed ? <PanelLeft size={20} /> : <PanelLeftClose size={20} />}
+        {open ? <PanelLeftClose size={20} /> : <PanelLeft size={20} />}
       </button>
+
+      {/* Mobile backdrop */}
+      {open && (
+        <div
+          className="lg:hidden fixed inset-0 z-30 bg-black/50"
+          onClick={() => setOpen(false)}
+          aria-hidden="true"
+        />
+      )}
 
       <aside
         className={`${
-          collapsed ? "hidden" : "block"
-        } lg:block w-64 shrink-0 border-r border-primary/10 overflow-y-auto h-[calc(100vh-65px)] sticky top-[65px] py-6 px-4`}
+          open ? "fixed inset-y-0 left-0 z-40 w-72 bg-surface-light dark:bg-dark" : "hidden"
+        } lg:block lg:relative lg:z-auto lg:w-64 shrink-0 border-r border-primary/10 overflow-y-auto h-[calc(100vh-65px)] lg:sticky lg:top-[65px] py-6 px-4`}
+        role="navigation"
+        aria-label="Documentation"
       >
         {tree.children.map((node, i) => (
           <SidebarNode key={`${node.type}-${i}`} node={node} currentPath={currentPath} />

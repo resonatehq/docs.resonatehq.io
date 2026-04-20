@@ -11,13 +11,11 @@ Welcome to the Resonate Python SDK guide!
 This SDK makes it possible to write Distributed Async Await applications with Python.
 This guide covers installation and features that the SDK offers.
 
-:::tip API Reference
-
+<Callout type="tip" title="API Reference">
 Looking for the API reference?
 
 The Resonate Python SDK API reference is available [here](https://resonatehq.github.io/resonate-sdk-py/).
-
-:::
+</Callout>
 
 ## Installation
 
@@ -86,13 +84,12 @@ resonate = Resonate()
 resonate = Resonate.local()
 ```
 
-:::tip Dead Simple incremental adoption
-
+<Callout type="tip" title="Dead Simple incremental adoption">
 Temporal, Restate, and DBOS require a server or database to get started.
 
 Resonate enables you to get started with a local worker that stores promises in memory, no server or database required.
 This makes it easy to incrementally adopt Resonate into your existing Python application.
-:::
+</Callout>
 
 **Remote initialization**
 
@@ -112,9 +109,9 @@ The default configuration uses the Resonate Server as the promise store and uses
 A Resonate Client can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
 The Poller is a great starting place however, as it will long-poll for messages from the Resonate Server without any additional setup.
 
-:::caution
-Python SDK v0.6.7 works with the **legacy Resonate server** only. Support for server v0.9.x is coming in a future release.
-:::
+<Callout type="caution" title="Python SDK v0.6.7 works with the **legacy Resonate server** only. Support for server v0.9.x is coming in a future release.">
+
+</Callout>
 
 To connect to a specific host and port, pass them explicitly:
 

@@ -6,9 +6,9 @@ description: APIs that stay simple, even when your use cases aren't
   - resonate-sdk
 ---
 
-:::caution Early development
+<Callout type="caution" title="Early development">
 The Rust SDK is v0.1.0 and in active development. APIs may change between releases. It is not yet published on crates.io.
-:::
+</Callout>
 
 Whether you are a human or an AI agent, this skill guide will help you develop applications using the Resonate Rust SDK.
 
@@ -95,9 +95,9 @@ let resonate = Resonate::new(ResonateConfig {
 });
 ```
 
-:::tip
-Token-based authentication is recommended for production. See the [Security & Authentication](/deploy/security) guide for detailed configuration, best practices, and server setup.
-:::
+<Callout type="tip" title="Token-based authentication is recommended for production. See the [Security & Authentication](/deploy/security) guide for detailed configuration, best practices, and server setup.">
+
+</Callout>
 
 ### Environment variables
 
@@ -115,12 +115,10 @@ The following order is used when determining the remote endpoint:
 3. `RESONATE_HOST` and `RESONATE_PORT` environment variables.
 4. Built-in local development mode (no remote network).
 
-:::tip No URL means local mode (zero-dependency development)
-
+<Callout type="tip" title="No URL means local mode (zero-dependency development)">
 If neither a config field nor environment variable produces a URL, the SDK falls back to a local in-memory network.
 This is convenient for unit tests or quick experiments that do not require a Resonate server.
-
-:::
+</Callout>
 
 #### `RESONATE_URL`
 
@@ -419,9 +417,9 @@ async fn my_workflow(ctx: &Context) -> Result<String> {
 | `.timeout(Duration)` | Execution timeout |
 | `.target(&str)` | Target worker group — only valid on `ctx.rpc()` builders |
 
-:::note
-Client-side builders (`resonate.run()`, `resonate.rpc()`) also support `.version(u32)` and `.tags(HashMap<String, String>)`. These are not available on Context builders.
-:::
+<Callout type="note" title="Client-side builders (`resonate.run()`, `resonate.rpc()`) also support `.version(u32)` and `.tags(HashMap<String, String>)`. These are not available on Context builders.">
+
+</Callout>
 
 ### Context accessors
 

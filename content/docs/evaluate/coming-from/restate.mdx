@@ -210,9 +210,9 @@ async function approveOrder(orderId: string) {
 
 No special workflow service type, no separate handler methods - just functions and promises.
 
-:::tip Durable Promise IDs
+<Callout type="tip" title="Durable Promise IDs">
 Each Durable Promise has a unique ID (like `approval-${orderId}`) that acts as the idempotency key. The same promise ID will always resolve to the same value, making workflows resumable and ensuring exactly-once semantics.
-:::
+</Callout>
 
 ## Deployment and infrastructure
 
@@ -244,9 +244,9 @@ const resonate = new Resonate({
 });
 ```
 
-:::tip Zero-dependency development
+<Callout type="tip" title="Zero-dependency development">
 You can develop and test without any infrastructure. Add the server when you need distributed coordination, not before.
-:::
+</Callout>
 
 ## Human-in-the-loop
 

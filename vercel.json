@@ -2,22 +2,22 @@
   "redirects": [
     {
       "source": "/evaluate/coming-from-temporal",
-      "destination": "/evaluate/coming-from/temporal",
+      "destination": "/docs/evaluate/coming-from/temporal",
       "permanent": true
     },
     {
       "source": "/evaluate/coming-from-dbos",
-      "destination": "/evaluate/coming-from/dbos",
+      "destination": "/docs/evaluate/coming-from/dbos",
       "permanent": true
     },
     {
       "source": "/get-started/new-project/ai-agent-loops",
-      "destination": "/get-started/project-templates/deep-research-agent",
+      "destination": "/docs/get-started/examples/deep-research-agent",
       "permanent": true
     },
     {
       "source": "/get-started/new-project/:path*",
-      "destination": "/get-started/project-templates/:path*",
+      "destination": "/docs/get-started/examples/:path*",
       "permanent": true
     },
     {
@@ -27,77 +27,107 @@
     },
     {
       "source": "/get-started/project-templates/:path*",
-      "destination": "/get-started/examples/:path*",
+      "destination": "/docs/get-started/examples/:path*",
       "permanent": true
     },
     {
       "source": "/operate/cli-reference/:path*",
-      "destination": "/get-started/cli-guide",
+      "destination": "/docs/get-started/cli-guide",
       "permanent": true
     },
     {
       "source": "/operate/errors",
-      "destination": "/debug/errors",
+      "destination": "/docs/debug/errors",
       "permanent": true
     },
     {
       "source": "/operate/troubleshooting",
-      "destination": "/debug/troubleshooting",
+      "destination": "/docs/debug/troubleshooting",
       "permanent": true
     },
     {
       "source": "/operate",
-      "destination": "/deploy",
+      "destination": "/docs/deploy",
       "permanent": true
     },
     {
       "source": "/operate/run-server",
-      "destination": "/deploy/run-server",
+      "destination": "/docs/deploy/run-server",
       "permanent": true
     },
     {
       "source": "/operate/security",
-      "destination": "/deploy/security",
+      "destination": "/docs/deploy/security",
       "permanent": true
     },
     {
       "source": "/operate/message-transports",
-      "destination": "/deploy/message-transports",
+      "destination": "/docs/deploy/message-transports",
       "permanent": true
     },
     {
       "source": "/operate/serverless-workers",
-      "destination": "/deploy/serverless-workers",
+      "destination": "/docs/deploy/serverless-workers",
       "permanent": true
     },
     {
       "source": "/operate/upgrade-server",
-      "destination": "/deploy/upgrade-server",
+      "destination": "/docs/deploy/upgrade-server",
       "permanent": true
     },
     {
       "source": "/operate/production",
-      "destination": "/deploy",
+      "destination": "/docs/deploy",
       "permanent": true
     },
     {
       "source": "/operate/observe",
-      "destination": "/deploy",
+      "destination": "/docs/deploy",
       "permanent": true
     },
     {
       "source": "/operate/observe/logs",
-      "destination": "/deploy/logging",
+      "destination": "/docs/deploy/logging",
       "permanent": true
     },
     {
       "source": "/operate/observe/metrics",
-      "destination": "/deploy/metrics",
+      "destination": "/docs/deploy/metrics",
       "permanent": true
     },
     {
       "source": "/operate/observe/traces",
-      "destination": "/deploy/tracing",
+      "destination": "/docs/deploy/tracing",
+      "permanent": true
+    },
+    {
+      "source": "/evaluate/:path*",
+      "destination": "/docs/evaluate/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/get-started/:path*",
+      "destination": "/docs/get-started/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/develop/:path*",
+      "destination": "/docs/develop/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/debug/:path*",
+      "destination": "/docs/debug/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/deploy/:path*",
+      "destination": "/docs/deploy/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/learn/:path*",
+      "destination": "/docs/learn/:path*",
       "permanent": true
     }
   ]

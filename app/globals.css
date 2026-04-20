@@ -2,16 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Resonate docs — custom styles on top of Tailwind preset */
-
 @layer base {
   body {
-    @apply bg-dark text-primary antialiased;
+    @apply antialiased;
   }
 
-  [data-theme="light"] body,
-  .light body {
-    @apply bg-surface-light text-bright-gray-900;
+  /* Focus visible for all interactive elements */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-secondary;
   }
 }
 
@@ -21,62 +19,47 @@
     @apply rounded-none border border-primary/10 text-sm;
   }
 
+  .dark pre {
+    @apply border-primary/10;
+  }
+
   pre code {
     @apply block overflow-x-auto p-4;
   }
 
   code:not(pre code) {
-    @apply bg-surface-elevated px-1.5 py-0.5 text-sm rounded-none border border-primary/10;
-  }
-
-  [data-theme="light"] code:not(pre code) {
+    @apply px-1.5 py-0.5 text-sm rounded-none border;
     @apply bg-bright-gray-50 border-bright-gray-200 text-bright-gray-800;
   }
 
-  /* Callouts / admonitions */
-  .callout {
-    @apply border-l-4 p-4 my-4;
+  .dark code:not(pre code) {
+    @apply bg-surface-elevated border-primary/10 text-primary;
   }
 
-  .callout-note {
-    @apply border-accent-teal bg-accent-teal/5;
-  }
-
-  .callout-tip {
-    @apply border-accent-teal-400 bg-accent-teal/5;
-  }
-
-  .callout-info {
-    @apply border-muted bg-muted/5;
-  }
-
-  .callout-caution {
-    @apply border-accent-ember bg-accent-ember/5;
-  }
-
-  .callout-danger {
-    @apply border-accent-plum bg-accent-plum/5;
-  }
-
-  /* Prose defaults for docs content */
+  /* Prose defaults for docs content — dark-first, then light overrides */
   .docs-content h1 {
-    @apply font-display text-3xl md:text-4xl font-bold text-white mb-6;
+    @apply font-display text-3xl md:text-4xl font-bold mb-6;
+    @apply text-bright-gray-900 dark:text-white;
   }
 
   .docs-content h2 {
-    @apply font-display text-2xl font-bold text-white mt-10 mb-4;
+    @apply font-display text-2xl font-bold mt-10 mb-4;
+    @apply text-bright-gray-900 dark:text-white;
   }
 
   .docs-content h3 {
-    @apply font-display text-xl font-semibold text-white mt-8 mb-3;
+    @apply font-display text-xl font-semibold mt-8 mb-3;
+    @apply text-bright-gray-900 dark:text-white;
   }
 
   .docs-content h4 {
-    @apply font-display text-lg font-semibold text-primary mt-6 mb-2;
+    @apply font-display text-lg font-semibold mt-6 mb-2;
+    @apply text-bright-gray-700 dark:text-primary;
   }
 
   .docs-content p {
-    @apply font-serif text-primary leading-relaxed mb-4;
+    @apply font-serif leading-relaxed mb-4;
+    @apply text-bright-gray-700 dark:text-primary;
   }
 
   .docs-content a {
@@ -85,7 +68,8 @@
 
   .docs-content ul,
   .docs-content ol {
-    @apply font-serif text-primary mb-4 pl-6;
+    @apply font-serif mb-4 pl-6;
+    @apply text-bright-gray-700 dark:text-primary;
   }
 
   .docs-content ul {
@@ -101,7 +85,8 @@
   }
 
   .docs-content blockquote {
-    @apply border-l-4 border-secondary/30 pl-4 italic text-muted my-4;
+    @apply border-l-4 pl-4 italic my-4;
+    @apply border-bright-gray-200 text-bright-gray-500 dark:border-secondary/30 dark:text-muted;
   }
 
   .docs-content table {
@@ -109,11 +94,13 @@
   }
 
   .docs-content th {
-    @apply font-display text-left text-white border-b border-primary/20 pb-2 pr-4;
+    @apply font-display text-left pb-2 pr-4;
+    @apply text-bright-gray-900 border-b border-bright-gray-200 dark:text-white dark:border-primary/20;
   }
 
   .docs-content td {
-    @apply font-serif border-b border-primary/10 py-2 pr-4;
+    @apply font-serif py-2 pr-4;
+    @apply border-b border-bright-gray-100 dark:border-primary/10;
   }
 
   .docs-content img {
@@ -121,29 +108,7 @@
   }
 
   .docs-content hr {
-    @apply border-primary/10 my-8;
-  }
-
-  /* Light mode overrides */
-  [data-theme="light"] .docs-content h1,
-  [data-theme="light"] .docs-content h2,
-  [data-theme="light"] .docs-content h3,
-  [data-theme="light"] .docs-content h4 {
-    @apply text-bright-gray-900;
-  }
-
-  [data-theme="light"] .docs-content p,
-  [data-theme="light"] .docs-content ul,
-  [data-theme="light"] .docs-content ol,
-  [data-theme="light"] .docs-content li {
-    @apply text-bright-gray-700;
-  }
-
-  [data-theme="light"] .docs-content th {
-    @apply text-bright-gray-900 border-bright-gray-200;
-  }
-
-  [data-theme="light"] .docs-content td {
-    @apply border-bright-gray-100;
+    @apply my-8;
+    @apply border-bright-gray-200 dark:border-primary/10;
   }
 }

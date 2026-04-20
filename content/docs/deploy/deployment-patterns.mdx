@@ -284,9 +284,9 @@ export class ResonateWorkerStack extends cdk.Stack {
 }
 ```
 
-:::tip Serverless execution limits
+<Callout type="tip" title="Serverless execution limits">
 Lambda has a 15-minute execution limit. Cloud Run supports longer executions (up to 60 minutes). Design your functions to complete within these limits, or use containerized workers for long-running workflows.
-:::
+</Callout>
 
 ### AWS Fargate
 

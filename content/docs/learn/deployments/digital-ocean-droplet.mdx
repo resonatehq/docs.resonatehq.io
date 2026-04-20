@@ -70,9 +70,9 @@ chmod +x resonate
 ./resonate --version
 ```
 
-:::caution GLIBC requirement
+<Callout type="caution" title="GLIBC requirement">
 The Resonate binary requires **glibc ≥ 2.38**. Ubuntu 24.04+ satisfies this. If you’re on Ubuntu 22.04, you may need to upgrade or build from source.
-:::
+</Callout>
 
 The Resonate server reads configuration from a `resonate.toml` in its working directory, then layers `RESONATE_*` environment variables and CLI flags on top.
 Nginx terminates TLS on port `443` and forwards traffic to the server's internal HTTP port.
@@ -208,11 +208,11 @@ Update the ports and domain if you chose different values.
 Finally, update your application to point at the Droplet.
 The examples below show how to target the public HTTPS endpoint you just exposed.
 
-:::info SDK compatibility
+<Callout type="info" title="SDK compatibility">
 The Resonate Server v0.9.x speaks the v0.10.0 protocol. Use the **TypeScript SDK v0.10.0** or **Rust SDK** — both speak this protocol.
 
 The Python SDK v0.6.7 is protocol-compatible with the legacy Go server only and cannot connect to this deployment.
-:::
+</Callout>
 
 <Tabs
     groupId="sdk-language"

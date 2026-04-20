@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     description: "Documentation for Resonate — durable execution, dead simple.",
     url: "https://docs.resonatehq.io",
     siteName: "Resonate Docs",
-    images: [{ url: "https://docs.resonatehq.io/images/echo-logo.svg" }],
+    images: [{ url: "https://docs.resonatehq.io/images/resonate-documentation-banner.png" }],
     type: "website",
   },
 };
@@ -59,12 +59,14 @@ export default function RootLayout({
       data-theme="dark"
       suppressHydrationWarning
     >
-      <head>
+      <body className="bg-dark dark:bg-dark bg-surface-light min-h-screen">
+        {children}
         <Script
           async
           src="https://www.googletagmanager.com/gtag/js?id=G-0660YY8LZF"
+          strategy="afterInteractive"
         />
-        <Script id="google-gtag">
+        <Script id="google-gtag" strategy="afterInteractive">
           {`
             window.dataLayer = window.dataLayer || [];
             function gtag(){dataLayer.push(arguments);}
@@ -72,9 +74,6 @@ export default function RootLayout({
             gtag('config', 'G-0660YY8LZF');
           `}
         </Script>
-      </head>
-      <body className="bg-dark min-h-screen">
-        {children}
       </body>
     </html>
   );

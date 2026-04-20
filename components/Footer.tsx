@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Github } from "lucide-react";
 
 const footerLinks = {
@@ -20,6 +21,22 @@ const footerLinks = {
   ],
 };
 
+function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
+  const isExternal = href.startsWith("http");
+  if (isExternal) {
+    return (
+      <a href={href} className="text-sm text-muted hover:text-bright-gray-900 dark:hover:text-primary transition" target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    );
+  }
+  return (
+    <Link href={href} className="text-sm text-muted hover:text-bright-gray-900 dark:hover:text-primary transition">
+      {children}
+    </Link>
+  );
+}
+
 export default function Footer() {
   return (
     <footer className="border-t border-primary/10 mt-16">
@@ -33,21 +50,22 @@ export default function Footer() {
                 width="20"
                 height="22"
                 viewBox="0 0 432 472"
-                className="text-white"
                 aria-hidden="true"
               >
-                <g fill="#080A0E" stroke="currentColor">
+                <g stroke="currentColor" className="text-bright-gray-900 dark:text-white">
                   <path
                     strokeWidth="30"
+                    fill="currentColor"
+                    className="text-surface-light dark:text-dark"
                     d="M218.632,60C107.088,60,15.374,138.248,15.374,236.252C15.374,292.38,39.0338,336.722,75.978,366.934C112.825,397.067,162.68,413,215.11,413C266.913,413,316.754,397.512,353.75,367.861C390.854,338.124,414.845,294.27,414.845,238.237C414.845,140.526,330.503,60,218.632,60Z"
                   />
-                  <ellipse cx="109" cy="236" fill="currentColor" rx="50" ry="55" />
-                  <ellipse cx="321" cy="234" fill="currentColor" rx="50" ry="55" />
-                  <rect width="8" height="16" x="204" y="282" fill="currentColor" rx="4" transform="rotate(25 204 282)" />
-                  <rect width="8" height="16" x="217" y="285" fill="currentColor" rx="4" transform="rotate(-25 217 285)" />
+                  <ellipse cx="109" cy="236" fill="currentColor" rx="50" ry="55" className="text-bright-gray-900 dark:text-white" />
+                  <ellipse cx="321" cy="234" fill="currentColor" rx="50" ry="55" className="text-bright-gray-900 dark:text-white" />
+                  <rect width="8" height="16" x="204" y="282" fill="currentColor" rx="4" transform="rotate(25 204 282)" className="text-bright-gray-900 dark:text-white" />
+                  <rect width="8" height="16" x="217" y="285" fill="currentColor" rx="4" transform="rotate(-25 217 285)" className="text-bright-gray-900 dark:text-white" />
                 </g>
               </svg>
-              <span className="font-display text-lg font-semibold text-white">resonate</span>
+              <span className="font-display text-lg font-semibold text-bright-gray-900 dark:text-white">resonate</span>
             </div>
             <p className="font-serif text-sm text-muted">
               Durable execution. Dead simple.
@@ -56,47 +74,30 @@ export default function Footer() {
 
           {/* Product */}
           <div>
-            <h3 className="font-display text-sm font-semibold text-white mb-4">Product</h3>
+            <h3 className="font-display text-sm font-semibold text-bright-gray-900 dark:text-white mb-4">Product</h3>
             <ul className="space-y-2">
               {footerLinks.product.map((link) => (
-                <li key={link.label}>
-                  <a href={link.href} className="text-sm text-muted hover:text-primary transition">
-                    {link.label}
-                  </a>
-                </li>
+                <li key={link.label}><FooterLink href={link.href}>{link.label}</FooterLink></li>
               ))}
             </ul>
           </div>
 
           {/* Community */}
           <div>
-            <h3 className="font-display text-sm font-semibold text-white mb-4">Community</h3>
+            <h3 className="font-display text-sm font-semibold text-bright-gray-900 dark:text-white mb-4">Community</h3>
             <ul className="space-y-2">
               {footerLinks.community.map((link) => (
-                <li key={link.label}>
-                  <a
-                    href={link.href}
-                    className="text-sm text-muted hover:text-primary transition"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {link.label}
-                  </a>
-                </li>
+                <li key={link.label}><FooterLink href={link.href}>{link.label}</FooterLink></li>
               ))}
             </ul>
           </div>
 
           {/* Company */}
           <div>
-            <h3 className="font-display text-sm font-semibold text-white mb-4">Company</h3>
+            <h3 className="font-display text-sm font-semibold text-bright-gray-900 dark:text-white mb-4">Company</h3>
             <ul className="space-y-2">
               {footerLinks.company.map((link) => (
-                <li key={link.label}>
-                  <a href={link.href} className="text-sm text-muted hover:text-primary transition">
-                    {link.label}
-                  </a>
-                </li>
+                <li key={link.label}><FooterLink href={link.href}>{link.label}</FooterLink></li>
               ))}
             </ul>
           </div>
@@ -111,7 +112,8 @@ export default function Footer() {
             href="https://github.com/resonatehq"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-muted hover:text-primary transition"
+            className="text-muted hover:text-bright-gray-900 dark:hover:text-primary transition"
+            aria-label="GitHub"
           >
             <Github size={16} />
           </a>

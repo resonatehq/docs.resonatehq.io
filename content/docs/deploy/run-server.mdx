@@ -155,10 +155,10 @@ Run `resonate serve --help` for the full list. Common flags:
 | `--observability-metrics-port` | `9090` | Prometheus metrics port (`0` to disable) |
 | `--transports-gcps-project` | — | GCP Pub/Sub project ID for message transport |
 
-:::tip tasks-retry-timeout
+<Callout type="tip" title="tasks-retry-timeout">
 The default `--tasks-retry-timeout` of 30 seconds adds significant latency to chained workflows (sagas, recursive fan-out).
 For most deployments, set this to `500` (milliseconds) to keep suspend/wake cycles fast.
-:::
+</Callout>
 
 ## Run with PostgreSQL
 
@@ -318,7 +318,7 @@ The server binds two ports by default:
 | `:8001` | HTTP API (all SDK traffic, SSE polling, and task dispatch) |
 | `:9090` | Prometheus metrics |
 
-:::caution PaaS port routing
+<Callout type="caution" title="PaaS port routing">
 On platforms like Railway, Render, or Fly.io that auto-detect a single primary port, explicitly route to `8001`.
 Without this, the platform may pick the metrics port (`9090`) and route all traffic there, resulting in 502 errors.
-:::
+</Callout>

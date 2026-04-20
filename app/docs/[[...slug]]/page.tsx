@@ -1,5 +1,7 @@
 import { source } from "@/lib/source";
 import { notFound } from "next/navigation";
+import Link from "next/link";
+import { findNeighbour } from "fumadocs-core/server";
 import Sidebar from "@/components/Sidebar";
 import TableOfContents from "@/components/TableOfContents";
 import { CodeTabs, TabItem } from "@/components/mdx/CodeTabs";
@@ -11,6 +13,7 @@ import CloneRepoCard from "@/components/mdx/CloneRepoCard";
 import DocCardList from "@/components/mdx/DocCardList";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { Metadata } from "next";
+import type { ReactElement } from "react";
 
 const mdxComponents = {
   Tabs: CodeTabs,
@@ -37,10 +40,7 @@ export default async function Page({ params }: PageProps) {
   if (!page) notFound();
 
   const tree = source.pageTree;
-  const pages = source.getPages();
-  const currentIndex = pages.findIndex((p) => p.url === page.url);
-  const prev = currentIndex > 0 ? pages[currentIndex - 1] : null;
-  const next = currentIndex < pages.length - 1 ? pages[currentIndex + 1] : null;
+  const neighbours = findNeighbour(tree, page.url);
 
   const MDX = page.data.body;
 
@@ -50,15 +50,15 @@ export default async function Page({ params }: PageProps) {
 
       <main className="flex-1 min-w-0 px-6 md:px-10 py-8">
         {/* Breadcrumbs */}
-        <nav className="text-xs text-muted mb-6 font-mono">
-          <a href="/docs" className="hover:text-primary transition">
+        <nav className="text-xs text-muted mb-6 font-mono" aria-label="Breadcrumb">
+          <Link href="/docs" className="hover:text-bright-gray-900 dark:hover:text-primary transition">
             Docs
-          </a>
+          </Link>
           {slug?.map((segment, i) => (
             <span key={segment}>
               <span className="mx-1.5">/</span>
               {i === slug.length - 1 ? (
-                <span className="text-primary">{page.data.title}</span>
+                <span className="text-bright-gray-900 dark:text-primary">{page.data.title}</span>
               ) : (
                 <span>{segment}</span>
               )}
@@ -77,31 +77,31 @@ export default async function Page({ params }: PageProps) {
           <MDX components={mdxComponents} />
         </article>
 
-        {/* Prev / Next */}
+        {/* Prev / Next (section-aware via fumadocs findNeighbour) */}
         <div className="flex items-center justify-between mt-12 pt-6 border-t border-primary/10 max-w-3xl">
-          {prev ? (
-            <a
-              href={prev.url}
-              className="group flex items-center gap-2 text-sm text-muted hover:text-primary transition"
+          {neighbours.previous ? (
+            <Link
+              href={neighbours.previous.url}
+              className="group flex items-center gap-2 text-sm text-muted hover:text-bright-gray-900 dark:hover:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
             >
               <ChevronLeft size={14} />
               <span className="group-hover:text-secondary transition">
-                {prev.data.title}
+                {neighbours.previous.name}
               </span>
-            </a>
+            </Link>
           ) : (
             <div />
           )}
-          {next ? (
-            <a
-              href={next.url}
-              className="group flex items-center gap-2 text-sm text-muted hover:text-primary transition"
+          {neighbours.next ? (
+            <Link
+              href={neighbours.next.url}
+              className="group flex items-center gap-2 text-sm text-muted hover:text-bright-gray-900 dark:hover:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
             >
               <span className="group-hover:text-secondary transition">
-                {next.data.title}
+                {neighbours.next.name}
               </span>
               <ChevronRight size={14} />
-            </a>
+            </Link>
           ) : (
             <div />
           )}

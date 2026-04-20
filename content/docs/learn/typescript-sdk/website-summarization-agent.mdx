@@ -19,21 +19,17 @@ This tutorial follows the philosophy of _progressive disclosure_ and is broken i
 Each part introduces new concepts.
 You can choose to stop at the end of any part of the tutorial and still have a working application.
 
-:::tip Final example application
-
+<Callout type="tip" title="Final example application">
 Want to jump straight to working with the final example application?
 [example-website-summarization-agent-ts](https://github.com/resonatehq-examples/example-website-summarization-agent-ts) repository.
-
-:::
+</Callout>
 
 In part 1, you will start with a single Worker and observe the SDK's ability to automatically retry application-level failures (failed function executions).
 
-:::tip What is a Worker?
-
+<Callout type="tip" title="What is a Worker?">
 A Worker is a process that runs your application code (i.e. executes functions).
 This is similar to the concept of a "worker" or "worker node" in other Durable Execution platforms like Temporal, Restate, and DBOS.
-
-:::
+</Callout>
 
 Then in part 2 you will connect your Worker to a Resonate Server to enable recovery from platform-level failures and see how a function execution can recover from a process crash (Durable Execution).
 
@@ -70,14 +66,12 @@ Navigate to the directory you want to scaffold your project in and run the follo
 resonate project create --name summarization-agent --template classic-hello-world-typescript-sdk
 ```
 
-:::tip Zero-dependency development
-
+<Callout type="tip" title="Zero-dependency development">
 The template you are using does not require a Resonate Server to run.
 
 Other "Durable Execution" platforms, such as Temporal, Restate, and DBOS, require your worker to connect to a server or database to get started.
 This is not the case with Resonate.
-
-:::
+</Callout>
 
 You should now have a directory called “summarization-agent” with the following structure:
 
@@ -152,12 +146,10 @@ running foo
 Hello World from foo! Hello World from bar! Hello World from baz!
 ```
 
-:::tip Logs reveal the replay
-
+<Callout type="tip" title="Logs reveal the replay">
 Notice how `foo()` is logged multiple times.
 This is because Resonate replays the execution of `foo()` to reconstruct its state after each yielded step (`bar()` and `baz()`).
-
-:::
+</Callout>
 
 Let's update the file and function names to better reflect the purpose of the use case.
 Change the file name from `index.ts` to `worker.ts`

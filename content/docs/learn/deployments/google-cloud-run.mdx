@@ -55,8 +55,7 @@ As you will see below, Resonate makes it incredibly straightforward to write a l
 
 To deploy the Resonate Server on Cloud Run, you will use the GCloud CLI to create a new service within your project using the official Resonate container image (`resonatehqio/resonate`).
 
-:::tip Auth in development
-
+<Callout type="tip" title="Auth in development">
 The `@resonatehq/gcp` package that Resonate provides for Cloud Functions does not yet support auth.
 
 Auth support is planned, but if you have an immediate need please reach out on [Discord](https://resonatehq.io/discord) or [GitHub](https://github.com/resonatehq/resonate-faas-gcp-ts).
@@ -65,8 +64,7 @@ So, for this tutorial, you will need to deploy both the Resonate Server and the 
 And it is recommended not to keep the services live longer than needed to complete the tutorial.
 
 When there is auth support, this tutorial will be updated accordingly.
-
-:::
+</Callout>
 
 You will need to run the following command twice:
 

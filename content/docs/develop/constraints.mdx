@@ -184,9 +184,9 @@ def get_user_data(ctx: Context, user_id: str):
 
 </Tabs>
 
-:::tip Use Context methods for anything that can change
+<Callout type="tip" title="Use Context methods for anything that can change">
 If an operation might return different results when called again (time, random, I/O, external APIs), wrap it with a Context method. Resonate records the result the first time and uses the recorded value during replays.
-:::
+</Callout>
 
 **See also:**
 - [TypeScript Context APIs](/develop/typescript#context-apis)
@@ -290,9 +290,9 @@ When you use `ctx.run()` or `ctx.rpc()`, Resonate automatically generates a dete
 
 This means if you use Resonate's APIs correctly, **you don't have to manually check for duplicates** - the framework handles it for you.
 
-:::tip Use deterministic promise IDs
+<Callout type="tip" title="Use deterministic promise IDs">
 When you call operations through `ctx.run()` or `ctx.rpc()`, Resonate generates promise IDs that are the same across retries. This gives you automatic idempotency without manual deduplication logic.
-:::
+</Callout>
 
 ---
 
@@ -420,9 +420,9 @@ def approval_workflow(ctx: Context, request_id: str):
 
 </Tabs>
 
-:::tip Use Resonate primitives for long-running work
+<Callout type="tip" title="Use Resonate primitives for long-running work">
 For work that takes hours, days, or weeks, use `ctx.sleep()` or Durable Promises instead of blocking. This lets your process restart safely without losing progress.
-:::
+</Callout>
 
 **See also:**
 - [Durable sleep example](/get-started/examples/durable-sleep)
