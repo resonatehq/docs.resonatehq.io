@@ -29,7 +29,7 @@ function SidebarNode({
   if (node.type === "separator") {
     return (
       <div className="pt-6 pb-2 first:pt-0">
-        <span className="text-xs font-display font-semibold uppercase tracking-wider text-muted">
+        <span className="text-xs font-display font-semibold uppercase tracking-wider text-bright-gray-500 dark:text-muted">
           {node.name}
         </span>
       </div>
@@ -46,7 +46,7 @@ function SidebarNode({
         } ${
           isActive
             ? "text-secondary font-medium"
-            : "text-muted hover:text-bright-gray-900 dark:hover:text-primary"
+            : "text-bright-gray-600 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary"
         }`}
       >
         {node.name}
@@ -64,7 +64,7 @@ function SidebarNode({
           } ${
             isAncestor(node, currentPath)
               ? "text-bright-gray-900 dark:text-primary font-medium"
-              : "text-muted hover:text-bright-gray-900 dark:hover:text-primary"
+              : "text-bright-gray-600 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary"
           }`}
         >
           <span>{node.name}</span>
@@ -74,7 +74,7 @@ function SidebarNode({
           />
         </button>
         {open && (
-          <div className="ml-2 border-l border-primary/10 pl-2">
+          <div className="ml-2 border-l border-bright-gray-200 dark:border-primary/10 pl-2">
             {node.children.map((child, i) => (
               <SidebarNode
                 key={`${child.type}-${i}`}
@@ -109,7 +109,7 @@ export default function Sidebar({ tree, currentPath }: SidebarProps) {
       {/* Mobile toggle */}
       <button
         onClick={() => setOpen(!open)}
-        className="lg:hidden fixed bottom-4 left-4 z-50 p-3 bg-bright-gray-50 dark:bg-surface-elevated border border-primary/10 text-bright-gray-900 dark:text-primary hover:text-secondary transition focus-visible:outline-2 focus-visible:outline-secondary"
+        className="lg:hidden fixed bottom-4 left-4 z-50 p-3 bg-bright-gray-50 dark:bg-surface-elevated border border-bright-gray-200 dark:border-primary/10 text-bright-gray-900 dark:text-primary hover:text-secondary transition focus-visible:outline-2 focus-visible:outline-secondary"
         aria-label={open ? "Close sidebar" : "Open sidebar"}
       >
         {open ? <PanelLeftClose size={20} /> : <PanelLeft size={20} />}
@@ -127,7 +127,7 @@ export default function Sidebar({ tree, currentPath }: SidebarProps) {
       <aside
         className={`${
           open ? "fixed inset-y-0 left-0 z-40 w-72 bg-surface-light dark:bg-dark" : "hidden"
-        } lg:block lg:relative lg:z-auto lg:w-64 shrink-0 border-r border-primary/10 overflow-y-auto h-[calc(100vh-65px)] lg:sticky lg:top-[65px] py-6 px-4 font-sans`}
+        } lg:block lg:relative lg:z-auto lg:w-64 shrink-0 border-r border-bright-gray-200 dark:border-primary/10 overflow-y-auto h-[calc(100vh-65px)] lg:sticky lg:top-[65px] py-6 px-4 font-sans`}
         role="navigation"
         aria-label="Documentation"
       >

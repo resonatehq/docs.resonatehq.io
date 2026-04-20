@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --echo-fill: #FAFAF7;
+}
+
+.dark {
+  --echo-fill: #080A0E;
+}
+
 @layer base {
   body {
     @apply antialiased;

@@ -50,7 +50,7 @@ export default async function Page({ params }: PageProps) {
 
       <main className="flex-1 min-w-0 px-6 md:px-10 py-8">
         {/* Breadcrumbs */}
-        <nav className="text-xs text-muted mb-6 font-mono" aria-label="Breadcrumb">
+        <nav className="text-xs text-bright-gray-500 dark:text-muted mb-6 font-mono" aria-label="Breadcrumb">
           <Link href="/docs" className="hover:text-bright-gray-900 dark:hover:text-primary transition">
             Docs
           </Link>
@@ -70,7 +70,7 @@ export default async function Page({ params }: PageProps) {
         <article className="docs-content max-w-3xl">
           <h1>{page.data.title}</h1>
           {page.data.description && (
-            <p className="text-lg text-muted font-serif mb-8 !mt-0">
+            <p className="text-lg text-bright-gray-500 dark:text-muted font-serif mb-8 !mt-0">
               {page.data.description}
             </p>
           )}
@@ -78,11 +78,11 @@ export default async function Page({ params }: PageProps) {
         </article>
 
         {/* Prev / Next (section-aware via fumadocs findNeighbour) */}
-        <div className="flex items-center justify-between mt-12 pt-6 border-t border-primary/10 max-w-3xl">
+        <div className="flex items-center justify-between mt-12 pt-6 border-t border-bright-gray-200 dark:border-primary/10 max-w-3xl">
           {neighbours.previous ? (
             <Link
               href={neighbours.previous.url}
-              className="group flex items-center gap-2 text-sm text-muted hover:text-bright-gray-900 dark:hover:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
+              className="group flex items-center gap-2 text-sm text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
             >
               <ChevronLeft size={14} />
               <span className="group-hover:text-secondary transition">
@@ -95,7 +95,7 @@ export default async function Page({ params }: PageProps) {
           {neighbours.next ? (
             <Link
               href={neighbours.next.url}
-              className="group flex items-center gap-2 text-sm text-muted hover:text-bright-gray-900 dark:hover:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
+              className="group flex items-center gap-2 text-sm text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
             >
               <span className="group-hover:text-secondary transition">
                 {neighbours.next.name}

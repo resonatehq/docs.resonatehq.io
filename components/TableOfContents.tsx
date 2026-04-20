@@ -35,7 +35,7 @@ export default function TableOfContents({ toc }: TOCProps) {
   return (
     <div className="w-48 shrink-0 hidden xl:block font-sans">
       <div className="sticky top-[89px] py-6">
-        <p className="text-xs font-display font-semibold uppercase tracking-wider text-muted mb-3">
+        <p className="text-xs font-display font-semibold uppercase tracking-wider text-bright-gray-500 dark:text-muted mb-3">
           On this page
         </p>
         <ul className="space-y-1.5">
@@ -48,7 +48,7 @@ export default function TableOfContents({ toc }: TOCProps) {
                 } ${
                   activeId === item.url.slice(1)
                     ? "text-secondary"
-                    : "text-muted hover:text-primary"
+                    : "text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary"
                 }`}
               >
                 {item.title}

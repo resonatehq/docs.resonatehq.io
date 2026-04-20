@@ -25,13 +25,13 @@ function FooterLink({ href, children }: { href: string; children: React.ReactNod
   const isExternal = href.startsWith("http");
   if (isExternal) {
     return (
-      <a href={href} className="text-sm text-muted hover:text-bright-gray-900 dark:hover:text-primary transition" target="_blank" rel="noopener noreferrer">
+      <a href={href} className="text-sm text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary transition" target="_blank" rel="noopener noreferrer">
         {children}
       </a>
     );
   }
   return (
-    <Link href={href} className="text-sm text-muted hover:text-bright-gray-900 dark:hover:text-primary transition">
+    <Link href={href} className="text-sm text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary transition">
       {children}
     </Link>
   );
@@ -39,7 +39,7 @@ function FooterLink({ href, children }: { href: string; children: React.ReactNod
 
 export default function Footer() {
   return (
-    <footer className="border-t border-primary/10 mt-16 font-sans">
+    <footer className="border-t border-bright-gray-200 dark:border-primary/10 mt-16 font-sans">
       <div className="px-4 md:px-8 lg:px-12 max-w-[1400px] mx-auto py-12">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           {/* Brand */}
@@ -55,8 +55,7 @@ export default function Footer() {
                 <g stroke="currentColor" className="text-bright-gray-900 dark:text-white">
                   <path
                     strokeWidth="30"
-                    fill="currentColor"
-                    className="text-surface-light dark:text-dark"
+                    style={{ fill: "var(--echo-fill)" }}
                     d="M218.632,60C107.088,60,15.374,138.248,15.374,236.252C15.374,292.38,39.0338,336.722,75.978,366.934C112.825,397.067,162.68,413,215.11,413C266.913,413,316.754,397.512,353.75,367.861C390.854,338.124,414.845,294.27,414.845,238.237C414.845,140.526,330.503,60,218.632,60Z"
                   />
                   <ellipse cx="109" cy="236" fill="currentColor" rx="50" ry="55" className="text-bright-gray-900 dark:text-white" />
@@ -67,7 +66,7 @@ export default function Footer() {
               </svg>
               <span className="font-display text-lg font-semibold text-bright-gray-900 dark:text-white">resonate</span>
             </div>
-            <p className="font-serif text-sm text-muted">
+            <p className="font-serif text-sm text-bright-gray-500 dark:text-muted">
               Durable execution. Dead simple.
             </p>
           </div>
@@ -104,15 +103,15 @@ export default function Footer() {
         </div>
 
         {/* Bottom */}
-        <div className="mt-12 pt-6 border-t border-primary/10 flex items-center justify-between">
-          <p className="text-xs text-muted">
+        <div className="mt-12 pt-6 border-t border-bright-gray-200 dark:border-primary/10 flex items-center justify-between">
+          <p className="text-xs text-bright-gray-500 dark:text-muted">
             &copy; {new Date().getFullYear()} ResonateHQ, Inc.
           </p>
           <a
             href="https://github.com/resonatehq"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-muted hover:text-bright-gray-900 dark:hover:text-primary transition"
+            className="text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary transition"
             aria-label="GitHub"
           >
             <Github size={16} />
