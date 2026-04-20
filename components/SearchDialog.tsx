@@ -40,10 +40,10 @@ export default function SearchDialog() {
       <button
         onClick={() => setOpen(true)}
         className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm text-muted border border-primary/10 hover:border-secondary/30 transition focus-visible:outline-2 focus-visible:outline-secondary"
-        aria-label="Search documentation"
+        aria-label="Quick navigation"
       >
         <Search size={14} />
-        <span>Search</span>
+        <span>Jump to...</span>
         <kbd className="ml-2 text-xs text-muted/60 font-mono">⌘K</kbd>
       </button>
     );
@@ -64,7 +64,7 @@ export default function SearchDialog() {
         className="fixed inset-x-0 top-[15vh] z-50 mx-auto max-w-lg px-4"
         role="dialog"
         aria-modal="true"
-        aria-label="Search documentation"
+        aria-label="Quick navigation"
       >
         <div className="bg-surface-light dark:bg-surface-elevated border border-primary/10 shadow-lg">
           <div className="flex items-center border-b border-primary/10 px-4">
@@ -72,7 +72,7 @@ export default function SearchDialog() {
             <input
               ref={inputRef}
               type="text"
-              placeholder="Search documentation..."
+              placeholder="Jump to page..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="flex-1 bg-transparent px-3 py-3 text-sm text-bright-gray-900 dark:text-primary outline-none placeholder:text-muted"
@@ -89,7 +89,7 @@ export default function SearchDialog() {
           <div className="max-h-[50vh] overflow-y-auto p-2">
             {search.length === 0 && (
               <p className="px-3 py-6 text-center text-sm text-muted">
-                Start typing to search...
+                Type to navigate...
               </p>
             )}
 
