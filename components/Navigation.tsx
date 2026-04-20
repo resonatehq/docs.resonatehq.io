@@ -1,0 +1,126 @@
+"use client";
+
+import { useState } from "react";
+import { Search, Menu, X, Github } from "lucide-react";
+import ThemeToggle from "./ThemeToggle";
+
+const navLinks = [
+  { label: "Home", href: "https://www.resonatehq.io" },
+  { label: "Pricing", href: "https://www.resonatehq.io/pricing" },
+  { label: "Discord", href: "https://resonatehq.io/discord", external: true },
+];
+
+export default function Navigation() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  return (
+    <nav className="border-b border-primary/10">
+      <div className="px-4 md:px-8 lg:px-12 max-w-[1400px] mx-auto">
+        <div className="flex items-center justify-between py-4">
+          {/* Logo — links to docs home */}
+          <a href="/docs" className="flex items-center gap-2 group">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="24"
+              height="26"
+              viewBox="0 0 432 472"
+              className="text-white"
+              aria-hidden="true"
+            >
+              <g fill="#080A0E" stroke="currentColor">
+                <path
+                  strokeWidth="30"
+                  d="M218.632,60C107.088,60,15.374,138.248,15.374,236.252C15.374,292.38,39.0338,336.722,75.978,366.934C112.825,397.067,162.68,413,215.11,413C266.913,413,316.754,397.512,353.75,367.861C390.854,338.124,414.845,294.27,414.845,238.237C414.845,140.526,330.503,60,218.632,60Z"
+                />
+                <ellipse cx="109" cy="236" fill="currentColor" rx="50" ry="55" />
+                <ellipse cx="321" cy="234" fill="currentColor" rx="50" ry="55" />
+                <rect width="8" height="16" x="204" y="282" fill="currentColor" rx="4" transform="rotate(25 204 282)" />
+                <rect width="8" height="16" x="217" y="285" fill="currentColor" rx="4" transform="rotate(-25 217 285)" />
+              </g>
+            </svg>
+            <span className="font-display text-lg font-semibold tracking-tight text-white group-hover:text-secondary transition">
+              resonate
+            </span>
+            <span className="text-muted text-sm font-mono ml-1">docs</span>
+          </a>
+
+          {/* Desktop Nav */}
+          <div className="hidden md:flex items-center gap-1">
+            {navLinks.map((link) => (
+              <a
+                key={link.label}
+                href={link.href}
+                className="px-3 py-2 text-sm text-muted hover:text-primary transition"
+                {...(link.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+              >
+                {link.label}
+              </a>
+            ))}
+            <a
+              href="https://github.com/resonatehq"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2 text-muted hover:text-primary transition"
+            >
+              <Github size={18} />
+            </a>
+            <ThemeToggle />
+            <a
+              href="/docs/get-started"
+              className="ml-2 bg-secondary text-dark px-4 py-2 text-sm font-semibold hover:bg-secondary/90 transition"
+            >
+              Get started
+            </a>
+          </div>
+
+          {/* Mobile Menu Button */}
+          <button
+            type="button"
+            className="md:hidden p-2 text-primary hover:text-secondary transition"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Toggle menu"
+          >
+            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
+
+        {/* Mobile Menu */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-primary/10 py-4 space-y-1">
+            {navLinks.map((link) => (
+              <a
+                key={link.label}
+                href={link.href}
+                className="block px-4 py-3 text-primary hover:text-secondary hover:bg-dark/40 transition"
+                {...(link.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+              >
+                {link.label}
+              </a>
+            ))}
+            <a
+              href="https://github.com/resonatehq"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-3 text-primary hover:text-secondary hover:bg-dark/40 transition"
+            >
+              <Github size={18} />
+              GitHub
+            </a>
+            <div className="flex items-center justify-between px-4 py-3">
+              <span className="text-primary text-sm">Theme</span>
+              <ThemeToggle />
+            </div>
+            <div className="pt-2 px-4">
+              <a
+                href="/docs/get-started"
+                className="block text-center bg-secondary text-dark px-4 py-3 font-semibold hover:bg-secondary/90 transition"
+              >
+                Get started
+              </a>
+            </div>
+          </div>
+        )}
+      </div>
+    </nav>
+  );
+}

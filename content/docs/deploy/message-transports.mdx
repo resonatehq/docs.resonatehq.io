@@ -1,0 +1,43 @@
+---
+title: Message transports
+description: Configure message transport plugins for communication between workers and server.
+  - deploy
+  - message-transports
+  - plugins
+  - configuration
+---
+
+Resonate supports transport plugins for message communication between Clients and Servers. In v0.9.3, the only supported non-HTTP message transport is GCP Pub/Sub. Kafka and SQS transports are not yet available in the current server release.
+
+### GCP Pub/Sub server plugin
+
+What does it do?
+
+This plugin enables the server to put messages (containing task information) onto GCP Pub/Sub topics for consumption by SDK Clients using the SDK's Pub/Sub transport plugin.
+
+Where to find it?
+
+The GCP Pub/Sub transport is built into the v0.9.3 server binary — no rebuild required.
+
+Enable the plugin at runtime with the `--transports-gcps-project` flag:
+
+```shell
+resonate serve --transports-gcps-project my-gcp-project-id
+```
+
+Or in `resonate.toml`:
+
+```toml
+[transports.gcps]
+project = "my-gcp-project-id"
+```
+
+Or via env var: `RESONATE_TRANSPORTS__GCPS__PROJECT=my-gcp-project-id`.
+
+### Kafka server plugin
+
+**Not available in v0.9.3.** Kafka transport support is planned for a future release. The Kafka SDK plugin ([resonatehq/resonate-transport-kafka-ts](https://github.com/resonatehq/resonate-transport-kafka-ts)) exists for use with future server versions once server-side support is added.
+
+### SQS server plugin
+
+**Not available in v0.9.3.** AWS SQS transport support is planned for a future release.

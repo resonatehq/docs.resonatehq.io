@@ -1,0 +1,90 @@
+---
+title: Redpanda processing worker
+description: Start a project that processes Redpanda streams with a durable worker.
+  - get-started
+  - new-project
+  - template
+  - workers
+  - redpanda
+---
+
+![project readme banner](/images/redpanda-worker.png)
+
+Start a new project using a Redpanda processing worker example.
+
+
+
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Redpanda processing worker project example (batch record deletion)"
+    link="https://github.com/resonatehq-examples/example-kafka-worker-py"
+  />
+</CloneRepoGrid>
+
+## Problem
+
+Imagine a worker process that pulls messages from a queue, performs the requested task, and then pushes a completion message to another queue.
+
+**Problem one**: head-of-line blocking.
+If the first message kicks off a long operation—say, an hour—and the next one would only take 30 seconds, the shorter job gets stuck waiting.
+Unless the worker supports concurrency, this kills efficiency.
+
+**Problem two**: crashes and repeat work.
+If a task involves multiple steps and the worker crashes halfway through, it may redo already-completed steps when it restarts, leading to duplicate work or unintended side effects.
+
+The bottom line is a worker node sitting between two queues should do two things well:
+
+Handle tasks concurrently to stay efficient.
+Resume cleanly after crashes to stay reliable.
+
+## Solution
+
+Use Resonate to build a worker that can process messages concurrently and recover from crashes without repeating work.
+
+## Quick example
+
+
+
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+    ]}>
+
+    <TabItem value="python" >
+
+````python
+@resonate.register
+def workflow(ctx, record_id, offset):
+
+    while (yield ctx.lfc(delete_batch, record_id)):
+
+        yield ctx.sleep(5)
+
+    yield ctx.lfc(enqueue, record_id, offset)
+
+
+def consume():
+    consumer.subscribe(["records_to_be_deleted"])
+    try:
+        while True:
+            # ...
+            try:
+                record_id = json.loads(msg.value().decode("utf-8"))
+                _ = workflow.begin_run(record_id[0], record_id[0], msg.offset())
+            except Exception as e:
+                # ...
+    except KeyboardInterrupt:
+        # ...
+    finally:
+        consumer.close()
+        ```
+````
+
+</TabItem>
+
+</Tabs>

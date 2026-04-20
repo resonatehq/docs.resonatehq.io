@@ -1,0 +1,235 @@
+---
+title: Using the Resonate CLI
+description: Learn how to use the Resonate command-line interface effectively.
+  - getting-started
+  - cli
+---
+
+The Resonate CLI is your primary tool for running the server, managing Durable Promises, and interacting with the Resonate system.
+
+## Getting help
+
+The CLI has excellent built-in help. Use `--help` on any command to see detailed usage:
+
+```shell title="Get help on any command"
+resonate --help
+resonate <command> --help
+resonate <command> <subcommand> --help
+```
+
+**Examples:**
+
+```shell title="See all available commands"
+resonate --help
+```
+
+```shell title="Learn about the promises command"
+resonate promises --help
+```
+
+```shell title="See how to resolve a promise"
+resonate promises resolve --help
+```
+
+:::tip Always check --help first
+The CLI help is always up-to-date with your installed version. The built-in examples show exactly what syntax to use.
+:::
+
+## Common workflows
+
+### Start a development server
+
+```shell title="Start server with in-memory storage"
+resonate dev
+```
+
+The server starts on:
+- HTTP API: `http://localhost:8001`
+- Metrics: `http://localhost:9090`
+
+See `resonate dev --help` for options.
+
+### Start a production server
+
+```shell title="Start with PostgreSQL"
+resonate serve \
+  --storage-type postgres \
+  --storage-postgres-url "postgres://resonate:secret@localhost:5432/resonate"
+```
+
+See `resonate serve --help` for all flags, or [Run a server](/deploy/run-server) for the full configuration story (`resonate.toml` + env vars + flags).
+
+### Invoke a function
+
+```shell title="Trigger a function manually"
+resonate invoke order-123 --func processOrder --arg '{"orderId": "123"}'
+```
+
+Useful for:
+- Testing functions outside your application
+- Triggering workflows manually
+- Debugging function behavior
+
+### Manage Durable Promises
+
+**Create a promise:**
+
+```shell title="Create a promise for human-in-the-loop"
+resonate promises create approval-456 --timeout 24h
+```
+
+**Resolve a promise:**
+
+```shell title="Unblock a waiting workflow"
+resonate promises resolve approval-456 --data '{"approved": true}'
+```
+
+**Check promise state:**
+
+```shell title="Inspect a promise"
+resonate promises get order-123
+```
+
+**Search for promises:**
+
+```shell title="Find pending promises"
+resonate promises search "*" --state pending --limit 10
+```
+
+### Work with schedules
+
+**Create a recurring schedule:**
+
+```shell title="Run a function every hour"
+resonate schedules create hourly-sync \
+  --cron "0 * * * *" \
+  --promise-id "sync-{{.timestamp}}" \
+  --description "Hourly data sync"
+```
+
+**List schedules:**
+
+```shell title="See all schedules"
+resonate schedules search "*"
+```
+
+**Delete a schedule:**
+
+```shell title="Remove a schedule"
+resonate schedules delete hourly-sync
+```
+
+## Authentication
+
+If your server requires JWT auth, pass a bearer token with every CLI call:
+
+```shell title="Use bearer token"
+resonate promises get order-123 --token YOUR_TOKEN
+```
+
+The `--token` flag is a global option — it works on every subcommand.
+
+See [Security](/deploy/security) for how to enable JWT auth on the server.
+
+## Configuration
+
+The Resonate server is configured by layering, in this order: defaults → `resonate.toml` (optional) → `RESONATE_*` env vars → CLI flags. Any of the four can override the previous.
+
+```shell title="Example: serve with auth and PostgreSQL via flags"
+resonate serve \
+  --auth-publickey /etc/resonate/auth/public.pem \
+  --storage-type postgres \
+  --storage-postgres-url "postgres://resonate:secret@localhost:5432/resonate"
+```
+
+The same configuration as a [`resonate.toml`](/deploy/run-server#resonatetoml):
+
+```toml title="resonate.toml"
+[auth]
+publickey = "/etc/resonate/auth/public.pem"
+
+[storage]
+type = "postgres"
+
+[storage.postgres]
+url = "postgres://resonate:secret@localhost:5432/resonate"
+```
+
+Run `resonate serve --help` for all available flags.
+
+## Tips and tricks
+
+### Use wildcards for search
+
+```shell title="Search for promises by pattern"
+resonate promises search "order-*" --limit 20
+```
+
+### Format output as JSON
+
+```shell title="Get machine-readable output"
+resonate promises get order-123 --output json
+```
+
+Useful for scripting and automation.
+
+### Check server health
+
+```shell title="Verify server is running"
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8001/health
+# 200 when healthy
+```
+
+### View metrics
+
+```shell title="Prometheus metrics"
+curl http://localhost:9090/metrics
+```
+
+### Connect to remote server
+
+```shell title="Point CLI to a remote server"
+resonate promises get order-123 --server https://resonate.yourcompany.com
+```
+
+## Troubleshooting
+
+### Command not found
+
+**Error:** `resonate: command not found`
+
+**Solution:** Install the Resonate CLI using [Homebrew](/deploy/run-server#install-with-homebrew) or download from [GitHub releases](https://github.com/resonatehq/resonate/releases).
+
+### Connection refused
+
+**Error:** `connect: connection refused`
+
+**Solution:** 
+1. Is the server running? Start it with `resonate dev`
+2. Using the correct URL? Default is `http://localhost:8001`
+3. Check the `--server` flag points to the right address
+
+### Authentication failed
+
+**Error:** `401 Unauthorized`
+
+**Solution:**
+1. Does your server require auth? Check the server configuration
+2. Providing correct credentials? Use `--token` or `--username`/`--password`
+3. Using the right auth method? (token vs basic)
+
+### Promise not found
+
+**Error:** `404 Not Found`
+
+**Solution:**
+1. Check the promise ID is correct (IDs are case-sensitive)
+2. Was the promise created? Use `resonate promises search` to verify
+3. Did the promise expire? Check timeout settings
+
+## Next steps
+
+- Start a development server (`resonate dev`) and connect your SDK
+- Explore [example applications](/get-started/examples) that show real-world CLI usage
+- Read about [production deployment](/deploy/run-server) with persistent storage
+- Review the [TypeScript SDK guide](/develop/typescript) or [Python SDK guide](/develop/python)

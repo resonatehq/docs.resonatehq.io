@@ -1,13 +1,12 @@
 # Dependencies
 node_modules
-dist
 
-# Production
-/build
+# Next.js
+.next
+out
 
-# Generated files
-.docusaurus
-.cache-loader
+# fumadocs generated
+.source
 
 # Misc
 .DS_Store
