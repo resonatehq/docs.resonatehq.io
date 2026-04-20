@@ -1,0 +1,12 @@
+{
+  "root": true,
+  "pages": [
+    "index",
+    "evaluate",
+    "get-started",
+    "develop",
+    "debug",
+    "deploy",
+    "learn"
+  ]
+}
