@@ -1,0 +1,54 @@
+# Resonate Documentation
+
+> Resonate — durable execution, dead simple.
+
+- [Errors](/docs/debug/errors): Error codes and what they mean.
+- [Debug a Resonate application](/docs/debug): Diagnose and fix issues in Resonate applications.
+- [Troubleshooting](/docs/debug/troubleshooting): Common problems and how to fix them.
+- [Availability](/docs/deploy/availability): High availability strategies for Resonate deployments.
+- [Deployment patterns](/docs/deploy/deployment-patterns): Deploy Resonate to different environments - Docker, Kubernetes, serverless, and more.
+- [Deploy a Resonate application](/docs/deploy): Deploy Resonate from development to production.
+- [Logging](/docs/deploy/logging): Server and SDK logs for observing application behavior.
+- [Message transports](/docs/deploy/message-transports): Configure message transport plugins for communication between workers and server.
+- [Metrics](/docs/deploy/metrics): Prometheus metrics exposed by the Resonate server.
+- [Run a server](/docs/deploy/run-server): Start the Resonate server with persistent storage.
+- [Scaling](/docs/deploy/scaling): Scale Resonate workers horizontally to handle increased load.
+- [Security](/docs/deploy/security): Authentication and production security.
+- [Serverless workers](/docs/deploy/serverless-workers): Deploy workers to serverless platforms (Lambda, Cloud Functions, etc).
+- [Tracing](/docs/deploy/tracing): OpenTelemetry tracing for Resonate applications.
+- [Upgrade server](/docs/deploy/upgrade-server): Upgrade the Resonate server to a new version.
+- [Constraints and gotchas](/docs/develop/constraints): Understanding the rules and limitations when building with Resonate.
+- [Develop with Resonate](/docs/develop): Build distributed applications without the distributed systems complexity.
+- [Python SDK API guidance](/docs/develop/python): APIs that stay simple, even when your use cases aren’t
+- [Skill Guide | Rust SDK](/docs/develop/rust): APIs that stay simple, even when your use cases aren't
+- [Skill Guide | TypeScript SDK](/docs/develop/typescript): APIs that stay simple, even when your use cases aren’t
+- [Coming from building your own durable execution](/docs/evaluate/coming-from/byode): Compare Resonate with building your own durable execution stack.
+- [Coming from DBOS](/docs/evaluate/coming-from/dbos): Compare Resonate with DBOS to understand key differences and similarities.
+- [Coming from other systems](/docs/evaluate/coming-from): Compare Resonate with other durable execution platforms and approaches.
+- [Coming from Restate](/docs/evaluate/coming-from/restate): Compare Resonate with Restate to understand how the platforms differ.
+- [Coming from Temporal](/docs/evaluate/coming-from/temporal): If you are coming from Temporal, this guide will help you understand the differences and similarities between Temporal and Resonate.
+- [How Resonate works](/docs/evaluate/how-it-works): Architecture overview of checkpoints, replay, and message flow in Resonate.
+- [Evaluate Resonate](/docs/evaluate): Get started with Resonate by evaluating its features and capabilities.
+- [Why Resonate](/docs/evaluate/why-resonate): Resonate is the durable execution engine that agents build with, deploy on, and operate — at a fraction of the cost of anything else.
+- [Using the Resonate CLI](/docs/get-started/cli-guide): Learn how to use the Resonate command-line interface effectively.
+- [Async agent tools use case](/docs/get-started/examples/async-agent-tools): Start a new project using the Claude async MCP tool server example.
+- [Async HTTP API endpoints](/docs/get-started/examples/async-http-api-endpoints): Start a new project that turns HTTP endpoints into durable asynchronous workflows.
+- [Start with a deep research agent](/docs/get-started/examples/deep-research-agent): Start a new project using the deep research agent template.
+- [Durable serverless Cloud Run workers](/docs/get-started/examples/durable-serverless-cloud-run-workers): Start a new project that deploys a durable Resonate worker to Google Cloud Run.
+- [Durable serverless Lambda workers](/docs/get-started/examples/durable-serverless-lambda-workers): Start a new project that runs a durable worker on AWS Lambda without losing in-flight progress.
+- [Durable sleep use case](/docs/get-started/examples/durable-sleep): Start a new project using a durable sleep use case example.
+- [Human-in-the-loop use case](/docs/get-started/examples/human-in-the-loop): Start a new project that pauses workflows for human approval.
+- [Examples | Get started with Resonate](/docs/get-started/examples): Example projects that showcase common Resonate use cases.
+- [Start with load balanced workers](/docs/get-started/examples/load-balancing): Start a project that demonstrates Resonate load balancing and recovery.
+- [Redpanda processing worker](/docs/get-started/examples/redpanda-worker): Start a project that processes Redpanda streams with a durable worker.
+- [Get started with Resonate](/docs/get-started): Start here for quickstart steps, migration guidance, and example projects.
+- [Quickstart | Get started with Resonate](/docs/get-started/quickstart): Install the server and SDK and run your first Resonate workflow.
+- [Resonate Documentation](/docs/index): Resonate — agent-native durable execution. Generated, optimized, absurdly cheap.
+- [Run a Resonate Server on a DigitalOcean Droplet](/docs/learn/deployments/digital-ocean-droplet): Instructions for deploying a Resonate Server on a DigitalOcean Droplet.
+- [Deploy a Countdown Workflow to Google Cloud Run](/docs/learn/deployments/google-cloud-run): Provision a Resonate Server on Cloud Run, deploy a serverless countdown worker, and trigger long-running notifications.
+- [Deployment tutorials](/docs/learn/deployments): Deployment tutorials for running Resonate in common environments.
+- [Learn to use Resonate with a tutorial](/docs/learn): Step-by-step tutorials to learn Resonate.
+- [Python SDK tutorials](/docs/learn/python-sdk): Tutorials for building with the Resonate Python SDK.
+- [Build a durable website summarization AI agent in Python with Resonate, Flask, and Ollama](/docs/learn/python-sdk/website-summarization-agent): Get started with the Resonate Python SDK.
+- [TypeScript SDK tutorials](/docs/learn/typescript-sdk): Tutorials for building with the Resonate TypeScript SDK.
+- [Build a durable website summarization AI agent in TypeScript with Resonate, Express, and Ollama](/docs/learn/typescript-sdk/website-summarization-agent): Get started with the Resonate TypeScript SDK.
