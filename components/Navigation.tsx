@@ -16,7 +16,7 @@ export default function Navigation() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <nav className="border-b border-primary/10 dark:border-primary/10 [data-theme=light]:border-bright-gray-200">
+    <nav className="border-b border-primary/10 dark:border-primary/10 [data-theme=light]:border-bright-gray-200 font-sans">
       <div className="px-4 md:px-8 lg:px-12 max-w-[1400px] mx-auto">
         <div className="flex items-center justify-between py-4">
           {/* Logo */}

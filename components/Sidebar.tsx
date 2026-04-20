@@ -109,7 +109,7 @@ export default function Sidebar({ tree, currentPath }: SidebarProps) {
       {/* Mobile toggle */}
       <button
         onClick={() => setOpen(!open)}
-        className="lg:hidden fixed bottom-4 left-4 z-50 p-3 bg-surface-elevated border border-primary/10 text-bright-gray-900 dark:text-primary hover:text-secondary transition focus-visible:outline-2 focus-visible:outline-secondary"
+        className="lg:hidden fixed bottom-4 left-4 z-50 p-3 bg-bright-gray-50 dark:bg-surface-elevated border border-primary/10 text-bright-gray-900 dark:text-primary hover:text-secondary transition focus-visible:outline-2 focus-visible:outline-secondary"
         aria-label={open ? "Close sidebar" : "Open sidebar"}
       >
         {open ? <PanelLeftClose size={20} /> : <PanelLeft size={20} />}
@@ -127,7 +127,7 @@ export default function Sidebar({ tree, currentPath }: SidebarProps) {
       <aside
         className={`${
           open ? "fixed inset-y-0 left-0 z-40 w-72 bg-surface-light dark:bg-dark" : "hidden"
-        } lg:block lg:relative lg:z-auto lg:w-64 shrink-0 border-r border-primary/10 overflow-y-auto h-[calc(100vh-65px)] lg:sticky lg:top-[65px] py-6 px-4`}
+        } lg:block lg:relative lg:z-auto lg:w-64 shrink-0 border-r border-primary/10 overflow-y-auto h-[calc(100vh-65px)] lg:sticky lg:top-[65px] py-6 px-4 font-sans`}
         role="navigation"
         aria-label="Documentation"
       >

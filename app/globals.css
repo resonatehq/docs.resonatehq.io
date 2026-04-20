@@ -14,22 +14,23 @@
 }
 
 @layer components {
-  /* Code blocks */
+  /* Code blocks — warm aesthetic in light mode, subtle in dark */
   pre {
-    @apply rounded-none border border-primary/10 text-sm;
+    @apply rounded-none border text-sm;
+    @apply border-bright-gray-200 bg-[#FDFCF9];
   }
 
   .dark pre {
-    @apply border-primary/10;
+    @apply border-primary/10 bg-surface-elevated;
   }
 
   pre code {
-    @apply block overflow-x-auto p-4;
+    @apply block overflow-x-auto p-4 font-mono;
   }
 
   code:not(pre code) {
-    @apply px-1.5 py-0.5 text-sm rounded-none border;
-    @apply bg-bright-gray-50 border-bright-gray-200 text-bright-gray-800;
+    @apply px-1.5 py-0.5 text-sm rounded-none border font-mono;
+    @apply bg-[#FAF9F5] border-bright-gray-200 text-bright-gray-800;
   }
 
   .dark code:not(pre code) {
@@ -105,6 +106,10 @@
 
   .docs-content img {
     @apply max-w-full rounded-none border border-primary/10;
+  }
+
+  .docs-content img[src*="banner-"] {
+    @apply w-full border-0 mb-6;
   }
 
   .docs-content hr {

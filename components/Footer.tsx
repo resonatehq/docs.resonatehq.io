@@ -39,7 +39,7 @@ function FooterLink({ href, children }: { href: string; children: React.ReactNod
 
 export default function Footer() {
   return (
-    <footer className="border-t border-primary/10 mt-16">
+    <footer className="border-t border-primary/10 mt-16 font-sans">
       <div className="px-4 md:px-8 lg:px-12 max-w-[1400px] mx-auto py-12">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           {/* Brand */}

@@ -33,7 +33,7 @@ export default function TableOfContents({ toc }: TOCProps) {
   if (toc.length === 0) return null;
 
   return (
-    <div className="w-48 shrink-0 hidden xl:block">
+    <div className="w-48 shrink-0 hidden xl:block font-sans">
       <div className="sticky top-[89px] py-6">
         <p className="text-xs font-display font-semibold uppercase tracking-wider text-muted mb-3">
           On this page

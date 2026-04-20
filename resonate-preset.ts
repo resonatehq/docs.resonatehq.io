@@ -49,10 +49,10 @@ const resonatePreset: Partial<Config> = {
       colors: {
         link: "#3f4965",
         "bright-gray": {
-          "50": "#f6f7f9",
-          "100": "#ebedf3",
-          "200": "#d3d7e4",
-          "300": "#adb6cc",
+          "50": "#f7f6f4",
+          "100": "#edece8",
+          "200": "#dcdad4",
+          "300": "#b5b2ab",
           "400": "#818faf",
           "500": "#617196",
           "600": "#4c597d",

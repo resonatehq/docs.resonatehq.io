@@ -56,10 +56,10 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${inter.variable} ${sansation.variable} ${lora.variable} ${inter.className}`}
-      data-theme="dark"
+      data-theme="light"
       suppressHydrationWarning
     >
-      <body className="bg-dark dark:bg-dark bg-surface-light min-h-screen">
+      <body className="bg-surface-light dark:bg-dark min-h-screen font-serif">
         {children}
         <Script
           async
