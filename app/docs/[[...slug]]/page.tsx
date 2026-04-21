@@ -13,7 +13,24 @@ import CloneRepoCard from "@/components/mdx/CloneRepoCard";
 import DocCardList from "@/components/mdx/DocCardList";
 import { Pre } from "@/components/mdx/CodeBlock";
 import { ChevronLeft, ChevronRight, Pencil } from "lucide-react";
+import Image, { type StaticImageData } from "next/image";
 import type { Metadata } from "next";
+
+// fumadocs-mdx transforms `![alt](/path)` into either a string src (remote) or a
+// StaticImageData object (local static asset). next/image accepts both — a plain
+// <img /> would stringify the object to "[object Object]".
+type MdxImgProps = Omit<React.ImgHTMLAttributes<HTMLImageElement>, "src" | "placeholder"> & {
+  src?: string | StaticImageData;
+  placeholder?: "blur" | "empty";
+};
+const MdxImg = ({ src, alt = "", className, ...rest }: MdxImgProps) => {
+  if (!src) return null;
+  if (typeof src === "object") {
+    return <Image src={src} alt={alt} className={className} placeholder={rest.placeholder} />;
+  }
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt={alt} className={className} {...rest} />;
+};
 
 const mdxComponents = {
   Tabs: CodeTabs,
@@ -29,6 +46,7 @@ const mdxComponents = {
   CloneRepoCard,
   DocCardList,
   pre: Pre,
+  img: MdxImg,
 };
 
 interface PageProps {

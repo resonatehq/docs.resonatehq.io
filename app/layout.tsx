@@ -86,8 +86,6 @@ export default function RootLayout({
         </Script>
         <Script src="/scripts/fullstory.js" strategy="afterInteractive" />
         <Script src="/scripts/cookiebanner.js" strategy="afterInteractive" />
-        {/* Echo AI assistant widget */}
-        <Script src="/scripts/echo.js" strategy="afterInteractive" />
       </body>
     </html>
   );
