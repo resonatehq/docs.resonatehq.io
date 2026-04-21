@@ -20,7 +20,7 @@ export default function Navigation() {
       <div className="px-4 md:px-8 lg:px-12 max-w-[1400px] mx-auto">
         <div className="flex items-center justify-between py-4">
           {/* Logo */}
-          <Link href="/docs" className="flex items-center gap-2 group">
+          <a href="https://www.resonatehq.io" className="flex items-center gap-2 group">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="24"
@@ -44,7 +44,7 @@ export default function Navigation() {
               resonate
             </span>
             <span className="text-bright-gray-500 dark:text-muted text-sm font-mono ml-1">docs</span>
-          </Link>
+          </a>
 
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center gap-1">

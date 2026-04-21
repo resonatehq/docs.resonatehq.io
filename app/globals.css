@@ -44,7 +44,12 @@
   }
 
   pre code {
-    @apply block overflow-x-auto p-4 font-mono;
+    @apply block overflow-x-auto p-4 font-mono text-sm;
+  }
+
+  /* Ensure pre inside the CodeBlock wrapper doesn't double-margin */
+  .group > .relative > pre {
+    @apply my-0;
   }
 
   code:not(pre code) {

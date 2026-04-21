@@ -11,9 +11,9 @@ import { RepoCard, RepoGrid } from "@/components/mdx/RepoCard";
 import HomePageCategory from "@/components/mdx/HomePageCategory";
 import CloneRepoCard from "@/components/mdx/CloneRepoCard";
 import DocCardList from "@/components/mdx/DocCardList";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Pre } from "@/components/mdx/CodeBlock";
+import { ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import type { Metadata } from "next";
-import type { ReactElement } from "react";
 
 const mdxComponents = {
   Tabs: CodeTabs,
@@ -28,6 +28,7 @@ const mdxComponents = {
   CloneRepoGrid: RepoGrid,
   CloneRepoCard,
   DocCardList,
+  pre: Pre,
 };
 
 interface PageProps {
@@ -76,6 +77,19 @@ export default async function Page({ params }: PageProps) {
           )}
           <MDX components={mdxComponents} />
         </article>
+
+        {/* Edit on GitHub */}
+        <div className="mt-10 max-w-3xl">
+          <a
+            href={`https://github.com/resonatehq/docs.resonatehq.io/edit/main/content/docs/${slug ? slug.join("/") : "index"}.mdx`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-secondary transition"
+          >
+            <Pencil size={14} />
+            Edit this page on GitHub
+          </a>
+        </div>
 
         {/* Prev / Next (section-aware via fumadocs findNeighbour) */}
         <div className="flex items-center justify-between mt-12 pt-6 border-t border-bright-gray-200 dark:border-primary/10 max-w-3xl">
