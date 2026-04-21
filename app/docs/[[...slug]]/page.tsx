@@ -81,7 +81,7 @@ export default async function Page({ params }: PageProps) {
         {/* Edit on GitHub */}
         <div className="mt-10 max-w-3xl">
           <a
-            href={`https://github.com/resonatehq/docs.resonatehq.io/edit/main/content/docs/${slug ? slug.join("/") : "index"}.mdx`}
+            href={`https://github.com/resonatehq/docs.resonatehq.io/edit/main/content/${page.file.path}`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-secondary transition"

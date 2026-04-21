@@ -20,7 +20,7 @@ export default function Navigation() {
       <div className="px-4 md:px-8 lg:px-12 max-w-[1400px] mx-auto">
         <div className="flex items-center justify-between py-4">
           {/* Logo */}
-          <a href="https://www.resonatehq.io" className="flex items-center gap-2 group">
+          <a href="/docs" className="flex items-center gap-2 group">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="24"

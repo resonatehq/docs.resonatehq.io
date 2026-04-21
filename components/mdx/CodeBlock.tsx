@@ -14,7 +14,7 @@ export function Pre({ children, title, "data-title": dataTitle, ...props }: PreP
   const displayTitle = title || dataTitle;
 
   return (
-    <div className="group relative my-4">
+    <div className="group relative not-first:mt-4 last:mb-0">
       {displayTitle && (
         <div className="px-4 py-2 text-xs font-mono text-muted border border-b-0 border-bright-gray-200 dark:border-primary/10 bg-bright-gray-100 dark:bg-surface-elevated">
           {displayTitle}

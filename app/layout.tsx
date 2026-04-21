@@ -86,7 +86,7 @@ export default function RootLayout({
         </Script>
         <Script src="/scripts/fullstory.js" strategy="afterInteractive" />
         <Script src="/scripts/cookiebanner.js" strategy="afterInteractive" />
-        {/* Echo AI assistant — currently Kapa.ai widget, will be swapped to native Echo when echo-agent initiative ships */}
+        {/* Echo AI assistant widget */}
         <Script src="/scripts/echo.js" strategy="afterInteractive" />
       </body>
     </html>
