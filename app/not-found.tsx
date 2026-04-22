@@ -11,13 +11,13 @@ export default function NotFound() {
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link
             href="/docs"
-            className="inline-flex items-center justify-center bg-secondary text-dark font-semibold px-6 py-3 transition hover:bg-secondary/90"
+            className="inline-flex items-center justify-center bg-accent-ember text-page font-semibold px-6 py-3 transition hover:bg-accent-ember-600"
           >
             Documentation home
           </Link>
           <Link
             href="/docs/get-started"
-            className="inline-flex items-center justify-center border border-bright-gray-200 dark:border-primary/20 text-bright-gray-900 dark:text-primary px-6 py-3 font-semibold transition hover:border-secondary hover:text-secondary"
+            className="inline-flex items-center justify-center border border-bright-gray-200 dark:border-primary/20 text-bright-gray-900 dark:text-primary px-6 py-3 font-semibold transition hover:border-accent-ember hover:text-accent-ember"
           >
             Get started
           </Link>
