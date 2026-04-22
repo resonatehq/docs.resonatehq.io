@@ -18,21 +18,27 @@ const icons: Record<CalloutType, typeof Info> = {
   differentiator: CheckCircle,
 };
 
+// Per docs/shared/ACCENT-PLACEMENT.md:
+//   info/note  → teal (default, information)
+//   tip        → plum (craft/editorial insight)
+//   caution    → ember (warning)
+//   danger     → ember (warning, elevated intensity via tinted bg)
+//   differentiator → teal (signature — Resonate vs alternatives)
 const styles: Record<CalloutType, string> = {
-  note: "border-accent-teal bg-accent-teal/5",
-  tip: "border-accent-teal-400 bg-accent-teal/5",
-  info: "border-muted bg-muted/5",
+  note: "border-secondary bg-secondary/5",
+  tip: "border-accent-plum bg-accent-plum/5",
+  info: "border-secondary bg-secondary/5",
   caution: "border-accent-ember bg-accent-ember/5",
-  danger: "border-accent-plum bg-accent-plum/5",
+  danger: "border-accent-ember bg-accent-ember/10",
   differentiator: "border-secondary bg-secondary/5",
 };
 
 const titleColors: Record<CalloutType, string> = {
-  note: "text-accent-teal",
-  tip: "text-accent-teal-400",
-  info: "text-muted",
+  note: "text-secondary",
+  tip: "text-accent-plum",
+  info: "text-secondary",
   caution: "text-accent-ember",
-  danger: "text-accent-plum",
+  danger: "text-accent-ember",
   differentiator: "text-secondary",
 };
 

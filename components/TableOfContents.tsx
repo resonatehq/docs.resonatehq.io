@@ -43,12 +43,12 @@ export default function TableOfContents({ toc }: TOCProps) {
             <li key={item.url}>
               <a
                 href={item.url}
-                className={`block text-xs leading-relaxed transition-colors ${
-                  item.depth > 2 ? "pl-3" : ""
+                className={`block text-xs leading-relaxed transition-colors border-l-2 ${
+                  item.depth > 2 ? "pl-5" : "pl-3"
                 } ${
                   activeId === item.url.slice(1)
-                    ? "text-secondary"
-                    : "text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary"
+                    ? "text-bright-gray-900 dark:text-primary font-medium border-secondary"
+                    : "text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary border-transparent"
                 }`}
               >
                 {item.title}

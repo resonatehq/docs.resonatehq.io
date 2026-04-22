@@ -41,12 +41,12 @@ function SidebarNode({
     return (
       <Link
         href={node.url}
-        className={`block py-1.5 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-secondary ${
-          depth > 0 ? "pl-4" : ""
+        className={`block py-1.5 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-secondary border-l-2 ${
+          depth > 0 ? "pl-5" : "pl-3"
         } ${
           isActive
-            ? "text-secondary font-medium"
-            : "text-bright-gray-600 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary"
+            ? "text-bright-gray-900 dark:text-primary font-medium border-secondary"
+            : "text-bright-gray-600 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary border-transparent"
         }`}
       >
         {node.name}
@@ -59,8 +59,8 @@ function SidebarNode({
       <div>
         <button
           onClick={() => setOpen(!open)}
-          className={`flex items-center justify-between w-full py-1.5 text-sm text-left transition-colors focus-visible:outline-2 focus-visible:outline-secondary ${
-            depth > 0 ? "pl-4" : ""
+          className={`flex items-center justify-between w-full py-1.5 text-sm text-left transition-colors focus-visible:outline-2 focus-visible:outline-secondary border-l-2 border-transparent ${
+            depth > 0 ? "pl-5" : "pl-3"
           } ${
             isAncestor(node, currentPath)
               ? "text-bright-gray-900 dark:text-primary font-medium"
