@@ -9,7 +9,7 @@ import SearchDialog from "./SearchDialog";
 const navLinks = [
   { label: "Home", href: "https://www.resonatehq.io" },
   { label: "Pricing", href: "https://www.resonatehq.io/pricing" },
-  { label: "Ask Echo", href: "https://echo.resonatehq.io", external: true },
+  { label: "Ask Echo", href: "https://echo-nine-opal.vercel.app", external: true },
   { label: "Discord", href: "https://www.resonatehq.io/discord", external: true },
 ];
 
