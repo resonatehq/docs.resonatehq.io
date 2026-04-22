@@ -11,7 +11,7 @@ export default function NotFound() {
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link
             href="/docs"
-            className="inline-flex items-center justify-center bg-accent-ember text-page font-semibold px-6 py-3 transition hover:bg-accent-ember-600"
+            className="inline-flex items-center justify-center bg-accent-ember text-surface-light font-semibold px-6 py-3 transition hover:bg-accent-ember-600"
           >
             Documentation home
           </Link>

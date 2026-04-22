@@ -55,16 +55,19 @@ function SidebarNode({
   }
 
   if (node.type === "folder") {
+    const isSelfActive = node.index?.url === currentPath;
     return (
       <div>
         <button
           onClick={() => setOpen(!open)}
-          className={`flex items-center justify-between w-full py-1.5 text-sm text-left transition-colors focus-visible:outline-2 focus-visible:outline-secondary border-l-2 border-transparent ${
+          className={`flex items-center justify-between w-full py-1.5 text-sm text-left transition-colors focus-visible:outline-2 focus-visible:outline-secondary border-l-2 ${
             depth > 0 ? "pl-5" : "pl-3"
           } ${
-            isAncestor(node, currentPath)
-              ? "text-bright-gray-900 dark:text-primary font-medium"
-              : "text-bright-gray-600 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary"
+            isSelfActive
+              ? "text-bright-gray-900 dark:text-primary font-medium border-secondary"
+              : isAncestor(node, currentPath)
+              ? "text-bright-gray-900 dark:text-primary font-medium border-transparent"
+              : "text-bright-gray-600 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary border-transparent"
           }`}
         >
           <span>{node.name}</span>

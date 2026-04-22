@@ -72,7 +72,7 @@ export default function Navigation() {
             <ThemeToggle />
             <Link
               href="/docs/get-started"
-              className="ml-2 bg-accent-ember text-page px-4 py-2 text-sm font-semibold hover:bg-accent-ember-600 transition focus-visible:outline-2 focus-visible:outline-secondary focus-visible:outline-offset-2"
+              className="ml-2 bg-accent-ember text-surface-light px-4 py-2 text-sm font-semibold hover:bg-accent-ember-600 transition focus-visible:outline-2 focus-visible:outline-secondary focus-visible:outline-offset-2"
             >
               Get started
             </Link>
@@ -119,7 +119,7 @@ export default function Navigation() {
             <div className="pt-2 px-4">
               <Link
                 href="/docs/get-started"
-                className="block text-center bg-accent-ember text-page px-4 py-3 font-semibold hover:bg-accent-ember-600 transition"
+                className="block text-center bg-accent-ember text-surface-light px-4 py-3 font-semibold hover:bg-accent-ember-600 transition"
               >
                 Get started
               </Link>

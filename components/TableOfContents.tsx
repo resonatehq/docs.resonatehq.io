@@ -8,18 +8,26 @@ interface TOCProps {
 }
 
 export default function TableOfContents({ toc }: TOCProps) {
-  const [activeId, setActiveId] = useState<string>("");
+  const [activeId, setActiveId] = useState<string>(() =>
+    toc.length > 0 ? toc[0].url.slice(1) : ""
+  );
 
   useEffect(() => {
+    // Seed with the first TOC heading if none are in the observed zone yet —
+    // otherwise the active indicator stays empty until the user scrolls.
+    if (toc.length > 0) setActiveId(toc[0].url.slice(1));
+
     const observer = new IntersectionObserver(
       (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setActiveId(entry.target.id);
-          }
-        }
+        // Pick the first intersecting heading (closest to the top of the zone)
+        const intersecting = entries.filter((e) => e.isIntersecting);
+        if (intersecting.length === 0) return;
+        intersecting.sort(
+          (a, b) => a.boundingClientRect.top - b.boundingClientRect.top
+        );
+        setActiveId(intersecting[0].target.id);
       },
-      { rootMargin: "-80px 0px -80% 0px" }
+      { rootMargin: "-72px 0px -60% 0px" }
     );
 
     for (const item of toc) {
