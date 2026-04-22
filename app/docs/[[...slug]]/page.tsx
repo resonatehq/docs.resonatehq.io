@@ -1,7 +1,7 @@
 import { source } from "@/lib/source";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { findNeighbour } from "fumadocs-core/server";
+import { findNeighbour, type PageTree } from "fumadocs-core/server";
 import Sidebar from "@/components/Sidebar";
 import TableOfContents from "@/components/TableOfContents";
 import { CodeTabs, TabItem } from "@/components/mdx/CodeTabs";
@@ -53,6 +53,39 @@ interface PageProps {
   params: Promise<{ slug?: string[] }>;
 }
 
+type Crumb = { url?: string; name: string };
+
+// Title-case a raw URL slug as a fallback when the page tree doesn't resolve
+// a matching folder (e.g. deeply nested route where the section has no index).
+function titleCaseSlug(slug: string): string {
+  return slug
+    .split("-")
+    .map((part) => (part.length === 0 ? part : part[0].toUpperCase() + part.slice(1)))
+    .join(" ");
+}
+
+// Walks the fumadocs page tree to the target URL, collecting the display name
+// of each folder crossed. The final page's title is appended by the caller so
+// breadcrumbs render the exact `page.data.title` for the leaf.
+function breadcrumbTrail(
+  nodes: PageTree.Node[],
+  targetUrl: string,
+  trail: Crumb[] = []
+): Crumb[] | null {
+  for (const node of nodes) {
+    if (node.type === "page" && node.url === targetUrl) {
+      return trail;
+    }
+    if (node.type === "folder") {
+      if (node.index?.url === targetUrl) return trail;
+      const next = [...trail, { url: node.index?.url, name: String(node.name) }];
+      const found = breadcrumbTrail(node.children, targetUrl, next);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 export default async function Page({ params }: PageProps) {
   const { slug } = await params;
   const page = source.getPage(slug);
@@ -60,6 +93,16 @@ export default async function Page({ params }: PageProps) {
 
   const tree = source.pageTree;
   const neighbours = findNeighbour(tree, page.url);
+
+  // Resolve middle-breadcrumb names from the page tree so they render as titled
+  // section names ("Develop with Resonate") instead of raw slug fragments ("develop").
+  // If the tree walk fails for any reason (deeply nested unindexed section),
+  // fall back to title-casing the slug so we never render an unstyled lowercase segment.
+  const trail = breadcrumbTrail(tree.children, page.url) ?? [];
+  const crumbs: Crumb[] = (slug ?? []).map((segment, i, all) => {
+    if (i === all.length - 1) return { name: page.data.title };
+    return trail[i] ?? { name: titleCaseSlug(segment) };
+  });
 
   const MDX = page.data.body;
 
@@ -73,13 +116,17 @@ export default async function Page({ params }: PageProps) {
           <Link href="/docs" className="hover:text-bright-gray-900 dark:hover:text-primary transition">
             Docs
           </Link>
-          {slug?.map((segment, i) => (
-            <span key={segment}>
+          {crumbs.map((crumb, i) => (
+            <span key={i}>
               <span className="mx-1.5">/</span>
-              {i === slug.length - 1 ? (
-                <span className="text-bright-gray-900 dark:text-primary">{page.data.title}</span>
+              {i === crumbs.length - 1 ? (
+                <span className="text-bright-gray-900 dark:text-primary">{crumb.name}</span>
+              ) : crumb.url ? (
+                <Link href={crumb.url} className="hover:text-bright-gray-900 dark:hover:text-primary transition">
+                  {crumb.name}
+                </Link>
               ) : (
-                <span>{segment}</span>
+                <span>{crumb.name}</span>
               )}
             </span>
           ))}

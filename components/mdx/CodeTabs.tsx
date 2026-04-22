@@ -61,11 +61,15 @@ function getLabel(
     const match = values.find((v) => v.value === child.props.value);
     if (match) return match.label;
   }
-  // 2. Fall back to child's label prop
+  // 2. If values array provided, fall back to values[index].label — the array
+  //    is a 1:1 ordered mapping; some MDX pipelines drop child props on the
+  //    trailing TabItem, so positional match is the safety net.
+  if (values && values[index]) return values[index].label;
+  // 3. Fall back to child's label prop
   if (child?.props?.label) return child.props.label;
-  // 3. Fall back to capitalizing child's value prop
+  // 4. Fall back to capitalizing child's value prop
   if (child?.props?.value) return capitalizeValue(child.props.value);
-  // 4. Last resort
+  // 5. Last resort
   return `Tab ${index + 1}`;
 }
 
@@ -76,6 +80,8 @@ function getKey(
 ): string {
   // Use value prop as the canonical key if available
   if (child?.props?.value) return child.props.value;
+  // Positional fallback from values array (same reason as getLabel).
+  if (values && values[index]) return values[index].value;
   return getLabel(child, index, values);
 }
 

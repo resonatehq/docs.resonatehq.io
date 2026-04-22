@@ -248,6 +248,8 @@ url: /docs/debug
 title: Debug a Resonate application
 ---
 
+![Debug Resonate applications section](/images/banner-debug.png)
+
 Something's not working. This section helps you figure out why and fix it.
 
 ## When things go wrong
@@ -1513,6 +1515,8 @@ Choose your infrastructure based on your operational preferences and scale requi
 url: /docs/deploy
 title: Deploy a Resonate application
 ---
+
+![Deploy Resonate applications section](/images/banner-deploy.png)
 
 Deployment is how you take Resonate from your laptop to production. This section covers everything you need to run Resonate reliably at any scale.
 
@@ -4435,6 +4439,8 @@ url: /docs/develop
 title: Develop with Resonate
 ---
 
+![Develop with Resonate section](/images/banner-develop.png)
+
 ## Problems you no longer solve
 
 Distributed systems have a whole class of problems that used to require weeks of engineering, careful design, and ongoing maintenance:
@@ -5518,7 +5524,7 @@ To install the Resonate Typescript SDK, you can use any of your favorite package
 
     
 
-```shell title="Install with Bun"
+```shell
 bun add @resonatehq/sdk
 ```
 
@@ -5526,7 +5532,7 @@ bun add @resonatehq/sdk
 
     
 
-```shell title="Install with npm"
+```shell
 npm install @resonatehq/sdk
 ```
 
@@ -5534,7 +5540,7 @@ npm install @resonatehq/sdk
 
     
 
-```shell title="Install with Yarn"
+```shell
 yarn add @resonatehq/sdk
 ```
 
@@ -7532,7 +7538,7 @@ url: /docs/evaluate
 title: Evaluate Resonate
 ---
 
-![evaluate resonate banner](/images/evaluate-banner.png)
+![Evaluate Resonate section](/images/banner-evaluate.png)
 
 **Considering Resonate?**
 
@@ -8616,7 +8622,9 @@ url: /docs/get-started
 title: Get started with Resonate
 ---
 
-![new project banner](/images/new-project-banner.png)
+![Get started with Resonate section](/images/banner-get-started.png)
+
+**Durable execution means your functions survive crashes, restarts, and scaling — automatically.** Resonate handles retries, recovery, and state persistence so you can write normal async code.
 
 Want to get started with Resonate?
 
@@ -8668,6 +8676,12 @@ npm install @resonatehq/sdk
 
 
 
+
+
+
+
+
+The Python SDK (v0.6.7) currently requires the legacy Resonate server. It is not yet compatible with `resonate dev` (server v0.9.x). See the [Python SDK guide](/docs/develop/python) for legacy server setup.
 
 
 
@@ -9498,6 +9512,8 @@ The following tutorials help you deploy your applications.
 url: /docs/learn
 title: Learn to use Resonate with a tutorial
 ---
+
+![Learn Resonate tutorials section](/images/banner-learn.png)
 
 Step-by-step tutorials to learn Resonate concepts and build real applications.
 
