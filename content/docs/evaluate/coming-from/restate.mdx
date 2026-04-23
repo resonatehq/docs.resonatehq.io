@@ -6,6 +6,10 @@ keywords:
   - comparison
 ---
 
+<Callout type="info" title="SDK version">
+This page reflects `@resonatehq/sdk` v0.10.0 (current on npm) and `resonate-sdk` v0.6.7 for Python.
+</Callout>
+
 **Are you coming from experience with Restate?**
 
 This guide will help you understand the differences and similarities between Resonate and Restate, and how to translate Restate concepts to Resonate's programming model.
@@ -205,7 +209,7 @@ function* orderWorkflow(ctx: Context, orderId: string, order: Order) {
 
 // Approve from anywhere — the caller reconstructs the ID from orderId.
 async function approveOrder(orderId: string) {
-  await resonate.promises.resolve(`${orderId}.0`, { data: JSON.stringify(true) });
+  await resonate.promises.settle(`${orderId}.0`, "resolved", { data: JSON.stringify(true) });
 }
 ```
 
@@ -272,7 +276,7 @@ const decision = yield* approvalPromise;
 
 // From anywhere — use the caller's known execution ID (e.g. `order-123`)
 // to reconstruct the approval promise ID as `${orderId}.<seq>`.
-await resonate.promises.resolve(`${orderId}.0`, { data: JSON.stringify("approved") });
+await resonate.promises.settle(`${orderId}.0`, "resolved", { data: JSON.stringify("approved") });
 ```
 
 Same concept, similar API. Resonate's version works with any function, not just Workflows.

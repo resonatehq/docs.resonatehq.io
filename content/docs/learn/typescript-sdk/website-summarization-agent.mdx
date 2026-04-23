@@ -11,6 +11,10 @@ pagination_prev: null
   - ollama
 ---
 
+<Callout type="info" title="SDK version">
+This page reflects `@resonatehq/sdk` v0.10.0 (current on npm).
+</Callout>
+
 In this tutorial, you’ll build a website summarization AI agent using the Resonate TypeScript SDK, Express, and Ollama.
 
 By doing so, you’ll gain experience with Resonate’s implementation of the **Distributed Async Await** programming model and the core features of the TypeScript SDK.
@@ -630,7 +634,7 @@ app.get("/confirm", async (req: Request, res: Response) => {
     const confirm = req.query.confirm as string;
     assert(promiseId, "promiseId is required");
     assert(confirm, "confirm is required");
-    await resonate.promises.resolve(promiseId, { data: confirm });
+    await resonate.promises.settle(promiseId, "resolved", { data: confirm });
     res.status(200).send("promise resolved.");
   } catch (e) {
     console.error(e);

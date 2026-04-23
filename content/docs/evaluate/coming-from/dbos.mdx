@@ -6,6 +6,10 @@ keywords:
   - comparison
 ---
 
+<Callout type="info" title="SDK version">
+This page reflects `@resonatehq/sdk` v0.10.0 (current on npm) and `resonate-sdk` v0.6.7 for Python.
+</Callout>
+
 **Are you coming from DBOS?**
 
 If so, this guide is meant to help you understand the differences and similarities between Resonate and DBOS.
@@ -189,7 +193,7 @@ function* foo(context: Context) {
 
 ```typescript
 // client.ts
-await resonate.promises.resolve(promiseId, { data: JSON.stringify(data) });
+await resonate.promises.settle(promiseId, "resolved", { data: JSON.stringify(data) });
 ```
 
     </TabItem>

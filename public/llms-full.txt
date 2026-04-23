@@ -248,7 +248,8 @@ url: /docs/debug
 title: Debug a Resonate application
 ---
 
-![Debug Resonate applications section](/images/banner-debug.png)
+<img src="/images/banner-debug-dark.png" alt="Debug Resonate applications section" className="hidden dark:block" />
+<img src="/images/banner-debug-light.png" alt="Debug Resonate applications section" className="block dark:hidden" />
 
 Something's not working. This section helps you figure out why and fix it.
 
@@ -1516,7 +1517,8 @@ url: /docs/deploy
 title: Deploy a Resonate application
 ---
 
-![Deploy Resonate applications section](/images/banner-deploy.png)
+<img src="/images/banner-deploy-dark.png" alt="Deploy Resonate applications section" className="hidden dark:block" />
+<img src="/images/banner-deploy-light.png" alt="Deploy Resonate applications section" className="block dark:hidden" />
 
 Deployment is how you take Resonate from your laptop to production. This section covers everything you need to run Resonate reliably at any scale.
 
@@ -4439,7 +4441,8 @@ url: /docs/develop
 title: Develop with Resonate
 ---
 
-![Develop with Resonate section](/images/banner-develop.png)
+<img src="/images/banner-develop-dark.png" alt="Develop with Resonate section" className="hidden dark:block" />
+<img src="/images/banner-develop-light.png" alt="Develop with Resonate section" className="block dark:hidden" />
 
 ## Problems you no longer solve
 
@@ -7538,7 +7541,8 @@ url: /docs/evaluate
 title: Evaluate Resonate
 ---
 
-![Evaluate Resonate section](/images/banner-evaluate.png)
+<img src="/images/banner-evaluate-dark.png" alt="Evaluate Resonate section" className="hidden dark:block" />
+<img src="/images/banner-evaluate-light.png" alt="Evaluate Resonate section" className="block dark:hidden" />
 
 **Considering Resonate?**
 
@@ -7846,6 +7850,9 @@ url: /docs/get-started/examples/async-agent-tools
 title: Async agent tools use case
 ---
 
+<img src="/images/example-async-agent-tools-dark.png" alt="Async Agent Tools banner" className="hidden dark:block" />
+<img src="/images/example-async-agent-tools-light.png" alt="Async Agent Tools banner" className="block dark:hidden" />
+
 Start a new project using the Claude async MCP tool server use case example.
 
 
@@ -7947,6 +7954,9 @@ url: /docs/get-started/examples/async-http-api-endpoints
 title: Async HTTP API endpoints
 ---
 
+<img src="/images/example-async-http-api-dark.png" alt="Async HTTP API banner" className="hidden dark:block" />
+<img src="/images/example-async-http-api-light.png" alt="Async HTTP API banner" className="block dark:hidden" />
+
 Transform synchronous HTTP requests into durable jobs so clients can fire-and-forget while still getting reliable completion updates.
 
 
@@ -8032,6 +8042,9 @@ resonate.start()
 url: /docs/get-started/examples/deep-research-agent
 title: Start with a deep research agent
 ---
+
+<img src="/images/example-deep-research-agent-dark.png" alt="Deep Research Agent banner" className="hidden dark:block" />
+<img src="/images/example-deep-research-agent-light.png" alt="Deep Research Agent banner" className="block dark:hidden" />
 
 Start a new project using an AI agent loop (deep research assistant) use case example.
 
@@ -8172,6 +8185,9 @@ url: /docs/get-started/examples/durable-serverless-cloud-run-workers
 title: Durable serverless Cloud Run workers
 ---
 
+<img src="/images/example-cloud-run-workers-dark.png" alt="Cloud Run Workers banner" className="hidden dark:block" />
+<img src="/images/example-cloud-run-workers-light.png" alt="Cloud Run Workers banner" className="block dark:hidden" />
+
 Run a background worker on Google Cloud Run that survives cold starts and instance restarts by leaning on Resonate's durable runtime.
 
 Python example coming soon.
@@ -8221,6 +8237,9 @@ resonate.register("cloudRunWorker", cloudRunWorker);
 url: /docs/get-started/examples/durable-serverless-lambda-workers
 title: Durable serverless Lambda workers
 ---
+
+<img src="/images/example-lambda-workers-dark.png" alt="Lambda Workers banner" className="hidden dark:block" />
+<img src="/images/example-lambda-workers-light.png" alt="Lambda Workers banner" className="block dark:hidden" />
 
 Use Resonate to turn an AWS Lambda function into a reliable worker that spans cold starts and retries.
 
@@ -8274,7 +8293,8 @@ url: /docs/get-started/examples/durable-sleep
 title: Durable sleep use case
 ---
 
-![durable sleep banner](/images/durable-sleep.png)
+<img src="/images/example-durable-sleep-dark.png" alt="Durable Sleep banner" className="hidden dark:block" />
+<img src="/images/example-durable-sleep-light.png" alt="Durable Sleep banner" className="block dark:hidden" />
 
 Start a new project using a durable sleep use case example.
 
@@ -8357,7 +8377,8 @@ url: /docs/get-started/examples/human-in-the-loop
 title: Human-in-the-loop use case
 ---
 
-![human-in-the-loop banner](/images/human-in-the-loop-graphic.png)
+<img src="/images/example-human-in-the-loop-dark.png" alt="Human in the Loop banner" className="hidden dark:block" />
+<img src="/images/example-human-in-the-loop-light.png" alt="Human in the Loop banner" className="block dark:hidden" />
 
 Start a new project that has an existing workflow that waits on input from a human.
 
@@ -8432,7 +8453,8 @@ url: /docs/get-started/examples/load-balancing
 title: Start with load balanced workers
 ---
 
-![project readme banner](/images/load-balancing.png)
+<img src="/images/example-load-balancing-dark.png" alt="Load Balancing banner" className="hidden dark:block" />
+<img src="/images/example-load-balancing-light.png" alt="Load Balancing banner" className="block dark:hidden" />
 
 Start a new project using a load balancing use case example.
 
@@ -8547,7 +8569,8 @@ url: /docs/get-started/examples/redpanda-worker
 title: Redpanda processing worker
 ---
 
-![project readme banner](/images/redpanda-worker.png)
+<img src="/images/example-redpanda-worker-dark.png" alt="Redpanda Worker banner" className="hidden dark:block" />
+<img src="/images/example-redpanda-worker-light.png" alt="Redpanda Worker banner" className="block dark:hidden" />
 
 Start a new project using a Redpanda processing worker example.
 
@@ -8622,7 +8645,8 @@ url: /docs/get-started
 title: Get started with Resonate
 ---
 
-![Get started with Resonate section](/images/banner-get-started.png)
+<img src="/images/banner-get-started-dark.png" alt="Get started with Resonate section" className="hidden dark:block" />
+<img src="/images/banner-get-started-light.png" alt="Get started with Resonate section" className="block dark:hidden" />
 
 **Durable execution means your functions survive crashes, restarts, and scaling — automatically.** Resonate handles retries, recovery, and state persistence so you can write normal async code.
 
@@ -8923,7 +8947,8 @@ title: Resonate Documentation
 
 # Resonate documentation
 
-![Resonate documentation banner](/images/resonate-documentation-banner.png)
+<img src="/images/resonate-documentation-banner-dark.png" alt="Resonate documentation banner" className="hidden dark:block" />
+<img src="/images/resonate-documentation-banner-light.png" alt="Resonate documentation banner" className="block dark:hidden" />
 
 **Resonate is the durable execution engine that agents build with, deploy on, and operate.** It is the implementation of a distributed async/await programming model: a formal, language- and transport-agnostic protocol for writing functions that survive process restarts, run for hours or months, and coordinate across many machines.
 
@@ -9513,7 +9538,8 @@ url: /docs/learn
 title: Learn to use Resonate with a tutorial
 ---
 
-![Learn Resonate tutorials section](/images/banner-learn.png)
+<img src="/images/banner-learn-dark.png" alt="Learn Resonate tutorials section" className="hidden dark:block" />
+<img src="/images/banner-learn-light.png" alt="Learn Resonate tutorials section" className="block dark:hidden" />
 
 Step-by-step tutorials to learn Resonate concepts and build real applications.
 

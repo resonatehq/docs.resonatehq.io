@@ -8,6 +8,10 @@ keywords:
   - human-in-the-loop
 ---
 
+<Callout type="info" title="SDK version">
+This page reflects `@resonatehq/sdk` v0.10.0 (current on npm).
+</Callout>
+
 <img src="/images/example-human-in-the-loop-dark.png" alt="Human in the Loop banner" className="hidden dark:block" />
 <img src="/images/example-human-in-the-loop-light.png" alt="Human in the Loop banner" className="block dark:hidden" />
 
@@ -74,7 +78,7 @@ app.get("/unblock-workflow", async (req: Request, res: Response) => {
   try {
     // ...
     // unblock a workflow by resolving a promise
-    await resonate.promises.resolve(promiseId);
+    await resonate.promises.settle(promiseId, "resolved");
     // ...
   } catch (err: any) {
     // ...
