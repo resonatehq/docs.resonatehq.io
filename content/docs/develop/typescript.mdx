@@ -142,6 +142,17 @@ const resonate = new Resonate({
 
 </Callout>
 
+### Concurrency
+
+A single TypeScript worker handles multiple tasks concurrently on the Node.js event loop.
+When the server dispatches tasks to a worker, each one starts executing immediately — tasks do not queue behind each other.
+There is no concurrency limit configuration; all tasks run concurrently via `async/await`.
+
+This is efficient for I/O-bound work but means CPU-intensive tasks will block the event loop and starve other in-flight tasks.
+If your worker holds in-process state that cannot be shared across tasks, consider running multiple single-purpose worker processes instead.
+
+See [Scaling — Worker concurrency](/deploy/scaling#worker-concurrency) for concurrency strategies and patterns for stateful workers.
+
 ### Message sources
 
 A Resonate Client receives messages by making HTTP Long Polling requests to a Resonate Server.
