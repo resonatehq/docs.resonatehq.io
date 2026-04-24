@@ -45,7 +45,7 @@ const files = walkMdx(CONTENT_DIR).sort();
 // llms.txt — index with titles and URLs
 const index = files.map((f) => {
   const rel = relative(CONTENT_DIR, f).replace(/\.mdx$/, "").replace(/\/index$/, "");
-  const url = `/docs/${rel}`;
+  const url = `/${rel}`;
   const content = readFileSync(f, "utf-8");
   const { title, description } = extractFrontmatter(content);
   return `- [${title || rel}](${url})${description ? `: ${description}` : ""}`;
@@ -59,7 +59,7 @@ writeFileSync(
 // llms-full.txt — full content concatenated
 const fullContent = files.map((f) => {
   const rel = relative(CONTENT_DIR, f).replace(/\.mdx$/, "").replace(/\/index$/, "");
-  const url = `/docs/${rel}`;
+  const url = `/${rel}`;
   const content = readFileSync(f, "utf-8");
   const { title, body } = extractFrontmatter(content);
   const cleaned = stripJsx(body);

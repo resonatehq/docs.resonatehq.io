@@ -3,10 +3,10 @@ import { Github } from "lucide-react";
 
 const footerLinks = {
   product: [
-    { label: "Documentation", href: "/docs" },
-    { label: "Get Started", href: "/docs/get-started" },
+    { label: "Documentation", href: "/" },
+    { label: "Get Started", href: "/get-started" },
     { label: "Pricing", href: "https://www.resonatehq.io/pricing" },
-    { label: "Examples", href: "/docs/get-started/examples" },
+    { label: "Examples", href: "/get-started/examples" },
   ],
   community: [
     { label: "Discord", href: "https://resonatehq.io/discord" },

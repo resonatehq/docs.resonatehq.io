@@ -111,30 +111,32 @@ export default async function Page({ params }: PageProps) {
       <Sidebar tree={tree} currentPath={page.url} />
 
       <main className="flex-1 min-w-0 px-6 md:px-10 py-8">
-        {/* Breadcrumbs */}
-        <nav className="text-xs text-bright-gray-500 dark:text-muted mb-6 font-mono" aria-label="Breadcrumb">
-          <Link href="/docs" className="hover:text-bright-gray-900 dark:hover:text-primary transition">
-            Docs
-          </Link>
-          {crumbs.map((crumb, i) => (
-            <span key={i}>
-              <span className="mx-1.5">/</span>
-              {i === crumbs.length - 1 ? (
-                <span className="text-bright-gray-900 dark:text-primary">{crumb.name}</span>
-              ) : crumb.url ? (
-                <Link href={crumb.url} className="hover:text-bright-gray-900 dark:hover:text-primary transition">
-                  {crumb.name}
-                </Link>
-              ) : (
-                <span>{crumb.name}</span>
-              )}
-            </span>
-          ))}
-        </nav>
+        {/* Breadcrumbs (suppressed on the docs root) */}
+        {crumbs.length > 0 && (
+          <nav className="text-xs text-bright-gray-500 dark:text-muted mb-6 font-mono" aria-label="Breadcrumb">
+            <Link href="/" className="hover:text-bright-gray-900 dark:hover:text-primary transition">
+              Docs
+            </Link>
+            {crumbs.map((crumb, i) => (
+              <span key={i}>
+                <span className="mx-1.5">/</span>
+                {i === crumbs.length - 1 ? (
+                  <span className="text-bright-gray-900 dark:text-primary">{crumb.name}</span>
+                ) : crumb.url ? (
+                  <Link href={crumb.url} className="hover:text-bright-gray-900 dark:hover:text-primary transition">
+                    {crumb.name}
+                  </Link>
+                ) : (
+                  <span>{crumb.name}</span>
+                )}
+              </span>
+            ))}
+          </nav>
+        )}
 
         {/* Content */}
         <article className="docs-content max-w-3xl">
-          <h1>{page.data.title}</h1>
+          {!page.data.hideTitle && <h1>{page.data.pageTitle ?? page.data.title}</h1>}
           {page.data.description && (
             <p className="text-lg text-bright-gray-500 dark:text-muted font-serif mb-8 !mt-0">
               {page.data.description}

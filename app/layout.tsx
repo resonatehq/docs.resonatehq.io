@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import { Inter, Lora } from "next/font/google";
 import localFont from "next/font/local";
+import Navigation from "@/components/Navigation";
+import Footer from "@/components/Footer";
 import "./globals.css";
 
 const inter = Inter({
@@ -70,7 +72,11 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="bg-surface-light dark:bg-dark min-h-screen font-serif">
-        {children}
+        <Navigation />
+        <div className="max-w-[1400px] mx-auto">
+          {children}
+        </div>
+        <Footer />
         <Script
           async
           src="https://www.googletagmanager.com/gtag/js?id=G-0660YY8LZF"

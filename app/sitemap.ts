@@ -8,7 +8,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     url: `${baseUrl}${page.url}`,
     lastModified: new Date(),
     changeFrequency: "weekly" as const,
-    priority: page.url === "/docs" ? 1 : 0.7,
+    priority: page.url === "/" ? 1 : 0.7,
   }));
 
   return [

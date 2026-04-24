@@ -56,26 +56,46 @@ function SidebarNode({
 
   if (node.type === "folder") {
     const isSelfActive = node.index?.url === currentPath;
+    const indexUrl = node.index?.url;
+    const rowClasses = `flex-1 py-1.5 pr-2 text-sm text-left transition-colors focus-visible:outline-2 focus-visible:outline-secondary ${
+      isSelfActive
+        ? "text-bright-gray-900 dark:text-primary font-medium"
+        : isAncestor(node, currentPath)
+        ? "text-bright-gray-900 dark:text-primary font-medium"
+        : "text-bright-gray-600 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary"
+    }`;
     return (
       <div>
-        <button
-          onClick={() => setOpen(!open)}
-          className={`flex items-center justify-between w-full py-1.5 text-sm text-left transition-colors focus-visible:outline-2 focus-visible:outline-secondary border-l-2 ${
+        <div
+          className={`flex items-center border-l-2 ${
             depth > 0 ? "pl-5" : "pl-3"
-          } ${
-            isSelfActive
-              ? "text-bright-gray-900 dark:text-primary font-medium border-secondary"
-              : isAncestor(node, currentPath)
-              ? "text-bright-gray-900 dark:text-primary font-medium border-transparent"
-              : "text-bright-gray-600 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary border-transparent"
-          }`}
+          } ${isSelfActive ? "border-secondary" : "border-transparent"}`}
         >
-          <span>{node.name}</span>
-          <ChevronRight
-            size={14}
-            className={`transition-transform ${open ? "rotate-90" : ""}`}
-          />
-        </button>
+          {indexUrl ? (
+            <Link href={indexUrl} className={rowClasses}>
+              {node.name}
+            </Link>
+          ) : (
+            <button
+              onClick={() => setOpen(!open)}
+              className={rowClasses}
+            >
+              {node.name}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setOpen(!open)}
+            aria-label={open ? `Collapse ${String(node.name)}` : `Expand ${String(node.name)}`}
+            aria-expanded={open}
+            className="p-1.5 text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
+          >
+            <ChevronRight
+              size={14}
+              className={`transition-transform ${open ? "rotate-90" : ""}`}
+            />
+          </button>
+        </div>
         {open && (
           <div className="ml-2 border-l border-bright-gray-200 dark:border-primary/10 pl-2">
             {node.children.map((child, i) => (

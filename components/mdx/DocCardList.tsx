@@ -19,7 +19,7 @@ export default function DocCardList({ items }: DocCardListProps) {
           key={item.href}
           title={item.label}
           description={item.description}
-          href={`/docs${item.href}`}
+          href={item.href}
         />
       ))}
     </CardGrid>

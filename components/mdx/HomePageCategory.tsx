@@ -7,5 +7,5 @@ interface HomePageCategoryProps {
 }
 
 export default function HomePageCategory({ title, description, link }: HomePageCategoryProps) {
-  return <Card title={title} description={description} href={`/docs${link}`} />;
+  return <Card title={title} description={description} href={link} />;
 }

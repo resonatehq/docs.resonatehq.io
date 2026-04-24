@@ -1,7 +1,7 @@
 # Resonate Documentation — Full Content
 
 ---
-url: /docs/debug/errors
+url: /debug/errors
 title: Errors
 ---
 
@@ -244,7 +244,7 @@ An error occurred on the server. Please check for additional error codes for mor
 ---
 
 ---
-url: /docs/debug
+url: /debug
 title: Debug a Resonate application
 ---
 
@@ -309,7 +309,7 @@ This section is about **fixing what's broken**. The other sections are about **b
 ---
 
 ---
-url: /docs/debug/troubleshooting
+url: /debug/troubleshooting
 title: Troubleshooting
 ---
 
@@ -845,7 +845,7 @@ Most issues fall into one of these categories. Work through the checklist system
 ---
 
 ---
-url: /docs/deploy/availability
+url: /deploy/availability
 title: Availability
 ---
 
@@ -1094,7 +1094,7 @@ If your use case exceeds single-server capacity, contact the Resonate team to di
 ---
 
 ---
-url: /docs/deploy/deployment-patterns
+url: /deploy/deployment-patterns
 title: Deployment patterns
 ---
 
@@ -1513,7 +1513,7 @@ Choose your infrastructure based on your operational preferences and scale requi
 ---
 
 ---
-url: /docs/deploy
+url: /deploy
 title: Deploy a Resonate application
 ---
 
@@ -1797,7 +1797,7 @@ These features aren't implemented because **worker horizontal scaling** handles 
 ---
 
 ---
-url: /docs/deploy/logging
+url: /deploy/logging
 title: Logging
 ---
 
@@ -2162,7 +2162,7 @@ Logs are your debugging lifeline. Set them up properly from day one.
 ---
 
 ---
-url: /docs/deploy/message-transports
+url: /deploy/message-transports
 title: Message transports
 ---
 
@@ -2204,7 +2204,7 @@ Or via env var: `RESONATE_TRANSPORTS__GCPS__PROJECT=my-gcp-project-id`.
 ---
 
 ---
-url: /docs/deploy/metrics
+url: /deploy/metrics
 title: Metrics
 ---
 
@@ -2722,7 +2722,7 @@ Metrics give you visibility into system health. Set them up before you need them
 ---
 
 ---
-url: /docs/deploy/run-server
+url: /deploy/run-server
 title: Run a server
 ---
 
@@ -3045,7 +3045,7 @@ Without this, the platform may pick the metrics port (`9090`) and route all traf
 ---
 
 ---
-url: /docs/deploy/scaling
+url: /deploy/scaling
 title: Scaling
 ---
 
@@ -3092,6 +3092,89 @@ resonate.rpc(
 ```
 
 The server automatically load-balances across workers. You don't need to implement distribution logic.
+
+## Worker concurrency
+
+A single worker process handles multiple tasks concurrently.
+When the server dispatches a task to a worker, the worker begins executing it immediately — it does not wait for prior tasks to finish first.
+Understanding this behavior is important for designing your application, especially when workers hold in-process state.
+
+### TypeScript
+
+The TypeScript SDK runs on the Node.js event loop.
+All incoming tasks are processed concurrently via `async/await` — each task progresses independently whenever it hits an `await` point.
+There is no built-in concurrency limit.
+
+```typescript title="Default: unlimited concurrent tasks"
+const resonate = new Resonate({
+  url: "http://resonate-server:8001",
+  group: "workers",
+  // No concurrency config — all tasks run concurrently on the event loop
+});
+```
+
+This means a single TypeScript worker can handle many tasks at once, which is efficient for I/O-bound work (HTTP calls, database queries, file reads).
+CPU-intensive tasks will block the event loop and starve other in-flight tasks — offload heavy computation to worker threads or separate processes.
+
+### Python
+
+The Python SDK uses a thread pool to execute functions concurrently.
+The pool size is controlled by the `workers` parameter:
+
+```python title="Configure thread pool size"
+from resonate import Resonate
+
+# Default: min(32, os.cpu_count()) threads
+resonate = Resonate.remote(
+    host="http://resonate-server",
+    store_port="8001",
+    message_source_port="8001",
+)
+
+# Explicit: limit to 4 concurrent function executions
+resonate = Resonate.remote(
+    host="http://resonate-server",
+    store_port="8001",
+    message_source_port="8001",
+    workers=4,
+)
+```
+
+The default is `min(32, os.cpu_count())` — on a 4-core machine that's 4 threads, on a 16-core machine it's 16, with a hard cap at 32.
+Each thread executes one function at a time, so `workers=4` means up to 4 functions run in parallel within that single process.
+
+### When concurrency matters
+
+For most applications, per-worker concurrency is beneficial — it keeps the worker busy while individual tasks wait on I/O.
+
+However, if your worker holds **in-process state** that cannot be shared across tasks (for example, a browser automation session, a stateful protocol connection, or a GPU context), concurrent tasks will interfere with each other.
+
+**Strategies for stateful workers:**
+
+1. **Scale horizontally instead.** Run multiple single-purpose worker processes, each handling one task at a time. Resonate's load balancing distributes tasks across them automatically.
+2. **In Python, set `workers=1`** to limit the thread pool to a single thread. This ensures only one function executes at a time within the process.
+3. **Design for isolation.** If tasks can each create their own isolated state (for example, each task launches its own browser context), concurrency is safe.
+
+```python title="Single-threaded worker for stateful workloads"
+from resonate import Resonate
+
+# Only one function runs at a time in this process
+resonate = Resonate.remote(
+    host="http://resonate-server",
+    store_port="8001",
+    message_source_port="8001",
+    workers=1,
+)
+```
+
+```bash title="Scale horizontally with multiple single-threaded workers"
+# Each process handles one task at a time
+# Resonate load-balances across all of them
+python worker.py &
+python worker.py &
+python worker.py &
+python worker.py &
+```
 
 ## When to scale workers
 
@@ -3307,7 +3390,7 @@ See [Metrics](/deploy/metrics) for the full metrics catalog.
 ---
 
 ---
-url: /docs/deploy/security
+url: /deploy/security
 title: Security
 ---
 
@@ -3486,7 +3569,7 @@ For a working example of authenticated applications:
 ---
 
 ---
-url: /docs/deploy/serverless-workers
+url: /deploy/serverless-workers
 title: Serverless workers
 ---
 
@@ -3598,7 +3681,7 @@ Ready to use example apps:
 ---
 
 ---
-url: /docs/deploy/tracing
+url: /deploy/tracing
 title: Tracing
 ---
 
@@ -3996,7 +4079,7 @@ Tracing complements logs and metrics. Together, they give you complete observabi
 ---
 
 ---
-url: /docs/deploy/upgrade-server
+url: /deploy/upgrade-server
 title: Upgrade server
 ---
 
@@ -4024,7 +4107,7 @@ You can download the latest version of the Resonate Server from the [Releases](h
 ---
 
 ---
-url: /docs/develop/constraints
+url: /develop/constraints
 title: Constraints and gotchas
 ---
 
@@ -4173,14 +4256,14 @@ function* getUserData(ctx: Context, userId: string) {
 
     
 
-```python title="Wrap external calls with ctx.lfc"
+```python title="Wrap external calls with ctx.run"
 @resonate.register
 def get_user_data(ctx: Context, user_id: str):
-    def fetch_user():
+    def fetch_user(ctx):
         response = requests.get(f"https://api.example.com/users/{user_id}")
         return response.json()
     
-    user_data = yield ctx.lfc(fetch_user)  # ✅ Result recorded, replays use recorded value
+    user_data = yield ctx.run(fetch_user)  # ✅ Result recorded, replays use recorded value
     # ...
 ```
 
@@ -4399,7 +4482,7 @@ def approval_workflow(ctx: Context, request_id: str):
     approval_promise = yield ctx.promise()
     
     # Send approval request email with promise ID
-    yield ctx.lfc(send_approval_email, approval_promise.id)
+    yield ctx.run(send_approval_email, approval_promise.id)
     
     # Wait for human to resolve the promise (could be hours/days)
     approved = yield approval_promise  # ✅ Survives process restarts
@@ -4437,7 +4520,7 @@ To see these patterns in action, check out the [TypeScript SDK guide](/develop/t
 ---
 
 ---
-url: /docs/develop
+url: /develop
 title: Develop with Resonate
 ---
 
@@ -4555,9 +4638,12 @@ Each SDK page is self-contained with complete examples and API references. Pick 
 ---
 
 ---
-url: /docs/develop/python
+url: /develop/python
 title: Python SDK API guidance
 ---
+
+This page reflects `resonate-sdk` v0.6.7 (current on PyPI). APIs are subject to change in future releases.
+
 
 Welcome to the Resonate Python SDK guide!
 This SDK makes it possible to write Distributed Async Await applications with Python.
@@ -4669,6 +4755,41 @@ resonate = Resonate.remote(
     message_source_port=8001,
 )
 ```
+
+### Concurrency
+
+A single Python worker process executes multiple functions concurrently using a thread pool.
+The pool size is controlled by the `workers` parameter:
+
+```py
+from resonate import Resonate
+
+# Local mode — default: min(32, os.cpu_count()) threads
+resonate = Resonate.local()
+
+# Remote mode — same default thread pool
+resonate = Resonate.remote(host="http://localhost", store_port="8001", message_source_port="8001")
+
+# Limit to 4 concurrent function executions
+resonate = Resonate.remote(
+    host="http://localhost",
+    store_port="8001",
+    message_source_port="8001",
+    workers=4,
+)
+
+# Single-threaded: one function at a time
+resonate = Resonate.remote(
+    host="http://localhost",
+    store_port="8001",
+    message_source_port="8001",
+    workers=1,
+)
+```
+
+Setting `workers=1` is useful when your worker holds in-process state that cannot be shared across concurrent tasks (for example, a browser automation session or a stateful protocol connection).
+
+See [Scaling — Worker concurrency](/deploy/scaling#worker-concurrency) for more on concurrency strategies.
 
 ## Client APIs
 
@@ -5061,7 +5182,7 @@ Many of Context's methods support options on the call you are making.
 ---
 
 ---
-url: /docs/develop/rust
+url: /develop/rust
 title: Skill Guide | Rust SDK
 ---
 
@@ -5498,9 +5619,12 @@ async fn my_workflow(ctx: &Context) -> Result<()> {
 ---
 
 ---
-url: /docs/develop/typescript
+url: /develop/typescript
 title: Skill Guide | TypeScript SDK
 ---
+
+This page reflects `@resonatehq/sdk` v0.10.0 (current on npm). APIs are subject to change in future releases.
+
 
 **Requires Node.js 22 or later.**
 
@@ -5617,6 +5741,17 @@ const resonate = new Resonate({
 
 
 
+
+### Concurrency
+
+A single TypeScript worker handles multiple tasks concurrently on the Node.js event loop.
+When the server dispatches tasks to a worker, each one starts executing immediately — tasks do not queue behind each other.
+There is no concurrency limit configuration; all tasks run concurrently via `async/await`.
+
+This is efficient for I/O-bound work but means CPU-intensive tasks will block the event loop and starve other in-flight tasks.
+If your worker holds in-process state that cannot be shared across tasks, consider running multiple single-purpose worker processes instead.
+
+See [Scaling — Worker concurrency](/deploy/scaling#worker-concurrency) for concurrency strategies and patterns for stateful workers.
 
 ### Message sources
 
@@ -5887,40 +6022,43 @@ await resonate.promises.create(
 );
 ```
 
-### `.promises.resolve()`
+### `.promises.settle()`
 
-Resonate's `.promises.resolve()` method resolves a promise by ID.
+Resonate's `.promises.settle()` method settles a promise by ID into a terminal state.
+The `state` argument is a discriminator that determines whether the promise is resolved, rejected, or canceled.
 
 This is useful for HITL use cases where you want to wait for a human to approve a function execution.
 It works well in conjunction with the [`.promise()`](#promise) method.
 
 ```ts
-// Resolve a promise
-await resonate.promises.resolve("promise-id");
-
-// Resolve with data
-await resonate.promises.resolve("promise-id", { data: JSON.stringify({ approved: true }) });
+await resonate.promises.settle(
+  id: string,
+  state: "resolved" | "rejected" | "rejected_canceled",
+  options?: { data?: string; headers?: Record<string, string> }
+);
 ```
 
-### `.promises.reject()`
-
-Resonate's `.promises.reject()` method rejects a promise by ID.
+Examples for each state:
 
 ```ts
-// Reject a promise
-await resonate.promises.reject("promise-id");
+// Resolve a promise (optionally with data)
+await resonate.promises.settle("promise-id", "resolved");
+await resonate.promises.settle("promise-id", "resolved", {
+  data: JSON.stringify({ approved: true }),
+});
 
-// Reject with data
-await resonate.promises.reject("promise-id", { data: JSON.stringify({ reason: "denied" }) });
+// Reject a promise (optionally with data describing the failure)
+await resonate.promises.settle("promise-id", "rejected");
+await resonate.promises.settle("promise-id", "rejected", {
+  data: JSON.stringify({ reason: "denied" }),
+});
+
+// Cancel a promise
+await resonate.promises.settle("promise-id", "rejected_canceled");
 ```
 
-### `.promises.cancel()`
-
-Resonate's `.promises.cancel()` method cancels a promise by ID (settles it as `rejected_canceled`).
-
-```ts
-await resonate.promises.cancel("promise-id");
-```
+The three `state` values correspond directly to the promise terminal states — `resolved`, `rejected`, and `rejected_canceled`.
+Canceling a promise is just a `rejected_canceled` settle; there is no separate `cancel` method.
 
 ## Context APIs
 
@@ -6073,7 +6211,7 @@ Context's `.promise()` method allows you to get or create a promise that can be 
 A new promise is created and its ID is generated automatically.
 
 This is very useful for HITL (Human-In-The-Loop) use cases where you want to block progress until a human has taken an action or provided data.
-It works well in conjunction with the [`.promises.resolve()`](#promisesresolve) method.
+It works well in conjunction with the [`.promises.settle()`](#promisessettle) method.
 
 ```ts
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
@@ -6221,7 +6359,7 @@ resonate.register("foo", function* (ctx: Context) {
 ---
 
 ---
-url: /docs/evaluate/coming-from/byode
+url: /evaluate/coming-from/byode
 title: Coming from building your own durable execution
 ---
 
@@ -6568,9 +6706,12 @@ But if you're here because you're **tired of maintaining custom infrastructure**
 ---
 
 ---
-url: /docs/evaluate/coming-from/dbos
+url: /evaluate/coming-from/dbos
 title: Coming from DBOS
 ---
+
+This page reflects `@resonatehq/sdk` v0.10.0 (current on npm) and `resonate-sdk` v0.6.7 for Python.
+
 
 **Are you coming from DBOS?**
 
@@ -6732,7 +6873,7 @@ function* foo(context: Context) {
 
 ```typescript
 // client.ts
-await resonate.promises.resolve(promiseId, { data: JSON.stringify(data) });
+await resonate.promises.settle(promiseId, "resolved", { data: JSON.stringify(data) });
 ```
 
     
@@ -6819,7 +6960,7 @@ In essence, DBOS focuses on single-instance durability without addressing scalab
 ---
 
 ---
-url: /docs/evaluate/coming-from
+url: /evaluate/coming-from
 title: Coming from other systems
 ---
 
@@ -6828,9 +6969,12 @@ title: Coming from other systems
 ---
 
 ---
-url: /docs/evaluate/coming-from/restate
+url: /evaluate/coming-from/restate
 title: Coming from Restate
 ---
+
+This page reflects `@resonatehq/sdk` v0.10.0 (current on npm) and `resonate-sdk` v0.6.7 for Python.
+
 
 **Are you coming from experience with Restate?**
 
@@ -7015,7 +7159,7 @@ function* orderWorkflow(ctx: Context, orderId: string, order: Order) {
 
 // Approve from anywhere — the caller reconstructs the ID from orderId.
 async function approveOrder(orderId: string) {
-  await resonate.promises.resolve(`${orderId}.0`, { data: JSON.stringify(true) });
+  await resonate.promises.settle(`${orderId}.0`, "resolved", { data: JSON.stringify(true) });
 }
 ```
 
@@ -7082,7 +7226,7 @@ const decision = yield* approvalPromise;
 
 // From anywhere — use the caller's known execution ID (e.g. `order-123`)
 // to reconstruct the approval promise ID as `${orderId}.<seq>`.
-await resonate.promises.resolve(`${orderId}.0`, { data: JSON.stringify("approved") });
+await resonate.promises.settle(`${orderId}.0`, "resolved", { data: JSON.stringify("approved") });
 ```
 
 Same concept, similar API. Resonate's version works with any function, not just Workflows.
@@ -7191,9 +7335,12 @@ Same logic, fewer abstractions. The Resonate version is a plain function with ge
 ---
 
 ---
-url: /docs/evaluate/coming-from/temporal
+url: /evaluate/coming-from/temporal
 title: Coming from Temporal
 ---
+
+This page reflects `@resonatehq/sdk` v0.10.0 (current on npm) and `resonate-sdk` v0.6.7 for Python.
+
 
 **Are you coming from Temporal?**
 
@@ -7355,7 +7502,7 @@ function* foo(context: Context) {
 
 ```typescript
 // client.ts
-await resonate.promises.resolve(promiseId, { data: JSON.stringify(data) });
+await resonate.promises.settle(promiseId, "resolved", { data: JSON.stringify(data) });
 ```
 
     
@@ -7486,7 +7633,7 @@ Ultimately, as a developer, you will find many areas where Resonate has chosen t
 ---
 
 ---
-url: /docs/evaluate/how-it-works
+url: /evaluate/how-it-works
 title: How Resonate works
 ---
 
@@ -7537,7 +7684,7 @@ It then load balances requests across them.
 ---
 
 ---
-url: /docs/evaluate
+url: /evaluate
 title: Evaluate Resonate
 ---
 
@@ -7551,7 +7698,7 @@ Evaluate Resonate to understand its capabilities and how it works.
 ---
 
 ---
-url: /docs/evaluate/why-resonate
+url: /evaluate/why-resonate
 title: Why Resonate
 ---
 
@@ -7610,7 +7757,7 @@ The Async RPC protocol, the Distributed Async Await specification, and the open-
 ---
 
 ---
-url: /docs/get-started/cli-guide
+url: /get-started/cli-guide
 title: Using the Resonate CLI
 ---
 
@@ -7846,7 +7993,7 @@ resonate promises get order-123 --server https://resonate.yourcompany.com
 ---
 
 ---
-url: /docs/get-started/examples/async-agent-tools
+url: /get-started/examples/async-agent-tools
 title: Async agent tools use case
 ---
 
@@ -7950,7 +8097,7 @@ def await_result(job_name):
 ---
 
 ---
-url: /docs/get-started/examples/async-http-api-endpoints
+url: /get-started/examples/async-http-api-endpoints
 title: Async HTTP API endpoints
 ---
 
@@ -8039,7 +8186,7 @@ resonate.start()
 ---
 
 ---
-url: /docs/get-started/examples/deep-research-agent
+url: /get-started/examples/deep-research-agent
 title: Start with a deep research agent
 ---
 
@@ -8181,7 +8328,7 @@ resonate.register("research", research);
 ---
 
 ---
-url: /docs/get-started/examples/durable-serverless-cloud-run-workers
+url: /get-started/examples/durable-serverless-cloud-run-workers
 title: Durable serverless Cloud Run workers
 ---
 
@@ -8234,7 +8381,7 @@ resonate.register("cloudRunWorker", cloudRunWorker);
 ---
 
 ---
-url: /docs/get-started/examples/durable-serverless-lambda-workers
+url: /get-started/examples/durable-serverless-lambda-workers
 title: Durable serverless Lambda workers
 ---
 
@@ -8289,7 +8436,7 @@ resonate.register("lambdaWorker", lambdaWorker);
 ---
 
 ---
-url: /docs/get-started/examples/durable-sleep
+url: /get-started/examples/durable-sleep
 title: Durable sleep use case
 ---
 
@@ -8373,9 +8520,12 @@ resonate.register(sleeping_workflow).unwrap();
 ---
 
 ---
-url: /docs/get-started/examples/human-in-the-loop
+url: /get-started/examples/human-in-the-loop
 title: Human-in-the-loop use case
 ---
+
+This page reflects `@resonatehq/sdk` v0.10.0 (current on npm).
+
 
 <img src="/images/example-human-in-the-loop-dark.png" alt="Human in the Loop banner" className="hidden dark:block" />
 <img src="/images/example-human-in-the-loop-light.png" alt="Human in the Loop banner" className="block dark:hidden" />
@@ -8429,7 +8579,7 @@ app.get("/unblock-workflow", async (req: Request, res: Response) => {
   try {
     // ...
     // unblock a workflow by resolving a promise
-    await resonate.promises.resolve(promiseId);
+    await resonate.promises.settle(promiseId, "resolved");
     // ...
   } catch (err: any) {
     // ...
@@ -8440,7 +8590,7 @@ app.get("/unblock-workflow", async (req: Request, res: Response) => {
 ---
 
 ---
-url: /docs/get-started/examples
+url: /get-started/examples
 title: Examples | Get started with Resonate
 ---
 
@@ -8449,7 +8599,7 @@ Clone and explore example projects that demonstrate common use cases and pattern
 ---
 
 ---
-url: /docs/get-started/examples/load-balancing
+url: /get-started/examples/load-balancing
 title: Start with load balanced workers
 ---
 
@@ -8565,7 +8715,7 @@ resonate.rpc(
 ---
 
 ---
-url: /docs/get-started/examples/redpanda-worker
+url: /get-started/examples/redpanda-worker
 title: Redpanda processing worker
 ---
 
@@ -8641,7 +8791,7 @@ def consume():
 ---
 
 ---
-url: /docs/get-started
+url: /get-started
 title: Get started with Resonate
 ---
 
@@ -8671,7 +8821,7 @@ And if you have experience with either Temporal or DBOS you may want to review o
 ---
 
 ---
-url: /docs/get-started/quickstart
+url: /get-started/quickstart
 title: Quickstart | Get started with Resonate
 ---
 
@@ -8941,14 +9091,12 @@ Now try killing the worker mid-countdown and restarting. **The countdown picks u
 ---
 
 ---
-url: /docs/index
-title: Resonate Documentation
+url: /index
+title: Home
 ---
 
-# Resonate documentation
-
-<img src="/images/resonate-documentation-banner-dark.png" alt="Resonate documentation banner" className="hidden dark:block" />
-<img src="/images/resonate-documentation-banner-light.png" alt="Resonate documentation banner" className="block dark:hidden" />
+<img src="/images/home-hero-dark.png" alt="Resonate" className="hidden dark:block" />
+<img src="/images/home-hero-light.png" alt="Resonate" className="block dark:hidden" />
 
 **Resonate is the durable execution engine that agents build with, deploy on, and operate.** It is the implementation of a distributed async/await programming model: a formal, language- and transport-agnostic protocol for writing functions that survive process restarts, run for hours or months, and coordinate across many machines.
 
@@ -8989,7 +9137,7 @@ function* agent(context: Context, prompt: string) {
 ---
 
 ---
-url: /docs/learn/deployments/digital-ocean-droplet
+url: /learn/deployments/digital-ocean-droplet
 title: Run a Resonate Server on a DigitalOcean Droplet
 ---
 
@@ -9246,7 +9394,7 @@ You now have a production-style Resonate Server running behind Nginx with automa
 ---
 
 ---
-url: /docs/learn/deployments/google-cloud-run
+url: /learn/deployments/google-cloud-run
 title: Deploy a Countdown Workflow to Google Cloud Run
 ---
 
@@ -9525,7 +9673,7 @@ countdown.1
 ---
 
 ---
-url: /docs/learn/deployments
+url: /learn/deployments
 title: Deployment tutorials
 ---
 
@@ -9534,7 +9682,7 @@ The following tutorials help you deploy your applications.
 ---
 
 ---
-url: /docs/learn
+url: /learn
 title: Learn to use Resonate with a tutorial
 ---
 
@@ -9546,7 +9694,7 @@ Step-by-step tutorials to learn Resonate concepts and build real applications.
 ---
 
 ---
-url: /docs/learn/python-sdk
+url: /learn/python-sdk
 title: Python SDK tutorials
 ---
 
@@ -9555,7 +9703,7 @@ The following tutorials help you build applications with the Resonate Python SDK
 ---
 
 ---
-url: /docs/learn/python-sdk/website-summarization-agent
+url: /learn/python-sdk/website-summarization-agent
 title: Build a durable website summarization AI agent in Python with Resonate, Flask, and Ollama
 ---
 
@@ -10515,7 +10663,7 @@ Join the [Resonate Discord community](https://resonatehq.io/discord) to share id
 ---
 
 ---
-url: /docs/learn/typescript-sdk
+url: /learn/typescript-sdk
 title: TypeScript SDK tutorials
 ---
 
@@ -10524,9 +10672,12 @@ The following tutorials help you build applications with the Resonate TypeScript
 ---
 
 ---
-url: /docs/learn/typescript-sdk/website-summarization-agent
+url: /learn/typescript-sdk/website-summarization-agent
 title: Build a durable website summarization AI agent in TypeScript with Resonate, Express, and Ollama
 ---
+
+This page reflects `@resonatehq/sdk` v0.10.0 (current on npm).
+
 
 In this tutorial, you’ll build a website summarization AI agent using the Resonate TypeScript SDK, Express, and Ollama.
 
@@ -11131,7 +11282,7 @@ app.get("/confirm", async (req: Request, res: Response) => {
     const confirm = req.query.confirm as string;
     assert(promiseId, "promiseId is required");
     assert(confirm, "confirm is required");
-    await resonate.promises.resolve(promiseId, { data: confirm });
+    await resonate.promises.settle(promiseId, "resolved", { data: confirm });
     res.status(200).send("promise resolved.");
   } catch (e) {
     console.error(e);
