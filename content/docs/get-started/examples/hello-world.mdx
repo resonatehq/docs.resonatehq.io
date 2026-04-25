@@ -1,0 +1,192 @@
+---
+title: Hello world
+pageTitle: Hello world — your first durable workflow
+description: A minimal workflow that orchestrates two leaf functions, registered and invoked through Resonate.
+keywords:
+  - hello-world
+  - getting-started
+  - durable-workflow
+  - examples
+---
+
+<img src="/images/example-hello-world-dark.png" alt="Hello World banner" className="hidden dark:block" />
+<img src="/images/example-hello-world-light.png" alt="Hello World banner" className="block dark:hidden" />
+
+The smallest example that exercises the durable execution loop. A registered workflow function calls two leaf functions through `ctx.run`, and Resonate checkpoints each return value.
+
+<Callout type="info" title="SDK versions">
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Rust: v0.1.0, in active development. Python example repo is forthcoming.
+</Callout>
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="TypeScript SDK"
+    description="A workflow with two leaf functions, run via the in-process Resonate client."
+    link="https://github.com/resonatehq-examples/example-hello-world-ts"
+  />
+  <CloneRepoCard
+    sdk="Rust SDK"
+    description="Workflow + leaf function with #[resonate::function], driven by the CLI."
+    link="https://github.com/resonatehq-examples/example-hello-world-rs"
+  />
+</CloneRepoGrid>
+
+## The problem
+
+Before any "real" example makes sense, you need to see the wiring: a function gets registered, the workflow runtime invokes it, sub-calls go through a `Context`, and each step's result is checkpointed. Without that mental model, every more elaborate example reads as magic.
+
+## Resonate's solution
+
+Two things, both small. **Register** a function with the Resonate instance — that's how Resonate knows it can dispatch the function and durably checkpoint its result. **Invoke** it through the run/RPC API — that's how the function moves from "regular code" to "durable workflow." The rest of every example in this section is variations on those two moves.
+
+## Code walkthrough
+
+The workflow is a generator (TypeScript) or `#[resonate::function]` async fn (Rust). It receives a `Context` and calls leaf functions through `ctx.run`. Leaves can be plain functions — Resonate handles the dispatch and the checkpointing.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Rust', value: 'rust'},
+    ]}>
+
+<TabItem value="typescript">
+
+```typescript title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
+import type { Context } from "@resonatehq/sdk";
+
+const resonate = new Resonate();
+
+async function bar(_: Context, greetee: string) {
+  return `Hello ${greetee} from bar!`;
+}
+
+async function baz(_: Context, greetee: string) {
+  return `Hello ${greetee} from baz!`;
+}
+
+function* foo(ctx: Context, greetee: string): Generator<any, string, any> {
+  // Each ctx.run is a checkpoint — its return value is durably stored.
+  const barGreeting = yield* ctx.run(bar, greetee);
+  const bazGreeting = yield* ctx.run(baz, greetee);
+  return `Hello ${greetee} from foo! ${barGreeting} ${bazGreeting}`;
+}
+
+const fooR = resonate.register("foo", foo);
+
+const result = await fooR.run("greeting-workflow", "World");
+console.log(result);
+resonate.stop();
+```
+
+</TabItem>
+
+<TabItem value="rust">
+
+```rust title="src/main.rs"
+use resonate::prelude::*;
+
+#[resonate::function]
+async fn greet(ctx: &Context, name: String) -> Result<String> {
+    let greeting = ctx.run(format_greeting, name).await?;
+    Ok(greeting)
+}
+
+#[resonate::function]
+async fn format_greeting(name: String) -> Result<String> {
+    Ok(format!("Hello, {name}! Welcome to durable execution."))
+}
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        ..Default::default()
+    });
+    resonate.register(greet).unwrap();
+    resonate.register(format_greeting).unwrap();
+
+    println!("Worker started. Waiting for invocations...");
+    tokio::signal::ctrl_c().await.expect("Failed to listen for ctrl-c");
+}
+```
+
+</TabItem>
+
+</Tabs>
+
+The TypeScript example invokes the workflow in-process via `fooR.run(...)` — no server needed for this minimal demo. The Rust example registers the function with a long-running worker and waits for an invocation from the Resonate CLI.
+
+## Run it locally
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Rust', value: 'rust'},
+    ]}>
+
+<TabItem value="typescript">
+
+Clone the repo:
+
+```shell
+git clone https://github.com/resonatehq-examples/example-hello-world-ts
+cd example-hello-world-ts
+npm install
+```
+
+Run the workflow in-process:
+
+```shell
+npx tsx index.ts
+```
+
+You should see three log lines (`running foo`, `running bar`, `running baz`, possibly with `foo` repeating as the workflow replays after each yield) followed by the assembled greeting.
+
+</TabItem>
+
+<TabItem value="rust">
+
+Clone the repo and build:
+
+```shell
+git clone https://github.com/resonatehq-examples/example-hello-world-rs
+cd example-hello-world-rs
+cargo build
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — worker"
+cargo run
+```
+
+```shell title="Terminal 3 — invoke"
+resonate invoke greet-1 --func greet --arg '"World"'
+```
+
+Inspect the durable call graph:
+
+```shell
+resonate tree greet-1
+```
+
+</TabItem>
+
+</Tabs>
+
+## Try the recovery story (Rust)
+
+With the worker running in Rust, kill it mid-execution and restart. Resonate replays the workflow from the last checkpointed step rather than from the beginning. `resonate tree greet-1` renders the durable call graph as it grows.
+
+## Related
+
+- [Durable sleep](/get-started/examples/durable-sleep) — adds suspension to the picture.
+- [Human-in-the-loop](/get-started/examples/human-in-the-loop) — adds external resolution via a durable promise.
