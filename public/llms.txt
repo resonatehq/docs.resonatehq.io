@@ -37,6 +37,7 @@
 - [Cloud Run workers](/get-started/examples/durable-serverless-cloud-run-workers): A Resonate workflow running on Cloud Functions Gen 2 — every sleep checkpoints, every restart resumes.
 - [Lambda workers](/get-started/examples/durable-serverless-lambda-workers): Lambda receives the request, returns 202, and fires a durable Resonate workflow that can run for hours — past Lambda's timeout ceiling.
 - [Durable sleep](/get-started/examples/durable-sleep): A workflow that sleeps for seconds, days, or months — without holding a process open or rolling your own scheduler.
+- [Fan-out / fan-in](/get-started/examples/fan-out-fan-in): Spawn N tasks in parallel, collect their results — every spawn and every result is a durable promise.
 - [Hello world](/get-started/examples/hello-world): A minimal workflow that orchestrates two leaf functions, registered and invoked through Resonate.
 - [Human-in-the-loop](/get-started/examples/human-in-the-loop): Pause a Resonate workflow until a human responds — and resume it from any process — using durable promises.
 - [Examples](/get-started/examples): Runnable example projects, one per pattern.

@@ -8921,6 +8921,178 @@ Change the sleep duration to a day, week, or month. The workflow sleeps without 
 ---
 
 ---
+url: /get-started/examples/fan-out-fan-in
+title: Fan-out / fan-in
+---
+
+<img src="/images/example-fan-out-fan-in-dark.png" alt="Fan-out Fan-in banner" className="hidden dark:block" />
+<img src="/images/example-fan-out-fan-in-light.png" alt="Fan-out Fan-in banner" className="block dark:hidden" />
+
+A workflow spawns four notification channels (email, SMS, Slack, push) in parallel and joins their results. Total wall time approaches the slowest channel, not the sum. If one channel fails and retries, the others stay checkpointed — they don't re-send.
+
+
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Rust: v0.1.0, in active development. Python example repo is forthcoming.
+
+
+
+  
+  
+
+
+## The problem
+
+Sequential calls — even three or four — turn into the latency tax you don't notice until you do. Fan them out manually with `Promise.all` (or its language equivalent) and you've collapsed the latency, but you've also given up checkpointing: a crash mid-batch re-runs everything when the workflow recovers, and a retry of one branch blasts the same email twice to the customer.
+
+## Resonate's solution
+
+Each branch becomes its own durable promise. Spawn them with `beginRun` (TypeScript) or `.spawn()` (Rust) — the workflow doesn't block. Then await each handle to fan in. If a single branch fails and retries, the others are already checkpointed; they don't re-execute. Crash recovery only re-runs whatever was in flight when the worker died.
+
+## Code walkthrough
+
+The fan-out is N spawn calls. The fan-in is N awaits. The fact that each is durable is what makes this safe — every other implementation has subtle re-execution bugs.
+
+
+
+
+
+```typescript title="src/workflow.ts"
+export function* notifyAll(ctx: Context, event: OrderEvent, simulateCrash: boolean) {
+  const start = Date.now();
+
+  // Fan-out: spawn all 4 channels at once. Each beginRun returns a future.
+  const emailFuture = yield* ctx.beginRun(sendEmail, event);
+  const smsFuture   = yield* ctx.beginRun(sendSms, event);
+  const slackFuture = yield* ctx.beginRun(sendSlack, event);
+  const pushFuture  = yield* ctx.beginRun(sendPush, event, simulateCrash);
+
+  // Fan-in: each future is durable. If push retries, email/sms/slack stay
+  // checkpointed and do NOT re-send.
+  const results = [
+    yield* emailFuture,
+    yield* smsFuture,
+    yield* slackFuture,
+    yield* pushFuture,
+  ];
+
+  return {
+    orderId: event.orderId,
+    channelsNotified: results.filter((r) => r.success).length,
+    totalMs: Date.now() - start,
+    results,
+  };
+}
+```
+
+
+
+
+
+```rust title="src/main.rs"
+use resonate::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Clone)]
+struct WorkItem { id: u32, data: String }
+
+#[derive(Serialize, Deserialize, Debug)]
+struct WorkResult { id: u32, output: String }
+
+#[resonate::function]
+async fn fan_out_fan_in(ctx: &Context, items: Vec) -> Result> {
+    // Fan-out: spawn three items in parallel.
+    let h1 = ctx.run(process_item, items[0].clone()).spawn().await?;
+    let h2 = ctx.run(process_item, items[1].clone()).spawn().await?;
+    let h3 = ctx.run(process_item, items[2].clone()).spawn().await?;
+
+    // Fan-in: each handle is individually durable.
+    let r1 = h1.await?;
+    let r2 = h2.await?;
+    let r3 = h3.await?;
+    Ok(vec![r1, r2, r3])
+}
+
+#[resonate::function]
+async fn process_item(item: WorkItem) -> Result {
+    Ok(WorkResult {
+        id: item.id,
+        output: format!("Processed: {} (item #{})", item.data, item.id),
+    })
+}
+```
+
+
+
+
+
+The TypeScript example includes a `--crash` flag that simulates the push channel failing on its first attempt. When you run it with `--crash`, the workflow retries the push channel — but watching the logs, email/SMS/Slack don't re-send. They're each their own durable promise, already resolved.
+
+## Run it locally
+
+
+
+
+
+```shell
+git clone https://github.com/resonatehq-examples/example-fan-out-fan-in-ts
+cd example-fan-out-fan-in-ts
+bun install
+```
+
+Run the happy path (all 4 channels in parallel):
+
+```shell
+bun run src/index.ts
+```
+
+Then run with the crash flag — push fails, retries, but the other three stay completed:
+
+```shell
+bun run src/index.ts -- --crash
+```
+
+The log output shows the wall time vs the sum of the individual channel times — fan-out collapses the total to roughly `max(channels)`.
+
+
+
+
+
+```shell
+git clone https://github.com/resonatehq-examples/example-fan-out-fan-in-rs
+cd example-fan-out-fan-in-rs
+cargo build
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — worker"
+cargo run
+```
+
+```shell title="Terminal 3 — invoke"
+resonate invoke fan-out.1 \
+  --func fan_out_fan_in \
+  --arg '[{"id":1,"data":"a"},{"id":2,"data":"b"},{"id":3,"data":"c"}]'
+```
+
+
+
+
+
+## Try the recovery story
+
+While the fan-out is mid-flight, kill the worker. Resonate replays only the branches that hadn't checkpointed; everything that completed before the kill is reused from durable promises. The wall time goes up by however long the worker was down, but no branch double-executes.
+
+## Related
+
+- [Recursive factorial](/get-started/examples/recursive-factorial) — the same primitive, applied to a recursive call graph.
+- [Deep research agent](/get-started/examples/deep-research-agent) — fan-out applied to LLM tool calls.
+
+---
+
+---
 url: /get-started/examples/hello-world
 title: Hello world
 ---
