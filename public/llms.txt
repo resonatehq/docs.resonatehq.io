@@ -35,7 +35,7 @@
 - [Async HTTP APIs](/get-started/examples/async-http-api-endpoints): Turn long-running HTTP requests into durable workflows. Clients fire-and-forget, then poll for completion.
 - [Deep research agent](/get-started/examples/deep-research-agent): An LLM agent that decomposes a topic, spawns parallel subagents, and joins their results — every call durable and recoverable.
 - [Cloud Run workers](/get-started/examples/durable-serverless-cloud-run-workers): A Resonate workflow running on Cloud Functions Gen 2 — every sleep checkpoints, every restart resumes.
-- [Lambda workers](/get-started/examples/durable-serverless-lambda-workers): Start a new project that runs a durable worker on AWS Lambda without losing in-flight progress.
+- [Lambda workers](/get-started/examples/durable-serverless-lambda-workers): Lambda receives the request, returns 202, and fires a durable Resonate workflow that can run for hours — past Lambda's timeout ceiling.
 - [Durable sleep](/get-started/examples/durable-sleep): A workflow that sleeps for seconds, days, or months — without holding a process open or rolling your own scheduler.
 - [Human-in-the-loop](/get-started/examples/human-in-the-loop): Pause a Resonate workflow until a human responds — and resume it from any process — using durable promises.
 - [Examples](/get-started/examples): Runnable example projects, one per pattern.

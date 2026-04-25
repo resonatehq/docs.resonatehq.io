@@ -8580,50 +8580,128 @@ title: Lambda workers
 <img src="/images/example-lambda-workers-dark.png" alt="Lambda Workers banner" className="hidden dark:block" />
 <img src="/images/example-lambda-workers-light.png" alt="Lambda Workers banner" className="block dark:hidden" />
 
-Use Resonate to turn an AWS Lambda function into a reliable worker that spans cold starts and retries.
-
-Python example coming soon.
+A Lambda function behind API Gateway acts as a stateless trigger. `POST /process-document` fires a durable Resonate workflow and returns `202` immediately. The workflow itself — download, OCR, LLM analysis, storage, notification — runs on a Resonate worker that doesn't share Lambda's 15-minute ceiling.
 
 
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python and Rust example repos for this pattern are forthcoming.
 
 
 
   
 
 
-## Problem
+## The problem
 
-Lambda functions are ephemeral and stateless, making it difficult to coordinate multi-step work or guarantee at-least-once completion when retries happen.
+Lambda's 15-minute execution ceiling is fine for short tasks but fatal for anything LLM-heavy, OCR-heavy, or human-in-the-loop. Workflows that run for an hour, a day, or a week need state that survives function timeouts — and the conventional escape (Step Functions, EventBridge, DynamoDB-backed state machines) is a lot of glue per workflow.
 
-Orchestration services add cost and complexity, while homegrown state machines are brittle and hard to evolve.
+Restate's answer is to make Lambda the executor — your Lambda function *is* the workflow handler, with Restate Cloud calling back into it for each step. That requires a CDK stack, IAM roles, a Restate Cloud environment, service registration, and the Restate Lambda adapter.
 
-## Solution
+## Resonate's solution
 
-Resonate externalizes workflow state and retries so your Lambda handler can stay simple. Each invocation resumes a durable workflow, allowing you to fan out tasks, await remote systems, and recover automatically after AWS restarts your function.
+Lambda becomes a thin trigger. The handler does one thing: call `resonate.run(...)` to start a durable workflow, then return `202`. The workflow executes on a Resonate worker (long-running Node process) — it can take hours, await human approval, suspend on `ctx.sleep` for days. Status polling is a separate `GET /status/:jobId` Lambda that asks Resonate whether the promise has resolved.
 
-The example project shows how to provision the Lambda, connect it to Resonate, and expose an API Gateway endpoint that feeds work into the workflow.
+No CDK. No service registration. The Lambda calls Resonate the same way it would call any other HTTP API.
 
-## Quick example
+## Code walkthrough
 
+Two pieces inside the Lambda handler — start the workflow, poll its status — and the workflow itself, which lives in a separate file because it doesn't run in Lambda.
 
+### The Lambda handler (the stateless trigger)
 
+```typescript title="src/handler.ts"
+// Module-level: created once per cold start, reused across warm invocations.
+const resonate = new Resonate({ url: process.env["RESONATE_URL"] });
+resonate.register("processDocument", processDocument);
 
+async function handleProcessDocument(event: APIGatewayEvent) {
+  const job: DocumentJob = JSON.parse(event.body ?? "{}");
 
+  // Fire-and-forget: the workflow runs on a Resonate worker, not in Lambda.
+  // resonate.run() returns immediately; Lambda exits without waiting.
+  resonate.run(`doc/${job.jobId}`, processDocument, job).catch(console.error);
 
-    
-
-```typescript
-export function* lambdaWorker(ctx: Context, task: TaskPayload) {
-  const attempt = yield* ctx.run(startExecution, task);
-
-  const outcome = yield* ctx.run(waitForDependency, attempt.id);
-
-  yield* ctx.run(finalizeTask, outcome);
+  return {
+    statusCode: 202,
+    body: JSON.stringify({ status: "accepted", jobId: job.jobId }),
+  };
 }
 
-const resonate = new Resonate();
-resonate.register("lambdaWorker", lambdaWorker);
+async function handleStatus(event: APIGatewayEvent) {
+  const jobId = event.pathParameters?.["jobId"];
+  const handle = await resonate.get(`doc/${jobId}`);
+  if (!(await handle.done())) {
+    return { statusCode: 200, body: JSON.stringify({ status: "processing", jobId }) };
+  }
+  return { statusCode: 200, body: JSON.stringify({ status: "done", result: await handle.result() }) };
+}
 ```
+
+Same `jobId` deduplicates retries — API Gateway can re-fire the request without spawning duplicate work.
+
+### The workflow (runs on the worker, not Lambda)
+
+```typescript title="src/workflow.ts"
+export function* processDocument(ctx: Context, job: DocumentJob) {
+  // Each ctx.run is a checkpoint. Crash mid-step, resume from the next.
+  const pageCount = yield* ctx.run(downloadDocument, job);
+  const text = yield* ctx.run(extractText, job, pageCount);
+  const { summary, data } = yield* ctx.run(analyzeDocument, job, text);
+  const storedAt = yield* ctx.run(storeResults, job, summary, data);
+  const notifiedAt = yield* ctx.run(notifyRequester, job, storedAt);
+
+  return { jobId: job.jobId, summary, extractedData: data, storedAt, notifiedAt };
+}
+```
+
+The five steps are plain async functions invoked through `ctx.run`. Each result is checkpointed in a durable promise, so a worker crash mid-LLM-call resumes from the next step rather than re-running the whole pipeline.
+
+## Run it locally
+
+The repo includes a `local-demo` directory that simulates API Gateway + Lambda + the worker on your machine.
+
+```shell
+git clone https://github.com/resonatehq-examples/example-aws-lambda-ts
+cd example-aws-lambda-ts
+npm install
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — worker"
+npm run worker
+```
+
+```shell title="Terminal 3 — local Lambda + API Gateway simulator"
+npm run local
+```
+
+Trigger a job:
+
+```shell
+curl -X POST http://localhost:3000/process-document \
+  -H "Content-Type: application/json" \
+  -d '{"jobId": "demo-1", "documentUrl": "https://example.com/doc.pdf", "requesterId": "alice", "type": "invoice"}'
+```
+
+Poll for the result:
+
+```shell
+curl http://localhost:3000/status/demo-1
+```
+
+Watch the worker terminal — the five steps log as they checkpoint.
+
+## Try the recovery story
+
+Start the workflow, then kill the worker mid-pipeline (e.g. during the LLM analysis step). Restart the worker. Resonate replays only the steps that hadn't checkpointed; everything before the kill is reused from durable promises. The `GET /status/:jobId` endpoint never reports a failure — it just shows `processing` longer.
+
+## Related
+
+- [Cloud Run workers](/get-started/examples/durable-serverless-cloud-run-workers) — same suspend-and-resume pattern on GCP, with the workflow itself running on the serverless platform.
+- [Async HTTP API endpoints](/get-started/examples/async-http-api-endpoints) — the same fire-and-forget shape on a non-serverless gateway.
 
 ---
 
