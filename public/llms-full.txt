@@ -8524,15 +8524,13 @@ url: /get-started/examples/human-in-the-loop
 title: Human-in-the-loop
 ---
 
-This page reflects `@resonatehq/sdk` v0.10.0 (current on npm).
-
-
 <img src="/images/example-human-in-the-loop-dark.png" alt="Human in the Loop banner" className="hidden dark:block" />
 <img src="/images/example-human-in-the-loop-light.png" alt="Human in the Loop banner" className="block dark:hidden" />
 
-Start a new project that has an existing workflow that waits on input from a human.
+A workflow blocks on a durable promise, prints a callback URL, and resumes the moment a human resolves it — from any process, any machine, any time.
 
 
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Support for the current Resonate Server in the Python SDK is on the way.
 
 
 
@@ -8540,52 +8538,226 @@ Start a new project that has an existing workflow that waits on input from a hum
   
 
 
-## Problem
+## What this demonstrates
 
-You want to build a system that requires human input at certain stages of the process, such as manual review or approval.
+A single workflow function suspends on a durable promise, exposes the promise ID to the outside world, and resumes the moment that promise resolves. The same mechanic doubles as deduplication (re-invoking the same workflow ID reconnects to the in-flight execution) and survives worker crashes (kill the worker mid-block, the workflow recovers on another).
 
-How do you suspend a business process until a human completes a task, and then resume it once the task is done?
+## The problem
 
-## Solution
+Real business processes routinely depend on human input — a manager approves a refund, a reviewer accepts a generated summary, a customer confirms an address. The wait can be seconds or weeks, and the answer can come from email, a webhook, a UI, or a CLI.
 
-Await a Durable Promise to block the process until the human completes their task, then resolve the Promise to resume execution.
+Solving this without a runtime that understands suspension means breaking the process apart by hand: a queue to park the work, a job to wake it up, a database row to track which step you're on, a polling loop somewhere. Every shop reinvents the same coordination layer, and every implementation has its own subtle bugs around retries, races, and recovery.
 
-## Quick example
+## Resonate's solution
+
+Yield a Resonate Promise from inside a workflow and execution suspends until that promise resolves. The promise has a stable ID; anything that knows the ID — another process, a CLI, an HTTP handler, a button click — can resolve it. There's no scheduler, no parking queue, no external state machine.
+
+Because the suspension lives inside a durable promise, it survives process crashes. A worker that's blocking on a human can be killed and the workflow continues on whichever worker picks the task back up.
+
+## Code walkthrough
+
+The example has two processes: a **worker** that runs the workflow, and a **gateway** that starts workflows over HTTP and resolves their blocking promises.
+
+### The blocking workflow
+
+The workflow creates a promise, makes its ID visible (here via an `sendEmail` step that prints a callback URL), then yields the promise. Execution pauses until something resolves it.
 
 
 
 
 
+```typescript title="worker.ts"
+function* foo(ctx: Context, workflowId: string): Generator<any, void, any> {
+  // Create a durable promise. Its ID is derived from the workflow ID.
+  const blockingPromise = yield* ctx.promise();
 
-    
-
-```typescript title="worker/index.ts"
-function* foo(context: Context, workflowId: string): Generator<any, void, any> {
-  // create a promise
-  const blockingPromise = yield* context.promise();
-  // expose the id to the outside world
-  yield* context.run(sendEmail, blockingPromise.id);
+  // Make the promise ID reachable from outside — email, webhook, log, etc.
+  yield* ctx.run(sendEmail, blockingPromise.id);
   console.log(`blocked, waiting on human interaction`);
-  // wait until the promise is resolved
+
+  // Suspend until the promise resolves. Survives crashes.
   yield* blockingPromise;
   console.log(`unblocked, promise resolved`);
-  return;
 }
+
+resonate.register("foo-workflow", foo);
 ```
 
-```typescript title="gateway/index.ts"
-app.get("/unblock-workflow", async (req: Request, res: Response) => {
-  // expose an endpoint to resolve the promise
-  try {
-    // ...
-    // unblock a workflow by resolving a promise
-    await resonate.promises.settle(promiseId, "resolved");
-    // ...
-  } catch (err: any) {
-    // ...
-  }
+
+
+
+
+```python title="worker.py"
+@resonate.register
+def foo(ctx, workflow_id):
+    # Create a durable promise. Its ID is derived from the workflow ID.
+    blocking_promise = yield ctx.promise()
+
+    # Make the promise ID reachable from outside — email, webhook, log, etc.
+    yield ctx.run(send_email, blocking_promise.id)
+    print("blocked, waiting on human interaction")
+
+    # Suspend until the promise resolves. Survives crashes.
+    yield blocking_promise
+    print("unblocked, promise resolved")
+```
+
+
+
+
+
+### Resolving the promise
+
+The gateway exposes two endpoints — one to start a workflow, one to resolve the blocking promise. Resolving the promise unblocks every workflow waiting on that ID, anywhere in the cluster.
+
+
+
+
+
+```typescript title="gateway.ts"
+app.post("/start-workflow", async (req, res) => {
+  const { workflow_id } = req.body ?? {};
+  // Same workflow_id reconnects to a PENDING execution rather than starting a new one.
+  const result = await resonate.rpc(
+    workflow_id,
+    "foo-workflow",
+    workflow_id,
+    resonate.options({ target: "poll://any@workers" }),
+  );
+  res.status(200).json({ message: result });
+});
+
+app.get("/resolve/:promiseId", async (req, res) => {
+  await resonate.promises.settle(req.params.promiseId, "resolved");
+  res.status(200).json({ message: "promise resolved" });
 });
 ```
+
+
+
+
+
+```python title="gateway.py"
+@app.route("/start-workflow", methods=["POST"])
+def start_workflow():
+    data = request.get_json() or {}
+    workflow_id = data["workflow_id"]
+    # Same workflow_id reconnects to a PENDING execution rather than starting a new one.
+    handle = resonate.options(target="poll://worker").rpc(
+        workflow_id, "foo", workflow_id
+    )
+    if handle.done():
+        return jsonify({"message": handle.result()})
+    return jsonify({"message": f"workflow {workflow_id} started"}), 200
+
+@app.route("/resolve/<promise_id>", methods=["GET"])
+def resolve(promise_id):
+    resonate.promises.resolve(id=promise_id)
+    return jsonify({"message": "promise resolved"})
+```
+
+
+
+
+
+## Run it locally
+
+You'll need the Resonate Server, the worker, and the gateway running. Pick the language tab.
+
+
+
+
+
+Clone the repo and install dependencies (uses [Bun](https://bun.sh/)):
+
+```shell
+git clone https://github.com/resonatehq-examples/example-human-in-the-loop-ts
+cd example-human-in-the-loop-ts
+bun install
+```
+
+In separate terminals, start the Resonate Server, the worker, and the gateway:
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — gateway"
+bun run gateway.ts
+```
+
+```shell title="Terminal 3 — worker"
+bun run worker.ts
+```
+
+Start a workflow:
+
+```shell
+curl -X POST http://localhost:5001/start-workflow \
+  -H "Content-Type: application/json" \
+  -d '{"workflow_id": "hitl-001"}'
+```
+
+The worker prints a callback URL. Hit it (or the matching `/resolve/:promiseId` endpoint) to unblock the workflow.
+
+
+
+
+
+Clone the repo and install dependencies (uses [uv](https://docs.astral.sh/uv/)):
+
+```shell
+git clone https://github.com/resonatehq-examples/example-human-in-the-loop-py
+cd example-human-in-the-loop-py
+uv sync
+```
+
+In separate terminals, start the Resonate Server, the worker, and the gateway:
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — gateway"
+uv run gateway
+```
+
+```shell title="Terminal 3 — worker"
+uv run worker
+```
+
+Start a workflow:
+
+```shell
+curl -X POST http://localhost:5001/start-workflow \
+  -H "Content-Type: application/json" \
+  -d '{"workflow_id": "hitl-001"}'
+```
+
+The worker prints a callback URL. Hit it to unblock the workflow.
+
+
+
+
+
+## Try the recovery story
+
+The same setup demonstrates Resonate's load balancing and crash recovery for free. Run multiple workers in parallel:
+
+```shell
+bun run worker.ts &
+bun run worker.ts &
+bun run worker.ts &
+```
+
+Start several workflows with different IDs and watch them spread across the workers. Then kill one of the workers while a workflow is blocked — Resonate reassigns it and the workflow resumes on a survivor.
+
+## Related
+
+- [Load balancing](/get-started/examples/load-balancing) — same primitive, focused on multi-worker dispatch.
+- [Async HTTP API endpoints](/get-started/examples/async-http-api-endpoints) — kicking off long workflows from HTTP without holding the connection.
 
 ---
 

@@ -37,7 +37,7 @@
 - [Cloud Run workers](/get-started/examples/durable-serverless-cloud-run-workers): Start a new project that deploys a durable Resonate worker to Google Cloud Run.
 - [Lambda workers](/get-started/examples/durable-serverless-lambda-workers): Start a new project that runs a durable worker on AWS Lambda without losing in-flight progress.
 - [Durable sleep](/get-started/examples/durable-sleep): Start a new project using a durable sleep use case example.
-- [Human-in-the-loop](/get-started/examples/human-in-the-loop): Start a new project that pauses workflows for human approval.
+- [Human-in-the-loop](/get-started/examples/human-in-the-loop): Pause a Resonate workflow until a human responds — and resume it from anywhere — using durable promises.
 - [Examples](/get-started/examples): Example projects that showcase common Resonate use cases.
 - [Load balancing](/get-started/examples/load-balancing): Start a project that demonstrates Resonate load balancing and recovery.
 - [Redpanda worker](/get-started/examples/redpanda-worker): Start a project that processes Redpanda streams with a durable worker.
