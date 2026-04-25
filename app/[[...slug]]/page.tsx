@@ -198,6 +198,26 @@ export function generateStaticParams() {
   return source.generateParams();
 }
 
+// Top-level docs sections that have a matching `banner-<section>-light.png`
+// asset in /public/images. Pages outside these sections fall back to the
+// default Resonate documentation banner set in app/layout.tsx.
+const SECTION_BANNERS = new Set([
+  "evaluate",
+  "get-started",
+  "develop",
+  "deploy",
+  "learn",
+  "debug",
+]);
+
+function bannerForSlug(slug: string[] | undefined): string {
+  const section = slug?.[0];
+  if (section && SECTION_BANNERS.has(section)) {
+    return `/images/banner-${section}-light.png`;
+  }
+  return "/images/resonate-documentation-banner.png";
+}
+
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const page = source.getPage(slug);
@@ -205,6 +225,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   const title = page.data.title;
   const description = page.data.description || `${title} — Resonate documentation`;
+  const banner = bannerForSlug(slug);
 
   return {
     title,
@@ -214,11 +235,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       description,
       url: `https://docs.resonatehq.io${page.url}`,
       type: "article",
+      images: [{ url: banner, width: 1200, height: 630 }],
     },
     twitter: {
-      card: "summary",
+      card: "summary_large_image",
       title: `${title} — Resonate Docs`,
       description,
+      images: [banner],
     },
     alternates: {
       canonical: `https://docs.resonatehq.io${page.url}`,
