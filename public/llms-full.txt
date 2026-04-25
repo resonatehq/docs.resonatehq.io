@@ -8289,6 +8289,131 @@ Call `/begin` twice with the same `id`. Resonate doesn't run the work twice — 
 ---
 
 ---
+url: /get-started/examples/async-rpc
+title: Async RPC
+---
+
+<img src="/images/example-async-rpc-dark.png" alt="Async RPC banner" className="hidden dark:block" />
+<img src="/images/example-async-rpc-light.png" alt="Async RPC banner" className="block dark:hidden" />
+
+A gateway calls service A, which calls service B, which calls service C. Each step uses Resonate's remote function invocation APIs, so the entire chain is durable — a crash on any service resumes the call without re-running prior steps.
+
+
+Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. TypeScript example repo is forthcoming.
+
+
+
+  
+
+
+## The problem
+
+Cross-service calls inside a request flow are where most distributed systems fall over. The HTTP request from a client is ephemeral — if the client or any service in the chain crashes, the request is lost and has to start over. Teams paper this over with retries, idempotency keys, and saga frameworks; it's a lot of glue, and the seams leak.
+
+## Resonate's solution
+
+Resonate exposes two layers of remote function invocation:
+
+- **`resonate.rpc(...)`** — *ephemeral to durable*. Called from a regular process (like an HTTP handler). The receiving function is durable; the caller is not.
+- **`ctx.rfc(...)`** / **`ctx.rfi(...)`** — *durable to durable*. Called from inside another durable function. Both ends checkpoint, so the chain stays resumable end-to-end.
+
+`rfc` (Remote Function Call) blocks the caller until the result returns. `rfi` (Remote Function Invocation) returns a handle immediately so the caller can do other work and await later.
+
+## Code walkthrough
+
+The example chains a gateway through `service-a` → `service-b`. Each service is a separate process that registers its function with the Resonate Server and listens for invocations.
+
+### The gateway (ephemeral → durable)
+
+```python title="src/gateway.py"
+@app.route("/await-chain", methods=["POST"])
+def await_chain_route_handler():
+    promise_id = "await-chain"
+    # Ephemeral-to-durable: HTTP handler calls into a durable service.
+    handle = resonate.options(target="poll://service-a").rpc(promise_id, "foo")
+    # Block the HTTP response on the chain's result.
+    message = handle.result()
+    return jsonify({"message": message}), 200
+```
+
+`resonate.rpc` dispatches `foo` on whichever process is registered as `service-a`. The promise ID makes the call idempotent — re-running the same handler with the same ID reconnects to the in-flight execution rather than starting a duplicate chain.
+
+### Service A → Service B (durable → durable)
+
+```python title="src/service_a.py"
+@resonate.register
+def foo(ctx):
+    # ctx.rfc dispatches to service-b and waits for the result.
+    # Both sides are durable; the call resumes if either process crashes.
+    result = yield ctx.rfc("bar").options(target="poll://service-b")
+    return result + 1
+```
+
+```python title="src/service_b.py"
+@resonate.register
+def bar(ctx):
+    result = yield ctx.rfc("baz").options(target="poll://service-c")
+    return result + 1
+```
+
+The `ctx.rfc` call inside a durable function is the durable equivalent of `await someService.bar()`. The result is checkpointed, so a worker that completes `bar` and then dies still passes its result back when the chain resumes.
+
+For fire-and-forget calls — kicking off work without blocking on its result — swap `ctx.rfc` for `ctx.rfi`:
+
+```python
+# Detached: dispatch and don't wait.
+ctx.rfi("qux").options(target="poll://service-d")
+```
+
+## Run it locally
+
+The example ships with nine services so you can exercise the await-chain, detached-chain, and fan-out flows.
+
+```shell
+git clone https://github.com/resonatehq-examples/example-async-rpc-py
+cd example-async-rpc-py
+uv sync
+```
+
+```shell title="Terminal 1 — Resonate Server (legacy)"
+brew install resonatehq/tap/resonate
+resonate serve
+```
+
+Start each service in its own terminal:
+
+```shell
+uv run python src/service_a.py
+uv run python src/service_b.py
+# ...service_c through service_i, one terminal each
+```
+
+Start the gateway:
+
+```shell
+uv run python src/gateway.py
+```
+
+Trigger the await-chain:
+
+```shell
+curl -X POST http://localhost:5000/await-chain
+```
+
+The gateway logs each step as the chain hops from `service-a` to `service-b` to `service-c`, returning a final value back through the gateway to the HTTP response.
+
+## Try the recovery story
+
+Trigger the chain, then kill `service-b` while `service-c` is still working. Restart `service-b`. The chain resumes — `service-b` doesn't re-call `service-c` (its result is already checkpointed); it just returns the cached result up the stack to `service-a`.
+
+## Related
+
+- [Async HTTP API endpoints](/get-started/examples/async-http-api-endpoints) — the same ephemeral-to-durable pattern, focused on the HTTP boundary.
+- [Human-in-the-loop](/get-started/examples/human-in-the-loop) — `ctx.promise()` is the suspend-and-resume cousin of `ctx.rfc`.
+
+---
+
+---
 url: /get-started/examples/deep-research-agent
 title: Deep research agent
 ---

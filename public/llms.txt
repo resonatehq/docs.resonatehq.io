@@ -33,6 +33,7 @@
 - [Resonate CLI](/get-started/cli-guide): Learn how to use the Resonate command-line interface effectively.
 - [Async agent tools](/get-started/examples/async-agent-tools): Convert synchronous MCP tool calls into durable async jobs an LLM can fire-and-forget then poll for results.
 - [Async HTTP APIs](/get-started/examples/async-http-api-endpoints): Turn long-running HTTP requests into durable workflows. Clients fire-and-forget, then poll for completion.
+- [Async RPC](/get-started/examples/async-rpc): Functions in different processes call each other through Resonate. Each call is durable; chains survive crashes anywhere along the path.
 - [Deep research agent](/get-started/examples/deep-research-agent): An LLM agent that decomposes a topic, spawns parallel subagents, and joins their results — every call durable and recoverable.
 - [Cloud Run workers](/get-started/examples/durable-serverless-cloud-run-workers): A Resonate workflow running on Cloud Functions Gen 2 — every sleep checkpoints, every restart resumes.
 - [Lambda workers](/get-started/examples/durable-serverless-lambda-workers): Lambda receives the request, returns 202, and fires a durable Resonate workflow that can run for hours — past Lambda's timeout ceiling.
