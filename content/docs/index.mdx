@@ -15,7 +15,7 @@ Resonate is built on three pillars:
 - **Generated & optimized** — Open-source pluggable components plus stack-specific generated servers. AI constrained by formal specs and protocols — not slop, but highly optimized software. Exactly what your stack needs, nothing more.
 - **Absurdly cheap** — Serverless-native architecture means you pay only for active execution. Workloads that cost ~$80K/year on hosted alternatives can run for under $100/year on Resonate. Orders of magnitude, not percentages.
 
-Build agents, workflows, pipelines, and services without thinking about retries or recovery. Write functions that scale across dozens or hundreds of machines and run for hours, days, weeks, or months — in just a few lines of code.
+Build agents, workflows, pipelines, and services without thinking about retries or recovery — in a few lines of code.
 
 ```typescript title="agent.ts — recursive sub-agent loop"
 function* agent(context: Context, prompt: string) {
@@ -48,27 +48,27 @@ function* agent(context: Context, prompt: string) {
 <HomePageGrid>
   <HomePageCategory
     title="Evaluate Resonate"
-    description="If you are considering using Resonate, this section may help you better understand its capabilities and how you can benefit, especially if you are coming from another Durable Execution platform."
+    description="Capabilities, comparisons, and the case for durable execution."
     link="/evaluate"
   />
   <HomePageCategory
     title="Get started"
-    description="If you are ready to start using Resonate, this section will guide you through the initial steps, whether you are starting from scratch or migrating from another platform."
+    description="From scratch or migrating — start here."
     link="/get-started"
   />
   <HomePageCategory
     title="Examples"
-    description="Clone and explore example projects that demonstrate common use cases and patterns like durable sleep, human-in-the-loop, and AI agents."
+    description="Runnable repos: durable sleep, human-in-the-loop, agents, and more."
     link="/get-started/examples"
   />
   <HomePageCategory
     title="Developer reference"
-    description="If you are building applications with Resonate, this section provides quick-reference information on the most commonly used features and APIs."
+    description="APIs and features by SDK."
     link="/develop"
   />
   <HomePageCategory
     title="Operational guidance"
-    description="If you are ready to deploy a Resonate application to production, this section will help you understand how to operate your system, including monitoring, scaling, and troubleshooting."
+    description="Monitoring, scaling, and troubleshooting in production."
     link="/deploy"
   />
 </HomePageGrid>

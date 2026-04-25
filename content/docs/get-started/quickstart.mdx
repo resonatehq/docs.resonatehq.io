@@ -13,13 +13,13 @@ keywords:
 <img src="/images/banner-quickstart-dark.png" alt="Resonate Quickstart banner" className="hidden dark:block" />
 <img src="/images/banner-quickstart-light.png" alt="Resonate Quickstart banner" className="block dark:hidden" />
 
-## Install the Resonate Server & CLI
+## Install the server
 
 ```shell
 brew install resonatehq/tap/resonate
 ```
 
-## Install the Resonate SDK
+## Install the SDK
 
 <Tabs groupId="language" defaultValue="typescript" values={[
   { label: "TypeScript", value: "typescript" },
@@ -59,7 +59,7 @@ pip install resonate-sdk
 
 ```toml title="Cargo.toml"
 [dependencies]
-resonate = { git = "https://github.com/resonatehq/resonate-sdk-rs", branch = "master" }
+resonate = { package = "resonate-sdk", git = "https://github.com/resonatehq/resonate-sdk-rs", branch = "main" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 ```
@@ -68,9 +68,9 @@ serde = { version = "1", features = ["derive"] }
 
 </Tabs>
 
-## Write your first Resonate Function
+## Write a function
 
-A countdown as a loop. Simple, but the function can run for minutes, hours, or days, despite restarts.
+A countdown loop that survives restarts — minutes, hours, or days.
 
 <Tabs groupId="language" defaultValue="typescript" values={[
   { label: "TypeScript", value: "typescript" },
@@ -224,8 +224,6 @@ resonate invoke countdown.1 --func countdown --arg 5 --arg 60
 
 ## Result
 
-You will see the countdown in the terminal
-
 <Tabs groupId="language" defaultValue="typescript" values={[
   { label: "TypeScript", value: "typescript" },
   { label: "Python", value: "python" },
@@ -278,13 +276,13 @@ Done!
 
 ## What to try
 
-After starting the function, inspect the current state of the execution using the `resonate tree` command. The tree command visualizes the call graph of the function execution as a graph of durable promises.
+Inspect the execution with `resonate tree` — it renders the call graph as durable promises.
 
 ```shell
 resonate tree countdown.1
 ```
 
-Now try killing the worker mid-countdown and restarting. **The countdown picks up right where it left off without missing a beat.**
+Now kill the worker mid-countdown and restart. **The countdown resumes where it stopped.**
 
 ## Next steps
 
