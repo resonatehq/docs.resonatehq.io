@@ -12,6 +12,7 @@ import HomePageCategory from "@/components/mdx/HomePageCategory";
 import CloneRepoCard from "@/components/mdx/CloneRepoCard";
 import DocCardList from "@/components/mdx/DocCardList";
 import { Pre } from "@/components/mdx/CodeBlock";
+import { H2, H3, H4 } from "@/components/mdx/Heading";
 import { ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import Image, { type StaticImageData } from "next/image";
 import type { Metadata } from "next";
@@ -47,6 +48,9 @@ const mdxComponents = {
   DocCardList,
   pre: Pre,
   img: MdxImg,
+  h2: H2,
+  h3: H3,
+  h4: H4,
 };
 
 interface PageProps {

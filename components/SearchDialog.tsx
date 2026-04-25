@@ -39,7 +39,7 @@ export default function SearchDialog() {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm text-muted border border-primary/10 hover:border-secondary/30 transition focus-visible:outline-2 focus-visible:outline-secondary"
+        className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm text-muted border border-primary/10 hover:border-primary/30 transition focus-visible:outline-2 focus-visible:outline-secondary"
         aria-label="Quick navigation"
       >
         <Search size={14} />
@@ -51,6 +51,23 @@ export default function SearchDialog() {
 
   const results: SortedResult[] =
     query.data && query.data !== "empty" ? query.data : [];
+
+  // Split text into alternating non-match / match segments around the query,
+  // case-insensitive, escaping regex metachars so a query like "ctx.run()" works.
+  const highlight = (text: string, q: string) => {
+    if (!q) return text;
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const parts = text.split(new RegExp(`(${escaped})`, "ig"));
+    return parts.map((part, i) =>
+      i % 2 === 1 ? (
+        <mark key={i} className="bg-accent-ember/20 text-inherit">
+          {part}
+        </mark>
+      ) : (
+        part
+      )
+    );
+  };
 
   return (
     <>
@@ -119,7 +136,7 @@ export default function SearchDialog() {
                 )}
                 <div className="min-w-0">
                   <p className="font-medium text-bright-gray-900 dark:text-primary truncate">
-                    {hit.content}
+                    {highlight(hit.content, search)}
                   </p>
                 </div>
               </Link>
