@@ -17,8 +17,7 @@ Resonate is built on three pillars:
 
 Build agents, workflows, pipelines, and services without thinking about retries or recovery. Write functions that scale across dozens or hundreds of machines and run for hours, days, weeks, or months — in just a few lines of code.
 
-```typescript
-// An AI agent that recursively spawns subagents
+```typescript title="agent.ts — recursive sub-agent loop"
 function* agent(context: Context, prompt: string) {
   const messages = [{ role: "user", content: prompt }];
   // The agent loop

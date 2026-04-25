@@ -6360,7 +6360,7 @@ resonate.register("foo", function* (ctx: Context) {
 
 ---
 url: /evaluate/coming-from/byode
-title: Coming from building your own durable execution
+title: BYODE
 ---
 
 **Have you built your own queue system, workflow engine, or retry framework?**
@@ -7994,7 +7994,7 @@ resonate promises get order-123 --server https://resonate.yourcompany.com
 
 ---
 url: /get-started/examples/async-agent-tools
-title: Async agent tools use case
+title: Async agent tools
 ---
 
 <img src="/images/example-async-agent-tools-dark.png" alt="Async Agent Tools banner" className="hidden dark:block" />
@@ -8187,7 +8187,7 @@ resonate.start()
 
 ---
 url: /get-started/examples/deep-research-agent
-title: Start with a deep research agent
+title: Deep research agent
 ---
 
 <img src="/images/example-deep-research-agent-dark.png" alt="Deep Research Agent banner" className="hidden dark:block" />
@@ -8329,7 +8329,7 @@ resonate.register("research", research);
 
 ---
 url: /get-started/examples/durable-serverless-cloud-run-workers
-title: Durable serverless Cloud Run workers
+title: Cloud Run workers
 ---
 
 <img src="/images/example-cloud-run-workers-dark.png" alt="Cloud Run Workers banner" className="hidden dark:block" />
@@ -8382,7 +8382,7 @@ resonate.register("cloudRunWorker", cloudRunWorker);
 
 ---
 url: /get-started/examples/durable-serverless-lambda-workers
-title: Durable serverless Lambda workers
+title: Lambda workers
 ---
 
 <img src="/images/example-lambda-workers-dark.png" alt="Lambda Workers banner" className="hidden dark:block" />
@@ -8437,7 +8437,7 @@ resonate.register("lambdaWorker", lambdaWorker);
 
 ---
 url: /get-started/examples/durable-sleep
-title: Durable sleep use case
+title: Durable sleep
 ---
 
 <img src="/images/example-durable-sleep-dark.png" alt="Durable Sleep banner" className="hidden dark:block" />
@@ -8521,7 +8521,7 @@ resonate.register(sleeping_workflow).unwrap();
 
 ---
 url: /get-started/examples/human-in-the-loop
-title: Human-in-the-loop use case
+title: Human-in-the-loop
 ---
 
 This page reflects `@resonatehq/sdk` v0.10.0 (current on npm).
@@ -8600,7 +8600,7 @@ Clone and explore example projects that demonstrate common use cases and pattern
 
 ---
 url: /get-started/examples/load-balancing
-title: Start with load balanced workers
+title: Load balancing
 ---
 
 <img src="/images/example-load-balancing-dark.png" alt="Load Balancing banner" className="hidden dark:block" />
@@ -8716,7 +8716,7 @@ resonate.rpc(
 
 ---
 url: /get-started/examples/redpanda-worker
-title: Redpanda processing worker
+title: Redpanda worker
 ---
 
 <img src="/images/example-redpanda-worker-dark.png" alt="Redpanda Worker banner" className="hidden dark:block" />
@@ -9108,8 +9108,7 @@ Resonate is built on three pillars:
 
 Build agents, workflows, pipelines, and services without thinking about retries or recovery. Write functions that scale across dozens or hundreds of machines and run for hours, days, weeks, or months — in just a few lines of code.
 
-```typescript
-// An AI agent that recursively spawns subagents
+```typescript title="agent.ts — recursive sub-agent loop"
 function* agent(context: Context, prompt: string) {
   const messages = [{ role: "user", content: prompt }];
   // The agent loop
