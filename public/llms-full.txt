@@ -4639,7 +4639,7 @@ Each SDK page is self-contained with complete examples and API references. Pick 
 
 ---
 url: /develop/python
-title: Python SDK API guidance
+title: Python SDK skills
 ---
 
 This page reflects `resonate-sdk` v0.6.7 (current on PyPI). APIs are subject to change in future releases.
@@ -5183,7 +5183,7 @@ Many of Context's methods support options on the call you are making.
 
 ---
 url: /develop/rust
-title: Skill Guide | Rust SDK
+title: Rust SDK skills
 ---
 
 The Rust SDK is v0.1.0 and in active development. APIs may change between releases. It is not yet published on crates.io.
@@ -5620,7 +5620,7 @@ async fn my_workflow(ctx: &Context) -> Result<()> {
 
 ---
 url: /develop/typescript
-title: Skill Guide | TypeScript SDK
+title: TypeScript SDK skills
 ---
 
 This page reflects `@resonatehq/sdk` v0.10.0 (current on npm). APIs are subject to change in future releases.
@@ -6961,7 +6961,7 @@ In essence, DBOS focuses on single-instance durability without addressing scalab
 
 ---
 url: /evaluate/coming-from
-title: Coming from other systems
+title: Coming from
 ---
 
 
@@ -7634,7 +7634,7 @@ Ultimately, as a developer, you will find many areas where Resonate has chosen t
 
 ---
 url: /evaluate/how-it-works
-title: How Resonate works
+title: How it works
 ---
 
 OK, so now that you know _why_ Resonate is useful, let's dive into _how_ it works.
@@ -7758,7 +7758,7 @@ The Async RPC protocol, the Distributed Async Await specification, and the open-
 
 ---
 url: /get-started/cli-guide
-title: Using the Resonate CLI
+title: Resonate CLI
 ---
 
 The Resonate CLI is your primary tool for running the server, managing Durable Promises, and interacting with the Resonate system.
@@ -8591,7 +8591,7 @@ app.get("/unblock-workflow", async (req: Request, res: Response) => {
 
 ---
 url: /get-started/examples
-title: Examples | Get started with Resonate
+title: Examples
 ---
 
 Clone and explore example projects that demonstrate common use cases and patterns.
@@ -8822,7 +8822,7 @@ And if you have experience with either Temporal or DBOS you may want to review o
 
 ---
 url: /get-started/quickstart
-title: Quickstart | Get started with Resonate
+title: Quickstart
 ---
 
 ![quickstart banner](/images/quickstart-banner.png)
@@ -8855,7 +8855,7 @@ npm install @resonatehq/sdk
 
 
 
-The Python SDK (v0.6.7) currently requires the legacy Resonate server. It is not yet compatible with `resonate dev` (server v0.9.x). See the [Python SDK guide](/docs/develop/python) for legacy server setup.
+The Python SDK (v0.6.7) currently requires the legacy Resonate server. It is not yet compatible with `resonate dev` (server v0.9.x). See the [Python SDK guide](/develop/python) for legacy server setup.
 
 
 
@@ -9095,8 +9095,8 @@ url: /index
 title: Home
 ---
 
-<img src="/images/home-hero-dark.png" alt="Resonate" className="hidden dark:block" />
-<img src="/images/home-hero-light.png" alt="Resonate" className="block dark:hidden" />
+<img src="/images/home-hero-dark.png" alt="Resonate" className="home-hero hidden dark:block" />
+<img src="/images/home-hero-light.png" alt="Resonate" className="home-hero block dark:hidden" />
 
 **Resonate is the durable execution engine that agents build with, deploy on, and operate.** It is the implementation of a distributed async/await programming model: a formal, language- and transport-agnostic protocol for writing functions that survive process restarts, run for hours or months, and coordinate across many machines.
 

@@ -19,18 +19,18 @@
 - [Upgrade server](/deploy/upgrade-server): Upgrade the Resonate server to a new version.
 - [Constraints and gotchas](/develop/constraints): Understanding the rules and limitations when building with Resonate.
 - [Develop with Resonate](/develop): Build distributed applications without the distributed systems complexity.
-- [Python SDK API guidance](/develop/python): APIs that stay simple, even when your use cases aren’t
-- [Skill Guide | Rust SDK](/develop/rust): APIs that stay simple, even when your use cases aren't
-- [Skill Guide | TypeScript SDK](/develop/typescript): APIs that stay simple, even when your use cases aren’t
+- [Python SDK skills](/develop/python): APIs that stay simple, even when your use cases aren’t
+- [Rust SDK skills](/develop/rust): APIs that stay simple, even when your use cases aren't
+- [TypeScript SDK skills](/develop/typescript): APIs that stay simple, even when your use cases aren’t
 - [Coming from building your own durable execution](/evaluate/coming-from/byode): Compare Resonate with building your own durable execution stack.
 - [Coming from DBOS](/evaluate/coming-from/dbos): Compare Resonate with DBOS to understand key differences and similarities.
-- [Coming from other systems](/evaluate/coming-from): Compare Resonate with other durable execution platforms and approaches.
+- [Coming from](/evaluate/coming-from): Compare Resonate with other durable execution platforms and approaches.
 - [Coming from Restate](/evaluate/coming-from/restate): Compare Resonate with Restate to understand how the platforms differ.
 - [Coming from Temporal](/evaluate/coming-from/temporal): If you are coming from Temporal, this guide will help you understand the differences and similarities between Temporal and Resonate.
-- [How Resonate works](/evaluate/how-it-works): Architecture overview of checkpoints, replay, and message flow in Resonate.
+- [How it works](/evaluate/how-it-works): Architecture overview of checkpoints, replay, and message flow in Resonate.
 - [Evaluate Resonate](/evaluate): Get started with Resonate by evaluating its features and capabilities.
 - [Why Resonate](/evaluate/why-resonate): Resonate is the durable execution engine that agents build with, deploy on, and operate — at a fraction of the cost of anything else.
-- [Using the Resonate CLI](/get-started/cli-guide): Learn how to use the Resonate command-line interface effectively.
+- [Resonate CLI](/get-started/cli-guide): Learn how to use the Resonate command-line interface effectively.
 - [Async agent tools use case](/get-started/examples/async-agent-tools): Start a new project using the Claude async MCP tool server example.
 - [Async HTTP API endpoints](/get-started/examples/async-http-api-endpoints): Start a new project that turns HTTP endpoints into durable asynchronous workflows.
 - [Start with a deep research agent](/get-started/examples/deep-research-agent): Start a new project using the deep research agent template.
@@ -38,11 +38,11 @@
 - [Durable serverless Lambda workers](/get-started/examples/durable-serverless-lambda-workers): Start a new project that runs a durable worker on AWS Lambda without losing in-flight progress.
 - [Durable sleep use case](/get-started/examples/durable-sleep): Start a new project using a durable sleep use case example.
 - [Human-in-the-loop use case](/get-started/examples/human-in-the-loop): Start a new project that pauses workflows for human approval.
-- [Examples | Get started with Resonate](/get-started/examples): Example projects that showcase common Resonate use cases.
+- [Examples](/get-started/examples): Example projects that showcase common Resonate use cases.
 - [Start with load balanced workers](/get-started/examples/load-balancing): Start a project that demonstrates Resonate load balancing and recovery.
 - [Redpanda processing worker](/get-started/examples/redpanda-worker): Start a project that processes Redpanda streams with a durable worker.
 - [Get started with Resonate](/get-started): Start here for quickstart steps, migration guidance, and example projects.
-- [Quickstart | Get started with Resonate](/get-started/quickstart): Install the server and SDK and run your first Resonate workflow.
+- [Quickstart](/get-started/quickstart): Install the server and SDK and run your first Resonate workflow.
 - [Home](/index): Resonate — agent-native durable execution. Generated, optimized, absurdly cheap.
 - [Run a Resonate Server on a DigitalOcean Droplet](/learn/deployments/digital-ocean-droplet): Instructions for deploying a Resonate Server on a DigitalOcean Droplet.
 - [Deploy a Countdown Workflow to Google Cloud Run](/learn/deployments/google-cloud-run): Provision a Resonate Server on Cloud Run, deploy a serverless countdown worker, and trigger long-running notifications.
