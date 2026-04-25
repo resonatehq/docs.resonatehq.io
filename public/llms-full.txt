@@ -8530,7 +8530,7 @@ title: Human-in-the-loop
 A workflow blocks on a durable promise, prints a callback URL, and resumes the moment a human resolves it — from any process, any machine, any time.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Support for the current Resonate Server in the Python SDK is on the way.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development — `example-human-in-the-loop-rs` is forthcoming; the Rust code below reflects the current SDK API.
 
 
 
@@ -8606,6 +8606,30 @@ def foo(ctx, workflow_id):
 
 
 
+```rust title="src/main.rs"
+use resonate::prelude::*;
+
+#[resonate::function]
+async fn foo(ctx: &Context, workflow_id: String) -> Result<()> {
+    // Latent durable promise — no function backing it, resolved externally.
+    let blocking_promise = ctx.promise::<bool>();
+    let promise_id = blocking_promise.id().await?;
+
+    // Make the promise ID reachable from outside — email, webhook, log, etc.
+    ctx.run(send_email, promise_id).await?;
+    println!("blocked, waiting on human interaction");
+
+    // Suspend until the promise resolves. Survives crashes.
+    let _approved = blocking_promise.await?;
+    println!("unblocked, promise resolved");
+    Ok(())
+}
+```
+
+
+
+
+
 ### Resolving the promise
 
 The gateway exposes two endpoints — one to start a workflow, one to resolve the blocking promise. Resolving the promise unblocks every workflow waiting on that ID, anywhere in the cluster.
@@ -8654,6 +8678,41 @@ def start_workflow():
 def resolve(promise_id):
     resonate.promises.resolve(id=promise_id)
     return jsonify({"message": "promise resolved"})
+```
+
+
+
+
+
+```rust title="src/gateway.rs"
+use axum::{extract::{Path, State}, Json, response::IntoResponse};
+use resonate::prelude::*;
+use serde::Deserialize;
+use serde_json::json;
+
+#[derive(Deserialize)]
+struct StartReq { workflow_id: String }
+
+async fn start_workflow(
+    State(resonate): State,
+    Json(req): Json,
+) -> impl IntoResponse {
+    // Same workflow_id reconnects to a PENDING execution rather than starting a new one.
+    let result: String = resonate
+        .rpc(&req.workflow_id, "foo-workflow", &req.workflow_id)
+        .target("poll://any@workers")
+        .await
+        .unwrap();
+    Json(json!({ "message": result }))
+}
+
+async fn resolve(
+    State(resonate): State,
+    Path(promise_id): Path,
+) -> impl IntoResponse {
+    resonate.promises.resolve(&promise_id, json!(true)).await.unwrap();
+    Json(json!({ "message": "promise resolved" }))
+}
 ```
 
 
@@ -8765,6 +8824,9 @@ Start several workflows with different IDs and watch them spread across the work
 url: /get-started/examples
 title: Examples
 ---
+
+<img src="/images/banner-examples-dark.png" alt="Resonate Examples banner" className="hidden dark:block" />
+<img src="/images/banner-examples-light.png" alt="Resonate Examples banner" className="block dark:hidden" />
 
 Clone and explore example projects that demonstrate common use cases and patterns.
 
@@ -8995,7 +9057,8 @@ url: /get-started/quickstart
 title: Quickstart
 ---
 
-![quickstart banner](/images/quickstart-banner.png)
+<img src="/images/banner-quickstart-dark.png" alt="Resonate Quickstart banner" className="hidden dark:block" />
+<img src="/images/banner-quickstart-light.png" alt="Resonate Quickstart banner" className="block dark:hidden" />
 
 ## Install the Resonate Server & CLI
 

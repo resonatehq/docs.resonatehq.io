@@ -16,7 +16,7 @@ keywords:
 A workflow blocks on a durable promise, prints a callback URL, and resumes the moment a human resolves it — from any process, any machine, any time.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Support for the current Resonate Server in the Python SDK is on the way.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development — `example-human-in-the-loop-rs` is forthcoming; the Rust code below reflects the current SDK API.
 </Callout>
 
 <CloneRepoGrid>
@@ -62,6 +62,7 @@ The workflow creates a promise, makes its ID visible (here via an `sendEmail` st
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -104,6 +105,30 @@ def foo(ctx, workflow_id):
 
 </TabItem>
 
+<TabItem value="rust">
+
+```rust title="src/main.rs"
+use resonate::prelude::*;
+
+#[resonate::function]
+async fn foo(ctx: &Context, workflow_id: String) -> Result<()> {
+    // Latent durable promise — no function backing it, resolved externally.
+    let blocking_promise = ctx.promise::<bool>();
+    let promise_id = blocking_promise.id().await?;
+
+    // Make the promise ID reachable from outside — email, webhook, log, etc.
+    ctx.run(send_email, promise_id).await?;
+    println!("blocked, waiting on human interaction");
+
+    // Suspend until the promise resolves. Survives crashes.
+    let _approved = blocking_promise.await?;
+    println!("unblocked, promise resolved");
+    Ok(())
+}
+```
+
+</TabItem>
+
 </Tabs>
 
 ### Resolving the promise
@@ -116,6 +141,7 @@ The gateway exposes two endpoints — one to start a workflow, one to resolve th
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -160,6 +186,41 @@ def start_workflow():
 def resolve(promise_id):
     resonate.promises.resolve(id=promise_id)
     return jsonify({"message": "promise resolved"})
+```
+
+</TabItem>
+
+<TabItem value="rust">
+
+```rust title="src/gateway.rs"
+use axum::{extract::{Path, State}, Json, response::IntoResponse};
+use resonate::prelude::*;
+use serde::Deserialize;
+use serde_json::json;
+
+#[derive(Deserialize)]
+struct StartReq { workflow_id: String }
+
+async fn start_workflow(
+    State(resonate): State<Resonate>,
+    Json(req): Json<StartReq>,
+) -> impl IntoResponse {
+    // Same workflow_id reconnects to a PENDING execution rather than starting a new one.
+    let result: String = resonate
+        .rpc(&req.workflow_id, "foo-workflow", &req.workflow_id)
+        .target("poll://any@workers")
+        .await
+        .unwrap();
+    Json(json!({ "message": result }))
+}
+
+async fn resolve(
+    State(resonate): State<Resonate>,
+    Path(promise_id): Path<String>,
+) -> impl IntoResponse {
+    resonate.promises.resolve(&promise_id, json!(true)).await.unwrap();
+    Json(json!({ "message": "promise resolved" }))
+}
 ```
 
 </TabItem>
