@@ -206,7 +206,6 @@ const SECTION_BANNERS = new Set([
   "get-started",
   "develop",
   "deploy",
-  "learn",
   "debug",
 ]);
 

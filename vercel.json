@@ -32,6 +32,46 @@
       "permanent": true
     },
     {
+      "source": "/learn/python-sdk/website-summarization-agent",
+      "destination": "/get-started/examples",
+      "permanent": true
+    },
+    {
+      "source": "/learn/typescript-sdk/website-summarization-agent",
+      "destination": "/get-started/examples",
+      "permanent": true
+    },
+    {
+      "source": "/learn/deployments/google-cloud-run",
+      "destination": "/get-started/examples/durable-serverless-cloud-run-workers",
+      "permanent": true
+    },
+    {
+      "source": "/learn/deployments/digital-ocean-droplet",
+      "destination": "/deploy/run-server",
+      "permanent": true
+    },
+    {
+      "source": "/learn/deployments/:path*",
+      "destination": "/deploy",
+      "permanent": true
+    },
+    {
+      "source": "/learn/deployments",
+      "destination": "/deploy",
+      "permanent": true
+    },
+    {
+      "source": "/learn/:path*",
+      "destination": "/get-started/examples",
+      "permanent": true
+    },
+    {
+      "source": "/learn",
+      "destination": "/get-started/examples",
+      "permanent": true
+    },
+    {
       "source": "/operate/cli-reference/:path*",
       "destination": "/get-started/cli-guide",
       "permanent": true

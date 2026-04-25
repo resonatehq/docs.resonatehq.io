@@ -6,7 +6,6 @@
     "get-started",
     "develop",
     "debug",
-    "deploy",
-    "learn"
+    "deploy"
   ]
 }
