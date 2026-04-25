@@ -42,6 +42,7 @@
 - [Examples](/get-started/examples): Runnable example projects, one per pattern.
 - [Kafka worker](/get-started/examples/kafka-worker): A worker that consumes Kafka, dispatches durable workflows for each message, and resumes cleanly after crashes — Redpanda is a drop-in replacement.
 - [Load balancing](/get-started/examples/load-balancing): Run multiple workers in a group; Resonate dispatches work to whichever is available, recovers it when one dies.
+- [Recursive factorial](/get-started/examples/recursive-factorial): A workflow that calls itself with `ctx.rpc` — recursion is automatically distributed and durable.
 - [Get started with Resonate](/get-started): Quickstart, examples, and migration guides.
 - [Quickstart](/get-started/quickstart): Install the server and SDK and run your first Resonate workflow.
 - [Home](/index): Resonate — agent-native durable execution. Generated, optimized, absurdly cheap.
