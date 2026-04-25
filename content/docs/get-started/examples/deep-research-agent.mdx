@@ -1,117 +1,63 @@
 ---
 title: Deep research agent
-pageTitle: Start with a deep research agent
-description: Start a new project using the deep research agent template.
+pageTitle: Recursive deep research with durable subagents
+description: An LLM agent that decomposes a topic, spawns parallel subagents, and joins their results — every call durable and recoverable.
 keywords:
-  - get-started
-  - new-project
-  - research-agent
-  - template
+  - ai
+  - agent
+  - recursion
+  - openai
+  - durable-workflow
+  - examples
 ---
 
 <img src="/images/example-deep-research-agent-dark.png" alt="Deep Research Agent banner" className="hidden dark:block" />
 <img src="/images/example-deep-research-agent-light.png" alt="Deep Research Agent banner" className="block dark:hidden" />
 
-Start a new project using an AI agent loop (deep research assistant) use case example.
+A research agent receives a broad topic, asks an LLM to break it into 2–3 subtopics, and recursively dispatches each subtopic to itself. Every LLM call and every recursive subagent is a durable promise — kill the worker mid-research, the tree resumes from the last unanswered branch.
 
-
-
+<Callout type="info" title="SDK versions">
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server.
+</Callout>
 
 <CloneRepoGrid>
   <CloneRepoCard
-    sdk="Python SDK"
-    description="Deep research agent"
-    link="https://github.com/resonatehq-examples/example-openai-deep-research-agent-py"
+    sdk="TypeScript SDK"
+    description="Recursive research agent with parallel subagents via beginRpc."
+    link="https://github.com/resonatehq-examples/example-openai-deep-research-agent-ts"
   />
   <CloneRepoCard
-    sdk="TypeScript SDK"
-    description="Deep research agent"
-    link="https://github.com/resonatehq-examples/example-openai-deep-research-agent-ts"
+    sdk="Python SDK"
+    description="Recursive research agent with parallel subagents via ctx.rfi."
+    link="https://github.com/resonatehq-examples/example-openai-deep-research-agent-py"
   />
 </CloneRepoGrid>
 
-## Problem
+## The problem
 
-Researching complex topics requires breaking them into subtopics and exploring each deeply — a process that’s hard to scale manually.
+Real research is recursive. A topic like "distributed systems" decomposes into "consensus", "replication", "failure detection" — each of which decomposes again. Doing this by hand is tedious; doing it with a single long LLM call hits context limits, takes forever, and can't recover from a transient failure.
 
-## Solution
+Implementing the loop yourself means handling parallelism, retries, partial failure, and crash recovery on top of the LLM logic. Most agents skip recovery entirely — one timeout and the whole tree is lost.
 
-The Distributed Recursive Deep Research Agent (powered by Resonate + OpenAI) automates this by decomposing topics and recursively researching subtopics in parallel with minimal code.
+## Resonate's solution
 
-## Quick example
+Define one durable function — `research(topic, depth)` — that prompts the LLM, dispatches subagents recursively when the LLM calls a tool, and joins the results. Each LLM call checkpoints. Each subagent is its own durable execution. Crashes mid-tree resume from the last unfinished branch; nothing re-runs that already finished.
 
+## Code walkthrough
 
-
+The agent is a single recursive function. Its only inputs are a topic and a depth budget; depth gates whether the LLM can call the `research` tool again or must summarize.
 
 <Tabs
     groupId="preferred-language"
-    defaultValue="python"
+    defaultValue="typescript"
     values={[
-        {label: 'Python', value: 'python'},
         {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
     ]}>
 
-    <TabItem value="python" >
+<TabItem value="typescript">
 
-```python title="research.py"
-from resonate import Context, Resonate
-from openai import OpenAI
-
-resonate = Resonate()
-aiclient = OpenAI()
-
-@resonate.register
-def research(ctx: Context, topic: str, depth: int):
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Research {topic}"}
-    ]
-    
-    while True:
-        # Prompt LLM (only allow tool calls if depth > 0)
-        message = yield ctx.lfc(prompt, messages, depth > 0)
-        messages.append(message)
-        
-        # Handle parallel tool calls recursively
-        if message.tool_calls:
-            handles = []
-            for tool_call in message.tool_calls:
-                tool_args = json.loads(tool_call.function.arguments)
-                if tool_call.function.name == "research":
-                    # Recursively research subtopic (depth - 1)
-                    handle = yield ctx.rfi(
-                        research, 
-                        tool_args["topic"], 
-                        depth - 1
-                    )
-                    handles.append((tool_call, handle))
-            
-            # Await all subtopic results
-            for (tool_call, handle) in handles:
-                result = yield handle
-                messages.append({
-                    "role": "tool", 
-                    "tool_call_id": tool_call.id, 
-                    "content": result
-                })
-        else:
-            return message.content
-
-# Run the research
-result = research.run("research.1", "What are distributed systems", depth=2)
-```
-
-  </TabItem>
-
-    <TabItem value="typescript" >
-
-```typescript title="agent.ts"
-import { Resonate, type Context } from "@resonatehq/sdk";
-import OpenAI from "openai";
-
-const resonate = new Resonate();
-const aiclient = new OpenAI();
-
+```typescript title="src/agent.ts"
 export function* research(
   ctx: Context,
   topic: string,
@@ -123,34 +69,24 @@ export function* research(
   ];
 
   while (true) {
-    // Prompt LLM (only allow tool calls if depth > 0)
+    // Prompt the LLM. Tool access only when depth > 0.
     const message = yield* ctx.run(prompt, messages, depth > 0);
     messages.push(message);
 
-    // Handle parallel tool calls recursively
     if (message.tool_calls) {
+      // Fan out: dispatch one durable subagent per tool call, in parallel.
       const handles = [];
       for (const tool_call of message.tool_calls) {
-        const tool_args = JSON.parse(tool_call.function.arguments);
+        const args = JSON.parse(tool_call.function.arguments);
         if (tool_call.function.name === "research") {
-          // Recursively research subtopic (depth - 1)
-          const handle = yield* ctx.beginRpc(
-            research,
-            tool_args.topic,
-            depth - 1,
-          );
+          const handle = yield* ctx.beginRpc(research, args.topic, depth - 1);
           handles.push([tool_call, handle]);
         }
       }
-      
-      // Await all subtopic results
+      // Fan in: each handle is durable; await them in order.
       for (const [tool_call, handle] of handles) {
         const result = yield* handle;
-        messages.push({
-          role: "tool",
-          tool_call_id: tool_call.id,
-          content: result,
-        });
+        messages.push({ role: "tool", tool_call_id: tool_call.id, content: result });
       }
     } else {
       return message.content || "";
@@ -161,6 +97,108 @@ export function* research(
 resonate.register("research", research);
 ```
 
-  </TabItem>
+</TabItem>
+
+<TabItem value="python">
+
+```python title="research.py"
+@resonate.register
+def research(ctx: Context, topic: str, depth: int):
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"Research {topic}"},
+    ]
+
+    while True:
+        # Prompt the LLM. Tool access only when depth > 0.
+        message = yield ctx.lfc(prompt, messages, depth > 0)
+        messages.append(message)
+
+        if message.tool_calls:
+            # Fan out: dispatch one durable subagent per tool call, in parallel.
+            handles = []
+            for tool_call in message.tool_calls:
+                args = json.loads(tool_call.function.arguments)
+                if tool_call.function.name == "research":
+                    handle = yield ctx.rfi(research, args["topic"], depth - 1)
+                    handles.append((tool_call, handle))
+            # Fan in: each handle is durable; await them in order.
+            for (tool_call, handle) in handles:
+                result = yield handle
+                messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
+        else:
+            return message.content
+```
+
+</TabItem>
 
 </Tabs>
+
+The recursion is the whole pattern. `ctx.beginRpc` (TS) / `ctx.rfi` (Python) dispatches a child `research` execution and returns a handle immediately — children run in parallel, each checkpointing on its own LLM calls. The outer loop awaits handles in order and feeds their results back to the LLM as tool messages.
+
+## Run it locally
+
+You need an OpenAI API key, the Resonate Server, and the worker.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-openai-deep-research-agent-ts
+cd example-openai-deep-research-agent-ts
+npm install
+export OPENAI_API_KEY=sk-...
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — agent"
+npx tsx src/index.ts
+```
+
+The agent prints a recursive trace as it decomposes the topic. Try killing the worker mid-research and restarting — execution resumes from the last unfinished branch.
+
+</TabItem>
+
+<TabItem value="python">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-openai-deep-research-agent-py
+cd example-openai-deep-research-agent-py
+uv sync
+export OPENAI_API_KEY=sk-...
+```
+
+```shell title="Terminal 1 — Resonate Server (legacy)"
+brew install resonatehq/tap/resonate
+resonate serve
+```
+
+```shell title="Terminal 2 — agent"
+uv run python research.py
+```
+
+The agent prints a recursive trace as it decomposes the topic. Try killing the worker mid-research and restarting — execution resumes from the last unfinished branch.
+
+</TabItem>
+
+</Tabs>
+
+## Try the depth dial
+
+The `depth` argument bounds the recursion. `depth=0` forces the LLM to summarize without calling the research tool. `depth=1` allows one layer of subagents but their children must summarize. Increase the depth and watch the call graph grow — `resonate tree research.1` from the CLI renders the full durable structure.
+
+## Related
+
+- [Async agent tools](/get-started/examples/async-agent-tools) — exposing durable workflows to an LLM via MCP.
+- [Human-in-the-loop](/get-started/examples/human-in-the-loop) — pausing an agent until a human approves the next step.
