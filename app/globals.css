@@ -33,14 +33,17 @@
 }
 
 @layer components {
-  /* Code blocks — warm aesthetic in light mode, subtle in dark */
+  /* Code blocks — warm aesthetic in light mode, subtle in dark.
+     `!` overrides Shiki's inline `style="background-color"` on <pre>, which
+     would otherwise leak the theme's own (#fff / #24292e) and seam against
+     the wrapper. Light/dark values match resonatehq.io for parity. */
   pre {
     @apply rounded-none border text-sm;
-    @apply border-bright-gray-200 bg-[#FDFCF9];
+    @apply border-bright-gray-200 !bg-[#FDFCF9];
   }
 
   .dark pre {
-    @apply border-primary/10 bg-surface-elevated;
+    @apply border-primary/10 !bg-surface-elevated;
   }
 
   pre code {
@@ -83,7 +86,7 @@
   }
 
   .docs-content p {
-    @apply font-serif leading-relaxed mb-4;
+    @apply font-serif text-[17px] leading-relaxed mb-4;
     @apply text-bright-gray-700 dark:text-primary;
   }
 
@@ -91,9 +94,14 @@
     @apply text-secondary underline underline-offset-2 hover:text-accent-teal-400 transition-colors;
   }
 
+  /* Card/RepoCard grids opt out of body-link styling via .not-prose. */
+  .docs-content .not-prose a {
+    @apply no-underline text-inherit hover:text-inherit;
+  }
+
   .docs-content ul,
   .docs-content ol {
-    @apply font-serif mb-4 pl-6;
+    @apply font-serif text-[17px] mb-4 pl-6;
     @apply text-bright-gray-700 dark:text-primary;
   }
 
@@ -110,7 +118,7 @@
   }
 
   .docs-content blockquote {
-    @apply border-l-4 pl-4 italic my-4;
+    @apply border-l-4 pl-4 italic my-4 text-[17px];
     @apply border-bright-gray-200 text-bright-gray-500 dark:border-secondary/30 dark:text-muted;
   }
 
