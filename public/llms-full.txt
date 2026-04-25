@@ -9142,9 +9142,10 @@ title: Load balancing
 <img src="/images/example-load-balancing-dark.png" alt="Load Balancing banner" className="hidden dark:block" />
 <img src="/images/example-load-balancing-light.png" alt="Load Balancing banner" className="block dark:hidden" />
 
-Start a new project using a load balancing use case example.
+Run several workers in the same group. Calls to `target: "poll://any@<group>"` get dispatched to whichever worker claims them first. When a worker dies mid-execution, Resonate reassigns the work to a survivor — no service registry, no leader election, no glue.
 
 
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server.
 
 
 
@@ -9152,101 +9153,186 @@ Start a new project using a load balancing use case example.
   
 
 
-## Problem
+## The problem
 
-A single worker or microservice instance will eventually become overwhelmed if there is too much work sent its way in a short amount of time.
+A single worker eventually runs out of capacity, and a single worker is also a single point of failure. The textbook fix is to run several — but that opens its own can: which worker has spare capacity, how does the caller find one, what happens when the chosen worker dies mid-job, who takes the work over?
 
-There are generally two ways to solve for this:
+Most teams end up bolting service discovery, load balancing, and recovery onto application code in three different places, each with its own bugs.
 
-1. Increase the compute capability for the single worker / microservice.
-2. Increase the number of worker / microservice instances.
+## Resonate's solution
 
-There is an upper limit to the first option, and it is a single point of failure if there is only ever one instance running.
+Resonate ships service discovery, load balancing, and crash recovery behind one primitive: the `target` schema. Workers in the same group long-poll the server; the caller dispatches with `target: "poll://any@<group>"` and the server hands the work to whichever worker is ready. If that worker dies before completing, the workflow's durable promise stays open and another worker in the group picks it up.
 
-Therefore, the second option tends to be the desired approach, because in theory you can scale the number of instances indefinitely. However, this introduces another problem: service discovery and load balancing — that is, knowing which worker / application node has the capacity to take more work.
+## Code walkthrough
 
-But what happens if a worker/microservice instance crashes after claiming work and beginning to make progress on it?
+Two pieces: a **worker** that registers a durable function and joins a group, and a **client** that dispatches work to that group.
 
-How does the system detect the failure and know where to recover that work?
+### The worker group
 
-These are distributed system engineering issues that developers are commonly forced to solve again and again. Developers are often forced to mix messy service discovery, load balancing, and recovery logic into their application or business logic. This makes for a poor developer experience.
-
-## Solution
-
-Resonate provides built-in service discovery, load balancing, and recovery, all exposed through a simple RPC API and target schema.
-
-## Quick example
+Each worker process is identical except for the `group` it joins. Run as many as you want — they share work automatically.
 
 
 
 
-
-
-    
-
-```python title="worker.py"
-from resonate import Resonate
-
-# Initialize worker as part of "worker-group"
-resonate = Resonate.remote(
-    group="worker-group",
-)
-
-@resonate.register
-def compute_something(_, id, compute_cost):
-    print(f"starting computation {id}")
-    time.sleep(compute_cost)  # Simulate work
-    print(f"computed something that cost {compute_cost} seconds")
-    return
-
-resonate.start()
-```
-
-```python title="client.py"
-# Invoke any worker in the group
-resonate.run(
-    id,
-    compute_something,
-    id,
-    compute_cost,
-    opts=resonate.options(
-        target="poll://any@worker-group"  # Load balance across workers
-    )
-)
-```
-
-  
-
-    
 
 ```typescript title="worker.ts"
-// Initialize worker as part of "workers" group
 const resonate = new Resonate({
+  url: "http://localhost:8001",
   group: "workers",
 });
 
-function computeSomething(context: Context, args: any): void {
+function computeSomething(ctx: Context, args: { id: string; computeCost: number }) {
   console.log(`${args.id} starting computation`);
   setTimeout(() => {
     console.log(`${args.id} computed something that cost ${args.computeCost} seconds`);
   }, args.computeCost * 1000);
-  return;
 }
 
 resonate.register("computeSomething", computeSomething);
+console.log("worker is running...");
 ```
 
+
+
+
+
+```python title="worker.py"
+from resonate import Resonate
+from threading import Event
+import time
+
+resonate = Resonate.remote(group="worker-group")
+
+
+@resonate.register
+def compute_something(_, id, compute_cost):
+    print(f"starting computation {id}")
+    time.sleep(compute_cost)
+    print(f"computed something that cost {compute_cost} seconds")
+
+
+resonate.start()
+print("worker running...")
+Event().wait()
+```
+
+
+
+
+
+### Dispatching to the group
+
+The caller picks a target with the `poll://any@<group>` schema. `any` means "whichever worker in the group claims it first."
+
+
+
+
+
 ```typescript title="client.ts"
-// Invoke any worker in the group
-resonate.rpc(
+const resonate = new Resonate({
+  url: "http://localhost:8001",
+  group: "client",
+});
+
+const id = uuid();
+const computeCost = Math.floor(Math.random() * 10) + 1;
+await resonate.beginRpc(
   id,
   "computeSomething",
   { id, computeCost },
-  resonate.options({
-    target: "poll://any@workers",  // Load balance across workers
-  })
+  resonate.options({ target: "poll://any@workers" }),
 );
+resonate.stop();
 ```
+
+
+
+
+
+```python title="invoke.py"
+from resonate import Resonate
+from uuid import uuid4
+from random import randint
+
+resonate = Resonate.remote(group="invoke-group")
+
+promise_id = str(uuid4())
+compute_cost = randint(1, 10)
+_ = resonate.options(target="poll://any@worker-group").begin_rpc(
+    promise_id, "compute_something", promise_id, compute_cost,
+)
+```
+
+
+
+
+
+## Run it locally
+
+Start the server, run several workers, then dispatch repeatedly from the client.
+
+
+
+
+
+```shell
+git clone https://github.com/resonatehq-examples/example-load-balancing-ts
+cd example-load-balancing-ts
+npm install
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminals 2–4 — three workers"
+npx tsx worker.ts
+```
+
+```shell title="Terminal 5 — dispatch in a loop"
+for i in 1 2 3 4 5 6; do npx tsx client.ts; done
+```
+
+Watch the work spread across the three worker terminals. Now kill one of them mid-execution — Resonate reassigns its in-flight workflow to a survivor.
+
+
+
+
+
+```shell
+git clone https://github.com/resonatehq-examples/example-load-balancing-py
+cd example-load-balancing-py
+uv sync
+```
+
+```shell title="Terminal 1 — Resonate Server (legacy)"
+brew install resonatehq/tap/resonate
+resonate serve
+```
+
+```shell title="Terminals 2–4 — three workers"
+uv run python worker.py
+```
+
+```shell title="Terminal 5 — dispatch in a loop"
+for i in 1 2 3 4 5 6; do uv run python invoke.py; done
+```
+
+Watch the work spread across the three worker terminals. Kill one of them mid-execution — Resonate reassigns its in-flight workflow to a survivor.
+
+
+
+
+
+## Try the recovery story
+
+Start three workers and dispatch enough jobs to keep all of them busy. Kill the worker holding a long-running job. The Resonate Server detects the loss, reassigns the workflow's durable promise to one of the survivors, and the work continues. The client never sees an error — it just gets a slightly delayed result.
+
+## Related
+
+- [Human-in-the-loop](/get-started/examples/human-in-the-loop) — same group dispatch, with a workflow that suspends on a durable promise.
+- [Async HTTP API endpoints](/get-started/examples/async-http-api-endpoints) — long-running HTTP work without holding the connection.
 
 ---
 
