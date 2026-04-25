@@ -32,6 +32,11 @@
       "permanent": true
     },
     {
+      "source": "/get-started/examples/redpanda-worker",
+      "destination": "/get-started/examples/kafka-worker",
+      "permanent": true
+    },
+    {
       "source": "/learn/python-sdk/website-summarization-agent",
       "destination": "/get-started/examples",
       "permanent": true

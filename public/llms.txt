@@ -39,8 +39,8 @@
 - [Durable sleep](/get-started/examples/durable-sleep): A workflow that sleeps for seconds, days, or months — without holding a process open or rolling your own scheduler.
 - [Human-in-the-loop](/get-started/examples/human-in-the-loop): Pause a Resonate workflow until a human responds — and resume it from any process — using durable promises.
 - [Examples](/get-started/examples): Runnable example projects, one per pattern.
+- [Kafka worker](/get-started/examples/kafka-worker): A worker that consumes Kafka, dispatches durable workflows for each message, and resumes cleanly after crashes — Redpanda is a drop-in replacement.
 - [Load balancing](/get-started/examples/load-balancing): Run multiple workers in a group; Resonate dispatches work to whichever is available, recovers it when one dies.
-- [Redpanda worker](/get-started/examples/redpanda-worker): Start a project that processes Redpanda streams with a durable worker.
 - [Get started with Resonate](/get-started): Quickstart, examples, and migration guides.
 - [Quickstart](/get-started/quickstart): Install the server and SDK and run your first Resonate workflow.
 - [Home](/index): Resonate — agent-native durable execution. Generated, optimized, absurdly cheap.

@@ -1,0 +1,149 @@
+---
+title: Kafka worker
+pageTitle: Durable Kafka workers with crash recovery
+description: A worker that consumes Kafka, dispatches durable workflows for each message, and resumes cleanly after crashes — Redpanda is a drop-in replacement.
+keywords:
+  - kafka
+  - redpanda
+  - stream-processing
+  - durable-workflow
+  - examples
+---
+
+<img src="/images/example-kafka-worker-dark.png" alt="Kafka Worker banner" className="hidden dark:block" />
+<img src="/images/example-kafka-worker-light.png" alt="Kafka Worker banner" className="block dark:hidden" />
+
+A consumer pulls messages from a Kafka topic and dispatches each one through a durable Resonate workflow. Per-message state lives in durable promises, so a worker that dies mid-batch resumes cleanly without redoing completed steps.
+
+<Callout type="info" title="SDK versions">
+Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. TypeScript SDK example repo is forthcoming.
+</Callout>
+
+<Callout type="note" title="Kafka or Redpanda — same code">
+The example repo runs against [Redpanda](https://redpanda.com/) for local development because the broker boots in seconds, but the code uses the Kafka wire protocol via `confluent-kafka-python`. Point it at any Kafka-compatible broker — Apache Kafka, Redpanda, or a managed offering — by changing the bootstrap-server config.
+</Callout>
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Consumer that dispatches a durable workflow per message, with batch-level retries."
+    link="https://github.com/resonatehq-examples/example-kafka-worker-py"
+  />
+</CloneRepoGrid>
+
+## The problem
+
+A worker between two queues has two recurring problems. **Head-of-line blocking** — if the first message kicks off an hour-long task and the next one would take 30 seconds, the short job sits behind the long one unless the worker handles concurrency. **Repeated work on crashes** — if a multi-step task is half-done when the worker dies, restart usually means repeating completed steps and emitting duplicate side-effects downstream.
+
+Most teams write per-message dedup tables, idempotency keys, and recovery scaffolding — repeatedly, and rarely well.
+
+## Resonate's solution
+
+Each Kafka message becomes the ID of a durable workflow. Resonate runs the workflow concurrently with whatever else is in flight, checkpoints every step, and dedups by ID — so a retry of a partially-completed message reconnects to its in-flight execution rather than starting over. When the workflow finishes, the worker emits a "done" message to the next topic.
+
+## Code walkthrough
+
+The pattern is a small consume loop that hands each message to `workflow.begin_run`. The workflow itself does the per-message work — here, deleting batches of records until none remain, then emitting a completion event.
+
+### The durable workflow
+
+```python title="record_deletor/delete.py"
+from resonate import Resonate
+import json
+
+resonate = Resonate.remote()
+
+
+def delete_batch(_, record_id, batch_size=10):
+    # Real work goes here. Returns True if more batches remain.
+    print(f"deleting a batch of rows for record {record_id}")
+    # ...transient failures throw; durable retry handles them.
+    return more_remaining
+
+
+def enqueue(_, msg_id, previous_offset):
+    # Emit a completion event to the downstream topic.
+    payload = json.dumps((msg_id, previous_offset)).encode("utf-8")
+    producer.produce("records_that_were_deleted", value=payload)
+    producer.flush()
+
+
+@resonate.register
+def workflow(ctx, record_id, offset):
+    print(f"processing record {record_id} (offset {offset})")
+    # Loop until delete_batch reports no more rows.
+    while (yield ctx.run(delete_batch, record_id)):
+        yield ctx.sleep(5)
+    yield ctx.run(enqueue, record_id, offset)
+```
+
+Each `ctx.run` is a checkpoint. A worker crash mid-loop resumes from the next batch rather than from message zero, and `delete_batch` doesn't run again for batches that already completed.
+
+### The Kafka consumer
+
+```python title="record_deletor/delete.py"
+def consume():
+    consumer.subscribe(["records_to_be_deleted"])
+    try:
+        while True:
+            msg = consumer.poll(timeout=1.0)
+            if msg is None or msg.error():
+                continue
+            record_id = json.loads(msg.value().decode("utf-8"))
+            if isinstance(record_id, str):
+                record_id = [record_id]
+            # The message ID is the workflow ID — same record reconnects
+            # to its in-flight execution rather than starting over.
+            _ = workflow.begin_run(record_id[0], record_id[0], msg.offset())
+    finally:
+        consumer.close()
+
+
+def main():
+    resonate.start()
+    consume()
+```
+
+`begin_run` is non-blocking — the consumer keeps polling while the workflow runs in the background. The same `record_id` deduplicates retries by design.
+
+## Run it locally
+
+The repo ships a `redpanda/` directory with docker-compose for the broker (Redpanda boots faster than Apache Kafka locally; the worker code is identical for both).
+
+Clone the repo (uses [uv](https://docs.astral.sh/uv/)):
+
+```shell
+git clone https://github.com/resonatehq-examples/example-kafka-worker-py
+cd example-kafka-worker-py
+uv sync
+```
+
+```shell title="Terminal 1 — the broker"
+cd redpanda && docker compose up
+```
+
+```shell title="Terminal 2 — Resonate Server (legacy)"
+brew install resonatehq/tap/resonate
+resonate serve
+```
+
+```shell title="Terminal 3 — the worker"
+uv run python -m record_deletor.delete
+```
+
+Produce some test messages from a fourth terminal:
+
+```shell title="Terminal 4 — produce records"
+uv run python -m record_producer.produce -n 10
+```
+
+Watch the worker terminal — it consumes each message, runs the durable workflow, and re-emits a completion event when each finishes.
+
+## Try the recovery story
+
+While the worker is processing a batch, kill it. Restart it. Resonate replays the workflow from the last unfinished step — already-deleted batches are not redone, the loop continues, the completion event still fires exactly once.
+
+## Related
+
+- [Load balancing](/get-started/examples/load-balancing) — same dispatch pattern across multiple worker instances.
+- [Async HTTP API endpoints](/get-started/examples/async-http-api-endpoints) — the same workflow-per-input shape, sourced from HTTP rather than Kafka.
