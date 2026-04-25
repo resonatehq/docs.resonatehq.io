@@ -132,7 +132,7 @@ export default function Sidebar({ tree, currentPath }: SidebarProps) {
       {/* Mobile toggle */}
       <button
         onClick={() => setOpen(!open)}
-        className="lg:hidden fixed bottom-4 left-4 z-50 p-3 bg-bright-gray-50 dark:bg-surface-elevated border border-bright-gray-200 dark:border-primary/10 text-bright-gray-900 dark:text-primary hover:text-secondary transition focus-visible:outline-2 focus-visible:outline-secondary"
+        className="lg:hidden fixed bottom-4 left-4 z-50 p-3 bg-bright-gray-50 dark:bg-surface-elevated border border-bright-gray-200 dark:border-primary/10 text-bright-gray-900 dark:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
         aria-label={open ? "Close sidebar" : "Open sidebar"}
       >
         {open ? <PanelLeftClose size={20} /> : <PanelLeft size={20} />}
