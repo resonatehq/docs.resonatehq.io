@@ -8530,10 +8530,11 @@ title: Human-in-the-loop
 A workflow blocks on a durable promise, prints a callback URL, and resumes the moment a human resolves it — from any process, any machine, any time.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development — `example-human-in-the-loop-rs` is forthcoming; the Rust code below reflects the current SDK API.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development — pulled as a git dependency from `resonate-sdk-rs` until it ships on crates.io.
 
 
 
+  
   
   
 
@@ -8684,22 +8685,26 @@ def resolve(promise_id):
 
 
 
-```rust title="src/gateway.rs"
-use axum::{extract::{Path, State}, Json, response::IntoResponse};
+```rust title="src/bin/gateway.rs"
+use axum::{extract::{Path, State}, response::IntoResponse, Json};
 use resonate::prelude::*;
 use serde::Deserialize;
 use serde_json::json;
+use std::sync::Arc;
 
 #[derive(Deserialize)]
 struct StartReq { workflow_id: String }
 
+#[derive(Clone)]
+struct AppState { resonate: Arc }
+
 async fn start_workflow(
-    State(resonate): State,
+    State(state): State,
     Json(req): Json,
 ) -> impl IntoResponse {
     // Same workflow_id reconnects to a PENDING execution rather than starting a new one.
-    let result: String = resonate
-        .rpc(&req.workflow_id, "foo-workflow", &req.workflow_id)
+    let result: String = state.resonate
+        .rpc(&req.workflow_id, "foo", &req.workflow_id)
         .target("poll://any@workers")
         .await
         .unwrap();
@@ -8707,10 +8712,10 @@ async fn start_workflow(
 }
 
 async fn resolve(
-    State(resonate): State,
+    State(state): State,
     Path(promise_id): Path,
 ) -> impl IntoResponse {
-    resonate.promises.resolve(&promise_id, json!(true)).await.unwrap();
+    state.resonate.promises.resolve(&promise_id, json!(true)).await.unwrap();
     Json(json!({ "message": "promise resolved" }))
 }
 ```
@@ -8796,6 +8801,43 @@ curl -X POST http://localhost:5001/start-workflow \
 ```
 
 The worker prints a callback URL. Hit it to unblock the workflow.
+
+
+
+
+
+Clone the repo and build (uses the [Rust toolchain](https://rustup.rs/)):
+
+```shell
+git clone https://github.com/resonatehq-examples/example-human-in-the-loop-rs
+cd example-human-in-the-loop-rs
+cargo build
+```
+
+In separate terminals, start the Resonate Server, the worker, and the gateway:
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — gateway"
+cargo run --bin gateway
+```
+
+```shell title="Terminal 3 — worker"
+cargo run --bin worker
+```
+
+Start a workflow:
+
+```shell
+curl -X POST http://localhost:5001/start-workflow \
+  -H "Content-Type: application/json" \
+  -d '{"workflow_id": "hitl-001"}'
+```
+
+The worker prints a `CLICK TO RESOLVE` URL. Hit it (or the matching `/resolve/<promise_id>` endpoint) to unblock the workflow.
 
 
 
