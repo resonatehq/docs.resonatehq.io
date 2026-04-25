@@ -10071,6 +10071,121 @@ Start three workers and dispatch enough jobs to keep all of them busy. Kill the 
 ---
 
 ---
+url: /get-started/examples/money-transfer
+title: Money transfer
+---
+
+<img src="/images/example-money-transfer-dark.png" alt="Money Transfer banner" className="hidden dark:block" />
+<img src="/images/example-money-transfer-light.png" alt="Money Transfer banner" className="block dark:hidden" />
+
+A workflow debits the source account, credits the target account, and returns confirmations. Each account update is a durable checkpoint, the transfer ID is the idempotency key, and the same ID retried in seconds, hours, or days returns the cached result instead of double-spending.
+
+
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python and Rust example repos are forthcoming.
+
+
+
+  
+
+
+## The problem
+
+Moving money between accounts is the textbook saga: you have to debit one account and credit another, but the operations live in different rows (or different databases) and have to either both happen or neither. A crash between the debit and the credit creates lost money. A retry that re-fires the debit creates duplicate money. Compensating transactions and idempotency keys are the conventional fix, and getting both right is famously hard.
+
+## Resonate's solution
+
+Each account update is a checkpoint. If the worker dies after the debit but before the credit, restart resumes at the credit — the debit is not re-issued. The transfer ID is the workflow ID; calling the endpoint a second time with the same ID returns the cached result rather than running the workflow again. The "saga" is just two `ctx.run` calls in sequence, with the durability story handled by Resonate.
+
+## Code walkthrough
+
+The workflow is a generator that calls `updateAccount` twice — once with a negative amount (debit) and once with a positive (credit). Each call is its own durable checkpoint.
+
+```typescript title="src/workflow.ts"
+export function* transferMoney(
+  ctx: Context,
+  transferId: string,
+  request: TransferRequest,
+): Generator<any, TransferResult, any> {
+  const { source, target, amount } = request;
+  const db = ctx.getDependency("db");
+
+  try {
+    // Step 1 — debit source. Checkpointed.
+    const sourceConfirmation = yield* ctx.run(
+      updateAccount, db, `${transferId}-source`, source, -amount,
+    );
+
+    // Step 2 — credit target. Checkpointed.
+    const targetConfirmation = yield* ctx.run(
+      updateAccount, db, `${transferId}-target`, target, amount,
+    );
+
+    return { success: true, transferId, source, target, amount,
+             sourceConfirmation, targetConfirmation };
+  } catch (error) {
+    // Compensation logic for the debit goes here when needed.
+    return { success: false, transferId, source, target, amount,
+             error: String(error) };
+  }
+}
+```
+
+`ctx.getDependency('db')` lets `updateAccount` see the database without exposing it as a workflow argument — important, because workflow arguments must be serializable, and a DB handle is not.
+
+The HTTP entrypoint passes a path-param `id` straight through to `transferMoney`:
+
+```typescript title="src/index.ts"
+app.post("/transfer/:id", async (req, res) => {
+  const { id } = req.params;
+  const { source, target, amount } = req.body;
+
+  // Same `id` returns the same result — calling /transfer/abc twice
+  // does not double-debit.
+  const result = await transferMoneyR.run(id, id, { source, target, amount });
+  res.json(result);
+});
+```
+
+## Run it locally
+
+```shell
+git clone https://github.com/resonatehq-examples/example-money-transfer-application-ts
+cd example-money-transfer-application-ts
+npm install
+cp .env.example .env
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — server"
+npm start
+```
+
+Initiate a transfer:
+
+```shell
+curl -X POST http://localhost:3000/transfer/transfer-001 \
+  -H "Content-Type: application/json" \
+  -d '{"source": "alice", "target": "bob", "amount": 50}'
+```
+
+Check the balances afterwards via the same server. Now call `/transfer/transfer-001` again — the response is the same cached result; balances don't change.
+
+## Try the recovery story
+
+Modify `updateAccount` to throw on the second call (the credit). Run the workflow — the debit checkpoints, the credit fails. Fix the code, restart the server. The workflow resumes at the credit step; the debit is not re-issued. This is the recovery story sagas are usually written by hand to provide.
+
+## Related
+
+- [Async HTTP API endpoints](/get-started/examples/async-http-api-endpoints) — the same idempotency-via-workflow-ID primitive, exposed over HTTP polling.
+- [Human-in-the-loop](/get-started/examples/human-in-the-loop) — adds external resolution to the saga shape.
+
+---
+
+---
 url: /get-started/examples/recursive-factorial
 title: Recursive factorial
 ---
