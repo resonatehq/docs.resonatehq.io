@@ -36,7 +36,7 @@
 - [Deep research agent](/get-started/examples/deep-research-agent): Start a new project using the deep research agent template.
 - [Cloud Run workers](/get-started/examples/durable-serverless-cloud-run-workers): Start a new project that deploys a durable Resonate worker to Google Cloud Run.
 - [Lambda workers](/get-started/examples/durable-serverless-lambda-workers): Start a new project that runs a durable worker on AWS Lambda without losing in-flight progress.
-- [Durable sleep](/get-started/examples/durable-sleep): Start a new project using a durable sleep use case example.
+- [Durable sleep](/get-started/examples/durable-sleep): A workflow that sleeps for seconds, days, or months — without holding a process open or rolling your own scheduler.
 - [Human-in-the-loop](/get-started/examples/human-in-the-loop): Pause a Resonate workflow until a human responds — and resume it from any process — using durable promises.
 - [Examples](/get-started/examples): Runnable example projects, one per pattern.
 - [Load balancing](/get-started/examples/load-balancing): Start a project that demonstrates Resonate load balancing and recovery.

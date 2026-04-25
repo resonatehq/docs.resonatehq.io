@@ -1,82 +1,78 @@
 ---
 title: Durable sleep
-pageTitle: Durable sleep use case
-description: Start a new project using a durable sleep use case example.
+pageTitle: Durable sleep that survives restarts
+description: A workflow that sleeps for seconds, days, or months — without holding a process open or rolling your own scheduler.
 keywords:
-  - get-started
-  - new-project
-  - template
-  - long-running-workflow
   - durable-sleep
+  - long-running-workflow
+  - scheduler
+  - examples
 ---
 
 <img src="/images/example-durable-sleep-dark.png" alt="Durable Sleep banner" className="hidden dark:block" />
 <img src="/images/example-durable-sleep-light.png" alt="Durable Sleep banner" className="block dark:hidden" />
 
-Start a new project using a durable sleep use case example.
+A workflow yields `ctx.sleep` and the runtime suspends it. Hours, days, or weeks later the worker wakes the workflow up exactly where it stopped — no cron, no scheduler, no external state.
 
-
-
+<Callout type="info" title="SDK versions">
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0 — `ctx.sleep` is supported in the SDK; the `example-durable-sleep-rs` repo is forthcoming.
+</Callout>
 
 <CloneRepoGrid>
   <CloneRepoCard
-    sdk="Python SDK"
-    description="Durable sleep use case"
-    link="https://github.com/resonatehq-examples/example-durable-sleep-py"
+    sdk="TypeScript SDK"
+    description="A worker that sleeps for N milliseconds, dispatched via async RPC."
+    link="https://github.com/resonatehq-examples/example-durable-sleep-ts"
   />
   <CloneRepoCard
-    sdk="TypeScript SDK"
-    description="Durable sleep use case"
-    link="https://github.com/resonatehq-examples/example-durable-sleep-ts"
+    sdk="Python SDK"
+    description="A worker that sleeps for N seconds, dispatched via async RPC."
+    link="https://github.com/resonatehq-examples/example-durable-sleep-py"
   />
 </CloneRepoGrid>
 
-## Problem
+## The problem
 
-A business process may need to sleep for a period much longer than the typical lifetime of a process.
+A real business process may need to wait for hours, days, or months — a 30-day trial expiry, a 24-hour billing cycle, a 7-day reminder. Holding a process open that long is fragile: machines reboot, deployments cycle, network blips kill connections.
 
-Since a process is more likely to crash the longer it is alive, and if a business process needs to suspend (or "sleep") for days, weeks, or even years, then developers are often forced to use cron jobs as a means to reawaken long-sleeping processes.
+The conventional escape is a cron job that wakes a separate worker which queries a database to figure out what to do next. That's three moving parts (cron, worker, state row) per workflow, and every one of them is a place for bugs to live.
 
-This leads to complexity that is hard to reason about, test, and rely on.
+## Resonate's solution
 
-## Solution
+Yield a sleep from inside a workflow and the runtime checkpoints the wake-up time as a durable promise. The worker doesn't sit idle — it can pick up other work, restart, or get redeployed. When the wake-up time arrives, Resonate dispatches the workflow back to a worker and execution continues from the line after the sleep.
 
-Resonate enables developers to sleep directly in their workflows without leaving the process running idle, reducing implementation complexity while ensuring the business process can survive across process crashes.
+## Code walkthrough
 
-## Quick example
+Two processes: a **worker** that hosts the durable function and a **client** that dispatches it via async RPC.
 
+### The sleeping workflow
 
-
+The whole pattern is one line: `yield* ctx.sleep(ms)`. Everything around it is just framing.
 
 <Tabs
     groupId="preferred-language"
-    defaultValue="python"
+    defaultValue="typescript"
     values={[
-        {label: 'Python', value: 'python'},
         {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
         {label: 'Rust', value: 'rust'},
     ]}>
 
-    <TabItem value="python" >
+<TabItem value="typescript">
 
-```python
-@resonate.register
-def sleeping_workflow(ctx: Context, seconds: int):
+```typescript title="worker.ts"
+import { Resonate } from "@resonatehq/sdk";
+import type { Context } from "@resonatehq/sdk";
 
-    yield ctx.sleep(seconds)
+const resonate = new Resonate({
+  url: "http://localhost:8001",
+  group: "workers",
+});
 
-    # ...
-```
-
-</TabItem>
-
-<TabItem value="typescript" >
-
-```typescript
-function* sleepingWorkflow(ctx: Context, milliseconds: number) {
-  yield* ctx.sleep(milliseconds);
-
-  // ...
+function* sleepingWorkflow(ctx: Context, ms: number) {
+  yield* ctx.run((ctx: Context) => console.log(`Sleeping for ${ms / 1000} seconds...`));
+  yield* ctx.sleep(ms);
+  return `Slept for ${ms / 1000} seconds`;
 }
 
 resonate.register("sleepingWorkflow", sleepingWorkflow);
@@ -84,24 +80,171 @@ resonate.register("sleepingWorkflow", sleepingWorkflow);
 
 </TabItem>
 
-<TabItem value="rust" >
+<TabItem value="python">
 
-```rust
+```python title="worker.py"
+from resonate import Resonate, Context
+from threading import Event
+
+resonate = Resonate.remote(group="worker")
+
+
+@resonate.register
+def sleeping_workflow(ctx: Context, wf_id: str, secs: float):
+    print(f"Workflow {wf_id} starting, will sleep for {secs} seconds.")
+    yield ctx.sleep(secs)
+    return f"Workflow {wf_id} completed after sleeping for {secs} seconds."
+
+
+resonate.start()
+print("worker is running...")
+Event().wait()
+```
+
+</TabItem>
+
+<TabItem value="rust">
+
+```rust title="src/main.rs"
 use resonate::prelude::*;
 use std::time::Duration;
 
 #[resonate::function]
-async fn sleeping_workflow(ctx: &Context, seconds: u64) -> Result<()> {
-    ctx.sleep(Duration::from_secs(seconds)).await?;
-
-    // ...
-    Ok(())
+async fn sleeping_workflow(ctx: &Context, secs: u64) -> Result<String> {
+    println!("sleeping for {secs} seconds...");
+    ctx.sleep(Duration::from_secs(secs)).await?;
+    Ok(format!("slept for {secs} seconds"))
 }
-
-let resonate = Resonate::new(ResonateConfig::default());
-resonate.register(sleeping_workflow).unwrap();
 ```
 
 </TabItem>
 
 </Tabs>
+
+### Dispatching the workflow
+
+The client uses async RPC to dispatch by ID. Reusing the same ID reconnects to a pending execution rather than starting a new sleep.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
+
+```typescript title="client.ts"
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = new Resonate({
+  url: "http://localhost:8001",
+  group: "client",
+});
+
+const result = await resonate.rpc(
+  "sleep-workflow-1",
+  "sleepingWorkflow",
+  5000,
+  resonate.options({ target: "poll://any@workers" }),
+);
+console.log(result);
+resonate.stop();
+```
+
+</TabItem>
+
+<TabItem value="python">
+
+```python title="client.py"
+from resonate import Resonate
+
+resonate = Resonate.remote(group="client")
+
+handle = resonate.options(target="poll://any@worker").begin_rpc(
+    "sleep-workflow-1", func="sleeping_workflow", wf_id="sleep-workflow-1", secs=5.0,
+)
+print(handle.result())
+```
+
+</TabItem>
+
+</Tabs>
+
+## Run it locally
+
+You need the Resonate Server, the worker, and a client to dispatch.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
+
+Clone the repo:
+
+```shell
+git clone https://github.com/resonatehq-examples/example-durable-sleep-ts
+cd example-durable-sleep-ts
+npm install
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — worker"
+npx tsx worker.ts
+```
+
+```shell title="Terminal 3 — client"
+npx tsx client.ts
+```
+
+After ~5 seconds the client prints `Slept for 5 seconds`. Now kill the worker mid-sleep and restart — the workflow resumes and still completes its sleep.
+
+</TabItem>
+
+<TabItem value="python">
+
+Clone the repo (uses [uv](https://docs.astral.sh/uv/)):
+
+```shell
+git clone https://github.com/resonatehq-examples/example-durable-sleep-py
+cd example-durable-sleep-py
+uv sync
+```
+
+```shell title="Terminal 1 — Resonate Server (legacy)"
+brew install resonatehq/tap/resonate
+resonate serve
+```
+
+```shell title="Terminal 2 — worker"
+uv run python worker.py
+```
+
+```shell title="Terminal 3 — client"
+uv run python client.py
+```
+
+After ~5 seconds the client prints the completion message. Kill the worker mid-sleep and restart — the workflow resumes and still completes.
+
+</TabItem>
+
+</Tabs>
+
+## Try the long-sleep story
+
+Change the sleep duration to a day, week, or month. The workflow sleeps without holding a process open — kill the worker, redeploy your code, restart your laptop. When the wake-up time arrives, Resonate dispatches the workflow to whichever worker is alive.
+
+## Related
+
+- [Human-in-the-loop](/get-started/examples/human-in-the-loop) — same suspension primitive, but resolved by an external signal instead of a timer.
+- [Async HTTP API endpoints](/get-started/examples/async-http-api-endpoints) — kicking off long-running work without blocking the caller.
