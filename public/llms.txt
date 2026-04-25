@@ -31,7 +31,7 @@
 - [Evaluate Resonate](/evaluate): Get started with Resonate by evaluating its features and capabilities.
 - [Why Resonate](/evaluate/why-resonate): Resonate is the durable execution engine that agents build with, deploy on, and operate — at a fraction of the cost of anything else.
 - [Resonate CLI](/get-started/cli-guide): Learn how to use the Resonate command-line interface effectively.
-- [Async agent tools](/get-started/examples/async-agent-tools): Start a new project using the Claude async MCP tool server example.
+- [Async agent tools](/get-started/examples/async-agent-tools): Convert synchronous MCP tool calls into durable async jobs an LLM can fire-and-forget then poll for results.
 - [Async HTTP APIs](/get-started/examples/async-http-api-endpoints): Turn long-running HTTP requests into durable workflows. Clients fire-and-forget, then poll for completion.
 - [Deep research agent](/get-started/examples/deep-research-agent): Start a new project using the deep research agent template.
 - [Cloud Run workers](/get-started/examples/durable-serverless-cloud-run-workers): Start a new project that deploys a durable Resonate worker to Google Cloud Run.

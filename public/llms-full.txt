@@ -8000,9 +8000,10 @@ title: Async agent tools
 <img src="/images/example-async-agent-tools-dark.png" alt="Async Agent Tools banner" className="hidden dark:block" />
 <img src="/images/example-async-agent-tools-light.png" alt="Async Agent Tools banner" className="block dark:hidden" />
 
-Start a new project using the Claude async MCP tool server use case example.
+A FastMCP server exposes three tools — start, probe, await — backed by a durable Resonate workflow. The LLM kicks off long jobs, polls them, and collects results without blocking on the work.
 
 
+Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. TypeScript SDK example repo is forthcoming.
 
 
 
@@ -8011,88 +8012,134 @@ Start a new project using the Claude async MCP tool server use case example.
 
 ## The problem
 
-The main issue with MCP—and LLM tool calling in general—is that it is synchronous, with no built-in mechanisms for handling failure.
+MCP standardizes tool calling but not what happens when a tool takes minutes, hits a flaky upstream, or runs while the agent's MCP host crashes. Every tool implementation reinvents timeouts, retries, idempotency, and crash recovery — and most get at least one wrong.
 
-Even though MCP standardizes a tool-calling convention, it ignores the other issues that arise from building a distributed system and as the developer you are burdened with figuring out:
+## Resonate's solution
 
-- Supervision, such as timeouts, to detect issues
-- Retry logic for application-level errors
-- Deduplication and/or idempotency guarantees
-- Recovery for process crashes
+Split a tool into three smaller MCP tools — `start_gathering`, `probe_status`, `await_result` — and back them with a durable Resonate function. `start_gathering` returns a promise ID immediately, `probe_status` reports without blocking, `await_result` blocks the agent only when it actually wants the answer. Crashes don't lose progress and the same job ID deduplicates retries.
 
-## The solution
+## Code walkthrough
 
-The solution is promises.
+The server exposes one durable function (`weather_data`) and three thin MCP tools that wrap Resonate's promise APIs.
 
-The MCP Server Quickstart guide uses weather forecasting as an example use case.
+### The durable function
 
-This example flips it around and uses historic weather data gathering as our example, a use case which could take a much longer time and better reflect the need for a background job.
+`@resonate.register` turns `weather_data` into a workflow that an MCP tool can dispatch by ID. Whatever the tool does — call an external API, stream rows from a DB, transform a payload — happens here, with retries and crash recovery wrapped around it.
 
-And, instead of a single tool such as get_weather_data, we will create three tools:
-
-- start gathering
-- probe status
-- await result
-
-The key is that the start gathering tool, instead of blocking on the result of the data gather job, kicks off a background job and returns a promise ID.
-
-Integrating Resonate into a MCP server preserves the standardized tool calling while completely transforming it into a Durable Distributed System.
-
-## Quick example
-
-
-
-
-
-
-    
-
-```python title="weather_data.py - MCP Server with Async Tools"
+```python title="weather_data.py — the durable function"
 from resonate import Resonate
 from fastmcp import FastMCP
+import requests, calendar
 
 mcp = FastMCP("timer")
 resonate = Resonate.remote()
 
-# Define the durable function
-@resonate.register
-def weather_data(ctx, latitude, longitude, year, month):
-    # Long-running data gathering work
-    # ...API calls, processing, etc...
-    return response.json()
 
-# Tool 1: Start background job, return promise ID
+@resonate.register
+def weather_data(ctx, latitude, longitude, year, month, timezone="America/Edmonton"):
+    start_date = f"{year}-{int(month):02d}-01"
+    end_day = calendar.monthrange(int(year), int(month))[1]
+    end_date = f"{year}-{int(month):02d}-{end_day}"
+
+    response = requests.get(
+        "https://archive-api.open-meteo.com/v1/archive",
+        params={
+            "latitude": latitude, "longitude": longitude,
+            "start_date": start_date, "end_date": end_date,
+            "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum",
+            "timezone": timezone,
+        },
+    )
+    response.raise_for_status()
+    return response.json()
+```
+
+### The three async MCP tools
+
+Each tool is a thin shell around a Resonate API call: kick off, poll, await.
+
+```python title="weather_data.py — the MCP tools"
 @mcp.tool()
 def start_gathering(latitude, longitude, year, month):
     """Start a weather data gathering job."""
     job_name = f"weather_data_{latitude}_{longitude}_{year}_{month}"
-    
-    # Start durable execution, return immediately
+    # Fire-and-forget: dispatch the workflow, return the ID immediately.
     _ = weather_data.run(job_name, latitude, longitude, year, month)
-    
     return {"job_name": job_name}
 
-# Tool 2: Check if job is done (non-blocking)
+
 @mcp.tool()
 def probe_status(job_names):
-    """Probe for the status of data gathering jobs."""
+    """Probe one or more jobs without blocking."""
     statuses = []
     for job_name in job_names:
         handle = resonate.get(job_name)
-        if handle.done():
-            statuses.append({"job_name": job_name, "status": "complete"})
-        else:
-            statuses.append({"job_name": job_name, "status": "running"})
+        statuses.append({
+            "job_name": job_name,
+            "status": "running" if not handle.done() else handle.result(),
+        })
     return statuses
 
-# Tool 3: Wait for result (blocking)
+
 @mcp.tool()
-def await_result(job_name):
-    """Wait for a job to complete and return its result."""
-    handle = resonate.get(job_name)
-    result = handle.result()  # Blocks until complete
-    return result
+def await_result(job_names):
+    """Block until a job completes and return its result."""
+    return {n: resonate.get(n).result() for n in job_names}
 ```
+
+The same `job_name` is the deduplication key: if the agent retries `start_gathering` with the same arguments, Resonate reconnects to the in-flight execution rather than running the work twice.
+
+## Run it locally
+
+You need the legacy Resonate Server, the MCP server, and Claude Desktop (or any MCP client) configured to load the proxy.
+
+Clone the repo and install dependencies (uses [uv](https://docs.astral.sh/uv/)):
+
+```shell
+git clone https://github.com/resonatehq-examples/example-async-tools-mcp-server-py
+cd example-async-tools-mcp-server-py
+uv sync
+```
+
+Start the legacy server:
+
+```shell title="Terminal 1 — Resonate Server (legacy)"
+brew install resonatehq/tap/resonate
+resonate serve
+```
+
+Run the MCP server (it exposes the tools over HTTP at `http://localhost:5001/mcp`):
+
+```shell title="Terminal 2 — MCP server"
+uv run python weather_data.py
+```
+
+Configure Claude Desktop to launch the proxy. Add to `claude_desktop_config.json` (the Developers tab in Claude's settings shows the path):
+
+```json
+{
+  "mcpServers": {
+    "weather": {
+      "command": "/opt/homebrew/bin/uv",
+      "args": [
+        "--directory", "ABSOLUTE/PATH/TO/example-async-tools-mcp-server-py",
+        "run", "proxy.py"
+      ]
+    }
+  }
+}
+```
+
+Restart Claude Desktop. The three tools (`start_gathering`, `probe_status`, `await_result`) will appear in the MCP server panel. Ask Claude to gather historic weather data for a few cities — it will start jobs, poll their status, and collect results without blocking on each gather.
+
+## Try the dedup story
+
+Ask Claude to gather data for the same city twice. The second `start_gathering` call returns the same `job_name`, and Resonate's promise dedup means the underlying API call doesn't fire twice. This is the same primitive that makes safe LLM retries free.
+
+## Related
+
+- [Async HTTP API endpoints](/get-started/examples/async-http-api-endpoints) — the same fire-and-forget shape, accessed via REST instead of MCP.
+- [Human-in-the-loop](/get-started/examples/human-in-the-loop) — pausing a workflow on external resolution.
 
 ---
 
