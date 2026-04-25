@@ -43,3 +43,15 @@ const x = 1;
 ````
 
 Use `title="..."` for any block where the file path or context isn't obvious from surrounding prose (config files, multi-step deployment commands, snippets that span more than a screen). Skip it for one-liners and shell snippets where the language label is enough.
+
+## Link checking
+
+`npm run build` runs `linkinator` against the production build via the `postbuild` step. Broken internal links — including missing anchors — fail the build. External hosts (github, discord, twitter, etc.) are skipped, since they rot independently of this repo.
+
+The check is automatically skipped on Vercel (`process.env.VERCEL`), since Vercel's build sandbox can't run `next start` mid-build. Run it locally before opening a PR, and rely on GitHub Actions to gate merges.
+
+To run the check on its own against an already-built `.next/`:
+
+```shell
+npm run check-links
+```
