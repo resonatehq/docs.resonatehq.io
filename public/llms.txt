@@ -45,6 +45,7 @@
 - [Kafka worker](/get-started/examples/kafka-worker): A worker that consumes Kafka, dispatches durable workflows for each message, and resumes cleanly after crashes — Redpanda is a drop-in replacement.
 - [Load balancing](/get-started/examples/load-balancing): Run multiple workers in a group; Resonate dispatches work to whichever is available, recovers it when one dies.
 - [Money transfer](/get-started/examples/money-transfer): A two-step transfer (debit source, credit target) where each step is a durable checkpoint and the same transfer ID deduplicates retries.
+- [Multi-agent orchestration](/get-started/examples/multi-agent-orchestration): An orchestrator chains three specialist agents — researcher, writer, reviewer — with each handoff checkpointed.
 - [Recursive factorial](/get-started/examples/recursive-factorial): A workflow that calls itself with `ctx.rpc` — recursion is automatically distributed and durable.
 - [Schedule](/get-started/examples/schedule): Register a function to run on a cron schedule. Each invocation is a durable workflow with crash recovery built in.
 - [Webhook handler](/get-started/examples/webhook-handler): A Stripe-style webhook handler where the event ID is the workflow ID — duplicate deliveries dedupe, partial failures resume, the customer gets charged once.

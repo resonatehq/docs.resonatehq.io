@@ -1,0 +1,110 @@
+---
+title: Multi-agent orchestration
+pageTitle: Multi-agent orchestration with durable handoffs
+description: An orchestrator chains three specialist agents — researcher, writer, reviewer — with each handoff checkpointed.
+keywords:
+  - multi-agent
+  - llm
+  - orchestration
+  - durable-workflow
+  - examples
+---
+
+<img src="/images/example-multi-agent-orchestration-dark.png" alt="Multi-agent Orchestration banner" className="hidden dark:block" />
+<img src="/images/example-multi-agent-orchestration-light.png" alt="Multi-agent Orchestration banner" className="block dark:hidden" />
+
+Three specialist agents — researcher, writer, reviewer — chained through an orchestrator. Each agent's output is a durable checkpoint, so a flaky LLM call mid-pipeline retries only the failing agent and the prior outputs stay cached.
+
+<Callout type="info" title="SDK versions">
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python and Rust example repos are forthcoming.
+</Callout>
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="TypeScript SDK"
+    description="Researcher → writer → reviewer pipeline with crash-recoverable handoffs."
+    link="https://github.com/resonatehq-examples/example-multi-agent-orchestration-ts"
+  />
+</CloneRepoGrid>
+
+## The problem
+
+Multi-agent pipelines look elegant on a whiteboard and brittle in production. Each LLM call is a roll of the dice — rate limits, transient errors, model regressions. If the third agent fails, naive implementations re-run the whole pipeline, paying for the first two LLM calls again. Add a human-approval step and the pipeline now needs to hold state across hours or days, which is its own coordination problem.
+
+## Resonate's solution
+
+Each agent invocation is a `ctx.run` call. The orchestrator function chains them in sequence; Resonate checkpoints every output. If the writer fails, only the writer retries — the researcher's findings are reused from the durable promise. Add a `ctx.promise()` between the reviewer and the publish step and you get human-in-the-loop suspension that survives process restarts.
+
+## Code walkthrough
+
+The orchestrator is one generator function that calls three plain agent functions through `ctx.run`. The agents themselves are unremarkable — what matters is that Resonate sits between them.
+
+```typescript title="src/workflow.ts"
+import type { Context } from "@resonatehq/sdk";
+import { researcher, writer, reviewer } from "./agents";
+
+export function* orchestrate(
+  ctx: Context,
+  topic: string,
+  crashOnWriter: boolean,
+): Generator<any, OrchestrationResult, any> {
+  // 1. Researcher gathers findings on the topic.
+  const findings = yield* ctx.run(researcher, topic);
+
+  // 2. Writer produces a draft from those findings. Checkpointed —
+  //    if the writer crashes, the researcher's findings are NOT re-run.
+  const draft = yield* ctx.run(writer, topic, findings, crashOnWriter);
+
+  // 3. Reviewer checks the draft quality.
+  const review = yield* ctx.run(reviewer, draft);
+
+  const approved = review.toUpperCase().includes("APPROVED");
+  return {
+    status: approved ? "published" : "rejected",
+    topic, findings, draft, review,
+  };
+}
+```
+
+The `crashOnWriter` argument is a demo lever — set it to `true` and the writer throws on its first attempt. Watch the logs: the researcher runs once, the writer retries until it succeeds, the reviewer runs once. Without checkpoints, the researcher would re-run on every writer retry.
+
+To extend the pipeline with human approval, replace the inline `approved` calculation with a durable promise:
+
+```typescript
+// Suspend until an external system (HTTP handler, CLI, button click)
+// resolves the promise.
+const approved = yield* ctx.promise<boolean>({ id: `approval/${topic}` });
+```
+
+That promise survives process restarts — the orchestrator can be killed and the workflow waits in the server's promise store until a human responds.
+
+## Run it locally
+
+```shell
+git clone https://github.com/resonatehq-examples/example-multi-agent-orchestration-ts
+cd example-multi-agent-orchestration-ts
+bun install
+```
+
+Run the happy path:
+
+```shell
+bun run src/index.ts
+```
+
+Run with the writer crash flag — the researcher runs once, the writer retries:
+
+```shell
+bun run src/index.ts -- --crash
+```
+
+Watch the logs; the researcher's "gathering findings" message only appears once across the retry sequence.
+
+## Try the human-in-the-loop extension
+
+Swap the inline `approved` check for `ctx.promise()` and add a small HTTP server (or use the Resonate CLI) to resolve the promise. Now the orchestrator suspends after the reviewer step until a human decides whether to publish — for hours, days, or weeks. Worker crashes during the suspension don't lose progress; restart and the workflow is still waiting for the same promise.
+
+## Related
+
+- [Deep research agent](/get-started/examples/deep-research-agent) — recursive agent dispatch with parallel subagents.
+- [Human-in-the-loop](/get-started/examples/human-in-the-loop) — the suspension primitive in detail.
