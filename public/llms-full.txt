@@ -10571,6 +10571,126 @@ Stop the worker for a few minutes. Schedule fires keep accumulating on the serve
 ---
 
 ---
+url: /get-started/examples/webhook-handler
+title: Webhook handler
+---
+
+<img src="/images/example-webhook-handler-dark.png" alt="Webhook Handler banner" className="hidden dark:block" />
+<img src="/images/example-webhook-handler-light.png" alt="Webhook Handler banner" className="block dark:hidden" />
+
+A webhook receives a payment event, kicks off a durable workflow keyed by the provider's event ID, and acknowledges immediately. Duplicate deliveries (network retries, slow ACKs) reconnect to the in-flight execution rather than re-charging the card. A crash mid-processing resumes from the next unfinished step.
+
+
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python and Rust example repos are forthcoming.
+
+
+
+  
+
+
+## The problem
+
+Webhook providers retry on any timeout, slow ACK, or 5xx response — that's the whole point. Your handler has to be idempotent, or duplicate deliveries double-charge the customer. The conventional fix is a "processed events" table you check before doing work, paired with a worker that polls a queue, paired with retry logic for partial failures. Three moving parts, and any one of them not being idempotent breaks the whole shape.
+
+## Resonate's solution
+
+The provider's event ID is the workflow ID. Resonate's promise dedup means a duplicate delivery with the same event ID reconnects to the in-flight (or completed) execution rather than starting a second one. The downstream steps — charge card, send receipt, update ledger — each checkpoint, so a crash between any two resumes from the next step rather than re-running the whole pipeline.
+
+The handler ACKs the webhook in well under five seconds because it just dispatches the workflow and returns; the processing happens durably in the background.
+
+## Code walkthrough
+
+### The webhook endpoint
+
+Receive, dispatch, ACK. The whole point is that the workflow runs in the background — Stripe (or any provider) gets its fast 200 OK regardless of how long the actual processing takes.
+
+```typescript title="src/index.ts"
+app.post("/webhook", (req, res) => {
+  const event = req.body as WebhookEvent;
+
+  // The event_id IS the workflow ID.
+  // Stripe retries with the same event_id reconnect to the in-flight execution.
+  resonate
+    .run(`webhook/${event.event_id}`, processPayment, event, simulateCrash)
+    .catch(console.error);
+
+  // Fast ACK — Stripe needs a 200 within 5 seconds.
+  res.status(200).json({ received: true });
+});
+```
+
+A separate `GET /status/:event_id` lets you poll the workflow's result if you need it.
+
+### The exactly-once workflow
+
+Every step is a `ctx.run` checkpoint. If the worker dies after `chargeCard` but before `updateLedger`, restart resumes at `sendReceipt` — the card is not charged again.
+
+```typescript title="src/workflow.ts"
+export function* processPayment(
+  ctx: Context,
+  event: WebhookEvent,
+): Generator<any, PaymentResult, any> {
+  // Validate signature and event structure.
+  yield* ctx.run(validateEvent, event);
+
+  // Charge the card. Checkpointed — duplicates skip this step.
+  const chargeId = yield* ctx.run(chargeCard, event);
+
+  // Send the receipt.
+  yield* ctx.run(sendReceipt, event, chargeId);
+
+  // Update the accounting ledger.
+  return yield* ctx.run(updateLedger, event, chargeId);
+}
+```
+
+The repo includes a `--crash` flag that simulates `chargeCard` failing on the first attempt — re-running the workflow shows the charge happening exactly once even across retries.
+
+## Run it locally
+
+```shell
+git clone https://github.com/resonatehq-examples/example-webhook-handler-ts
+cd example-webhook-handler-ts
+bun install
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — webhook server"
+bun run src/index.ts
+```
+
+Send a webhook:
+
+```shell
+curl -X POST http://localhost:3000/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"event_id": "evt_001", "type": "payment.succeeded", "amount": 4999, "currency": "USD"}'
+```
+
+Send the same webhook again. Watch the logs — the second delivery doesn't re-charge.
+
+## Try the crash story
+
+Run with the crash flag:
+
+```shell
+bun run src/index.ts -- --crash
+```
+
+Send a webhook. The `chargeCard` step throws, the workflow retries, the second attempt succeeds. The card is charged exactly once — there's no duplicate-charge window between the failure and the retry.
+
+## Related
+
+- [Money transfer](/get-started/examples/money-transfer) — same idempotency primitive, applied to a saga.
+- [Async HTTP API endpoints](/get-started/examples/async-http-api-endpoints) — fire-and-forget HTTP with the same workflow-ID-as-dedup-key shape.
+
+---
+
+---
 url: /get-started
 title: Get started with Resonate
 ---

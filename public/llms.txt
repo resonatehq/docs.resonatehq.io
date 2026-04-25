@@ -47,6 +47,7 @@
 - [Money transfer](/get-started/examples/money-transfer): A two-step transfer (debit source, credit target) where each step is a durable checkpoint and the same transfer ID deduplicates retries.
 - [Recursive factorial](/get-started/examples/recursive-factorial): A workflow that calls itself with `ctx.rpc` — recursion is automatically distributed and durable.
 - [Schedule](/get-started/examples/schedule): Register a function to run on a cron schedule. Each invocation is a durable workflow with crash recovery built in.
+- [Webhook handler](/get-started/examples/webhook-handler): A Stripe-style webhook handler where the event ID is the workflow ID — duplicate deliveries dedupe, partial failures resume, the customer gets charged once.
 - [Get started with Resonate](/get-started): Quickstart, examples, and migration guides.
 - [Quickstart](/get-started/quickstart): Install the server and SDK and run your first Resonate workflow.
 - [Home](/index): Resonate — agent-native durable execution. Generated, optimized, absurdly cheap.
