@@ -8539,49 +8539,42 @@ TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x a
   
 
 
-## What this demonstrates
-
-A single workflow function suspends on a durable promise, exposes the promise ID to the outside world, and resumes the moment that promise resolves. The same mechanic doubles as deduplication (re-invoking the same workflow ID reconnects to the in-flight execution) and survives worker crashes (kill the worker mid-block, the workflow recovers on another).
-
 ## The problem
 
-Real business processes routinely depend on human input — a manager approves a refund, a reviewer accepts a generated summary, a customer confirms an address. The wait can be seconds or weeks, and the answer can come from email, a webhook, a UI, or a CLI.
-
-Solving this without a runtime that understands suspension means breaking the process apart by hand: a queue to park the work, a job to wake it up, a database row to track which step you're on, a polling loop somewhere. Every shop reinvents the same coordination layer, and every implementation has its own subtle bugs around retries, races, and recovery.
+Real processes wait on humans — refunds, reviews, address confirmations — for seconds to weeks, with the answer arriving over email, webhook, UI, or CLI. Without a runtime that understands suspension, you hand-roll the coordination layer: a queue to park the work, a job to wake it up, a row to track which step you're on, a polling loop somewhere — every shop reinvents it, every implementation has its own bugs.
 
 ## Resonate's solution
 
-Yield a Resonate Promise from inside a workflow and execution suspends until that promise resolves. The promise has a stable ID; anything that knows the ID — another process, a CLI, an HTTP handler, a button click — can resolve it. There's no scheduler, no parking queue, no external state machine.
-
-Because the suspension lives inside a durable promise, it survives process crashes. A worker that's blocking on a human can be killed and the workflow continues on whichever worker picks the task back up.
+Yield a Resonate Promise from inside a workflow and execution suspends until that promise resolves. The promise has a stable ID; anything that knows the ID — another process, a CLI, an HTTP handler, a button click — can resolve it. No scheduler, no queue, no external state machine.
 
 ## Code walkthrough
 
-The example has two processes: a **worker** that runs the workflow, and a **gateway** that starts workflows over HTTP and resolves their blocking promises.
+Two processes: a **worker** runs the workflow, a **gateway** drives HTTP.
 
 ### The blocking workflow
 
-The workflow creates a promise, makes its ID visible (here via an `sendEmail` step that prints a callback URL), then yields the promise. Execution pauses until something resolves it.
+The workflow creates a promise, makes its ID visible (here via a `sendEmail` step that prints a callback URL), then yields the promise. Execution pauses until something resolves it.
 
 
 
 
 
 ```typescript title="worker.ts"
-function* foo(ctx: Context, workflowId: string): Generator<any, void, any> {
-  // Create a durable promise. Its ID is derived from the workflow ID.
-  const blockingPromise = yield* ctx.promise();
+function* fooWorkflow(ctx: Context, workflowId: string) {
+  // Latent durable promise — resolved externally.
+  const blockingPromise = yield* ctx.promise({});
 
   // Make the promise ID reachable from outside — email, webhook, log, etc.
   yield* ctx.run(sendEmail, blockingPromise.id);
-  console.log(`blocked, waiting on human interaction`);
+  console.log("workflow blocked, waiting on human interaction");
 
   // Suspend until the promise resolves. Survives crashes.
-  yield* blockingPromise;
-  console.log(`unblocked, promise resolved`);
+  const data = yield* blockingPromise;
+  console.log(`workflow unblocked, promise resolved with ${data}`);
+  return `foo workflow ${workflowId} complete`;
 }
 
-resonate.register("foo-workflow", foo);
+resonate.register("foo-workflow", fooWorkflow);
 ```
 
 
@@ -8589,41 +8582,42 @@ resonate.register("foo-workflow", foo);
 
 
 ```python title="worker.py"
-@resonate.register
+@resonate.register()
 def foo(ctx, workflow_id):
-    # Create a durable promise. Its ID is derived from the workflow ID.
+    # Latent durable promise — resolved externally.
     blocking_promise = yield ctx.promise()
 
     # Make the promise ID reachable from outside — email, webhook, log, etc.
-    yield ctx.run(send_email, blocking_promise.id)
-    print("blocked, waiting on human interaction")
+    yield ctx.lfc(send_email, blocking_promise.id)
+    print(f"workflow {workflow_id} blocked, waiting on human interaction")
 
     # Suspend until the promise resolves. Survives crashes.
     yield blocking_promise
-    print("unblocked, promise resolved")
+    print(f"workflow {workflow_id} unblocked, promise resolved")
+    return {"message": f"workflow {workflow_id} completed"}
 ```
 
 
 
 
 
-```rust title="src/main.rs"
+```rust title="src/bin/worker.rs"
 use resonate::prelude::*;
 
 #[resonate::function]
-async fn foo(ctx: &Context, workflow_id: String) -> Result<()> {
-    // Latent durable promise — no function backing it, resolved externally.
+async fn foo(ctx: &Context, workflow_id: String) -> Result {
+    // Latent durable promise — resolved externally.
     let blocking_promise = ctx.promise::<bool>();
     let promise_id = blocking_promise.id().await?;
 
     // Make the promise ID reachable from outside — email, webhook, log, etc.
     ctx.run(send_email, promise_id).await?;
-    println!("blocked, waiting on human interaction");
+    println!("blocked, waiting on human interaction (workflow {workflow_id})");
 
     // Suspend until the promise resolves. Survives crashes.
     let _approved = blocking_promise.await?;
     println!("unblocked, promise resolved");
-    Ok(())
+    Ok(format!("workflow {workflow_id} completed"))
 }
 ```
 
@@ -8633,7 +8627,7 @@ async fn foo(ctx: &Context, workflow_id: String) -> Result<()> {
 
 ### Resolving the promise
 
-The gateway exposes two endpoints — one to start a workflow, one to resolve the blocking promise. Resolving the promise unblocks every workflow waiting on that ID, anywhere in the cluster.
+The gateway exposes two endpoints — one to start a workflow, one to resolve the blocking promise. Resolving the promise unblocks the workflow waiting on that ID, from any process.
 
 
 
@@ -8641,20 +8635,22 @@ The gateway exposes two endpoints — one to start a workflow, one to resolve th
 
 ```typescript title="gateway.ts"
 app.post("/start-workflow", async (req, res) => {
-  const { workflow_id } = req.body ?? {};
+  const workflowId = req.body?.workflow_id;
   // Same workflow_id reconnects to a PENDING execution rather than starting a new one.
   const result = await resonate.rpc(
-    workflow_id,
+    workflowId,
     "foo-workflow",
-    workflow_id,
+    workflowId,
     resonate.options({ target: "poll://any@workers" }),
   );
   res.status(200).json({ message: result });
 });
 
-app.get("/resolve/:promiseId", async (req, res) => {
-  await resonate.promises.settle(req.params.promiseId, "resolved");
-  res.status(200).json({ message: "promise resolved" });
+app.get("/unblock-workflow", async (req, res) => {
+  const promiseId = req.query.promise_id as string;
+  const data = Buffer.from(JSON.stringify("human_approval"), "utf8").toString("base64");
+  await resonate.promises.settle(promiseId, "resolved", { data });
+  res.status(200).json({ message: "workflow unblocked" });
 });
 ```
 
@@ -8665,20 +8661,21 @@ app.get("/resolve/:promiseId", async (req, res) => {
 ```python title="gateway.py"
 @app.route("/start-workflow", methods=["POST"])
 def start_workflow():
-    data = request.get_json() or {}
-    workflow_id = data["workflow_id"]
+    data = request.get_json()
     # Same workflow_id reconnects to a PENDING execution rather than starting a new one.
-    handle = resonate.options(target="poll://worker").rpc(
-        workflow_id, "foo", workflow_id
+    handle = resonate.options(target="poll://any@worker").begin_rpc(
+        data["workflow_id"], "foo", data["workflow_id"]
     )
     if handle.done():
         return jsonify({"message": handle.result()})
-    return jsonify({"message": f"workflow {workflow_id} started"}), 200
+    return jsonify({"message": f"workflow {data['workflow_id']} started"}), 200
 
-@app.route("/resolve/<promise_id>", methods=["GET"])
-def resolve(promise_id):
-    resonate.promises.resolve(id=promise_id)
-    return jsonify({"message": "promise resolved"})
+
+@app.route("/unblock-workflow", methods=["GET"])
+def unblock_workflow():
+    promise_id = request.args.get("promise_id")
+    resonate.promises.resolve(id=promise_id, ikey=promise_id)
+    return jsonify({"message": "workflow unblocked"}), 200
 ```
 
 
@@ -8726,7 +8723,7 @@ async fn resolve(
 
 ## Run it locally
 
-You'll need the Resonate Server, the worker, and the gateway running. Pick the language tab.
+You need the Resonate Server, the worker, and the gateway running.
 
 
 
@@ -8763,7 +8760,7 @@ curl -X POST http://localhost:5001/start-workflow \
   -d '{"workflow_id": "hitl-001"}'
 ```
 
-The worker prints a callback URL. Hit it (or the matching `/resolve/:promiseId` endpoint) to unblock the workflow.
+The worker prints a callback URL — visit it to unblock the workflow.
 
 
 
@@ -8800,7 +8797,7 @@ curl -X POST http://localhost:5001/start-workflow \
   -d '{"workflow_id": "hitl-001"}'
 ```
 
-The worker prints a callback URL. Hit it to unblock the workflow.
+The worker prints a callback URL — visit it to unblock the workflow.
 
 
 
@@ -8837,7 +8834,7 @@ curl -X POST http://localhost:5001/start-workflow \
   -d '{"workflow_id": "hitl-001"}'
 ```
 
-The worker prints a `CLICK TO RESOLVE` URL. Hit it (or the matching `/resolve/<promise_id>` endpoint) to unblock the workflow.
+The worker prints a `CLICK TO RESOLVE` URL — visit it to unblock the workflow.
 
 
 
@@ -8845,15 +8842,7 @@ The worker prints a `CLICK TO RESOLVE` URL. Hit it (or the matching `/resolve/<p
 
 ## Try the recovery story
 
-The same setup demonstrates Resonate's load balancing and crash recovery for free. Run multiple workers in parallel:
-
-```shell
-bun run worker.ts &
-bun run worker.ts &
-bun run worker.ts &
-```
-
-Start several workflows with different IDs and watch them spread across the workers. Then kill one of the workers while a workflow is blocked — Resonate reassigns it and the workflow resumes on a survivor.
+Same setup, load balancing and crash recovery included. Run multiple workers in parallel, start several workflows with different IDs, and watch them spread across workers. Kill one mid-block — Resonate reassigns it and the workflow resumes on a survivor.
 
 ## Related
 
@@ -8870,7 +8859,7 @@ title: Examples
 <img src="/images/banner-examples-dark.png" alt="Resonate Examples banner" className="hidden dark:block" />
 <img src="/images/banner-examples-light.png" alt="Resonate Examples banner" className="block dark:hidden" />
 
-Clone and explore example projects that demonstrate common use cases and patterns.
+Runnable example projects, one per pattern. Clone, read, modify.
 
 ---
 
@@ -9076,21 +9065,7 @@ title: Get started with Resonate
 
 **Durable execution means your functions survive crashes, restarts, and scaling — automatically.** Resonate handles retries, recovery, and state persistence so you can write normal async code.
 
-Want to get started with Resonate?
-
-We want you to have the best possible experience while getting started and using Resonate.
-Therefore, what you do next really depends on where you are coming from and what you are trying to do.
-
-- **[Quickstart](/get-started/quickstart)**: If you want to dive right in, then check out our [quickstart guide](/get-started/quickstart) to get a Resonate application up and running in minutes.
-
-- **[Examples](/get-started/examples)**: If you are trying to solve a specific problem, start with an [example](/get-started/examples) that matches your use case — each one ships with a runnable repo and a walkthrough of the Resonate primitives in play.
-
-And if you have experience with either Temporal or DBOS you may want to review our "coming from x" guides, which can be helpful in mapping concepts from those platforms to Resonate.
-
-- [Coming from Temporal](/evaluate/coming-from/temporal)
-- [Coming from Restate](/evaluate/coming-from/restate)
-- [Coming from DBOS](/evaluate/coming-from/dbos)
-- [Coming from BYODE (Building Your Own Durable Execution)](/evaluate/coming-from/byode)
+Migrating from another platform? See the [coming from](/evaluate/coming-from/) guides.
 
 ---
 
@@ -9102,13 +9077,13 @@ title: Quickstart
 <img src="/images/banner-quickstart-dark.png" alt="Resonate Quickstart banner" className="hidden dark:block" />
 <img src="/images/banner-quickstart-light.png" alt="Resonate Quickstart banner" className="block dark:hidden" />
 
-## Install the Resonate Server & CLI
+## Install the server
 
 ```shell
 brew install resonatehq/tap/resonate
 ```
 
-## Install the Resonate SDK
+## Install the SDK
 
 
 
@@ -9144,7 +9119,7 @@ pip install resonate-sdk
 
 ```toml title="Cargo.toml"
 [dependencies]
-resonate = { git = "https://github.com/resonatehq/resonate-sdk-rs", branch = "master" }
+resonate = { package = "resonate-sdk", git = "https://github.com/resonatehq/resonate-sdk-rs", branch = "main" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 ```
@@ -9153,9 +9128,9 @@ serde = { version = "1", features = ["derive"] }
 
 
 
-## Write your first Resonate Function
+## Write a function
 
-A countdown as a loop. Simple, but the function can run for minutes, hours, or days, despite restarts.
+A countdown loop that survives restarts — minutes, hours, or days.
 
 
 
@@ -9299,8 +9274,6 @@ resonate invoke countdown.1 --func countdown --arg 5 --arg 60
 
 ## Result
 
-You will see the countdown in the terminal
-
 
 
 
@@ -9349,13 +9322,13 @@ Done!
 
 ## What to try
 
-After starting the function, inspect the current state of the execution using the `resonate tree` command. The tree command visualizes the call graph of the function execution as a graph of durable promises.
+Inspect the execution with `resonate tree` — it renders the call graph as durable promises.
 
 ```shell
 resonate tree countdown.1
 ```
 
-Now try killing the worker mid-countdown and restarting. **The countdown picks up right where it left off without missing a beat.**
+Now kill the worker mid-countdown and restart. **The countdown resumes where it stopped.**
 
 ## Next steps
 
@@ -9380,7 +9353,7 @@ Resonate is built on three pillars:
 - **Generated & optimized** — Open-source pluggable components plus stack-specific generated servers. AI constrained by formal specs and protocols — not slop, but highly optimized software. Exactly what your stack needs, nothing more.
 - **Absurdly cheap** — Serverless-native architecture means you pay only for active execution. Workloads that cost ~$80K/year on hosted alternatives can run for under $100/year on Resonate. Orders of magnitude, not percentages.
 
-Build agents, workflows, pipelines, and services without thinking about retries or recovery. Write functions that scale across dozens or hundreds of machines and run for hours, days, weeks, or months — in just a few lines of code.
+Build agents, workflows, pipelines, and services without thinking about retries or recovery — in a few lines of code.
 
 ```typescript title="agent.ts — recursive sub-agent loop"
 function* agent(context: Context, prompt: string) {
