@@ -1,0 +1,213 @@
+---
+title: Schedule
+pageTitle: Cron-shaped scheduling with durable executions
+description: Register a function to run on a cron schedule. Each invocation is a durable workflow with crash recovery built in.
+keywords:
+  - schedule
+  - cron
+  - periodic
+  - durable-workflow
+  - examples
+---
+
+<img src="/images/example-schedule-dark.png" alt="Schedule banner" className="hidden dark:block" />
+<img src="/images/example-schedule-light.png" alt="Schedule banner" className="block dark:hidden" />
+
+Register a function to run on a cron expression and Resonate handles the rest. Every fired execution is a durable workflow — a worker that crashes mid-run hands off to a survivor, and a missed run because all workers were down still gets dispatched when one comes back.
+
+<Callout type="info" title="SDK versions">
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
+</Callout>
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="TypeScript SDK"
+    description="Cron-scheduled report generator with a separate worker process."
+    link="https://github.com/resonatehq-examples/example-schedule-ts"
+  />
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Cron-scheduled report generator with a separate worker process."
+    link="https://github.com/resonatehq-examples/example-schedule-py"
+  />
+</CloneRepoGrid>
+
+## The problem
+
+Cron is fine for "fire a script at a time," but stops there. If the script needs to retry, recover from a crash, dedup against double-fires, or coordinate across multiple machines, you end up wrapping cron in increasingly elaborate scaffolding — usually a queue, a separate worker, and a state table to track which runs completed.
+
+## Resonate's solution
+
+Tell the Resonate Server "run this function on this cron schedule." It dispatches each run as a durable workflow to whichever worker in the group claims it. The worker doesn't care about the schedule — it just runs the function, checkpoints each step, and recovers automatically if anything fails. Schedules persist across server restarts.
+
+## Code walkthrough
+
+Two scripts: a one-shot **schedule registration** that tells the server about the cron expression, and a **worker** that executes whatever the schedule fires.
+
+### Register the schedule
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
+
+```typescript title="src/schedule.ts"
+import { Resonate } from "@resonatehq/sdk";
+import { generateReport } from "./report";
+
+const resonate = new Resonate({ url: "http://localhost:8001" });
+resonate.register("generateReport", generateReport);
+
+await resonate.schedule(
+  "daily_report",   // schedule ID — re-running this script is a no-op once it exists
+  "* * * * *",      // cron: every minute (use "0 9 * * *" for daily 9am)
+  generateReport,
+  123,              // userId argument
+);
+console.log("Schedule created. Start the worker to process executions.");
+resonate.stop();
+```
+
+</TabItem>
+
+<TabItem value="python">
+
+```python title="schedule.py"
+from resonate import Resonate
+from report import generate_report
+
+resonate = Resonate(url="http://localhost:8001")
+resonate.register(generate_report)
+
+resonate.schedule(
+    "daily_report",   # schedule ID
+    generate_report,
+    "* * * * *",      # cron: every minute
+    user_id=123,
+)
+print("Schedule created. Start the worker to process executions.")
+```
+
+</TabItem>
+
+</Tabs>
+
+The schedule lives on the server, not in the worker. You can run the registration script once and the schedule keeps firing across worker restarts and redeploys. Re-running the script with the same ID is a no-op.
+
+### Run the worker
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
+
+```typescript title="src/worker.ts"
+import { Resonate } from "@resonatehq/sdk";
+import { generateReport } from "./report";
+
+const resonate = new Resonate({ url: "http://localhost:8001" });
+resonate.register("generateReport", generateReport);
+console.log("Worker started. Waiting for scheduled executions...");
+```
+
+</TabItem>
+
+<TabItem value="python">
+
+```python title="worker.py"
+from resonate import Resonate
+from report import generate_report
+
+resonate = Resonate(url="http://localhost:8001")
+resonate.register(generate_report)
+
+print("Worker started. Waiting for scheduled executions...")
+resonate.start()
+```
+
+</TabItem>
+
+</Tabs>
+
+The worker is identical to any other Resonate worker — it doesn't know it's being driven by a schedule. The same function can be invoked by hand via `resonate invoke` or scheduled cron-style; both paths are durable executions.
+
+## Run it locally
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-schedule-ts
+cd example-schedule-ts
+npm install
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — register the schedule (one-shot)"
+npx tsx src/schedule.ts
+```
+
+```shell title="Terminal 3 — worker"
+npx tsx src/worker.ts
+```
+
+The worker prints a log line every minute as the schedule fires. Kill it for a few minutes and restart — runs that fired while it was down are dispatched as soon as it reconnects.
+
+</TabItem>
+
+<TabItem value="python">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-schedule-py
+cd example-schedule-py
+uv sync
+```
+
+```shell title="Terminal 1 — Resonate Server (legacy)"
+brew install resonatehq/tap/resonate
+resonate serve
+```
+
+```shell title="Terminal 2 — register the schedule (one-shot)"
+uv run python schedule.py
+```
+
+```shell title="Terminal 3 — worker"
+uv run python worker.py
+```
+
+The worker prints a log line every minute as the schedule fires. Kill it for a few minutes and restart — runs that fired while it was down are dispatched as soon as it reconnects.
+
+</TabItem>
+
+</Tabs>
+
+## Try the catch-up story
+
+Stop the worker for a few minutes. Schedule fires keep accumulating on the server. When you restart the worker, the queued runs dispatch in order — none are lost. Now bring up two workers in the same group and watch fires distribute across them.
+
+## Related
+
+- [Load balancing](/get-started/examples/load-balancing) — same group dispatch, focused on parallel work.
+- [Durable sleep](/get-started/examples/durable-sleep) — the in-workflow analogue of cron, for delays inside a single execution.
