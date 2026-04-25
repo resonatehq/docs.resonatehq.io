@@ -8098,90 +8098,146 @@ def await_result(job_name):
 
 ---
 url: /get-started/examples/async-http-api-endpoints
-title: Async HTTP API endpoints
+title: Async HTTP APIs
 ---
 
 <img src="/images/example-async-http-api-dark.png" alt="Async HTTP API banner" className="hidden dark:block" />
 <img src="/images/example-async-http-api-light.png" alt="Async HTTP API banner" className="block dark:hidden" />
 
-Transform synchronous HTTP requests into durable jobs so clients can fire-and-forget while still getting reliable completion updates.
+A FastAPI gateway converts every inbound request into a durable workflow, returns a promise ID immediately, and exposes a `/wait` endpoint clients poll for completion.
 
 
+Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. TypeScript SDK example repo is forthcoming.
 
 
 
   
 
 
-## Problem
+## The problem
 
-Traditional REST endpoints either block clients until work completes or require bespoke status polling code that can easily get out of sync.
+Synchronous HTTP either blocks the client until work finishes or punts the polling problem to whoever calls you. Hand-rolled status tracking gets out of sync, server crashes leave clients guessing whether work completed, and retries duplicate work that already ran.
 
-If a server crashes mid-request, clients have no reliable way to know whether work finished, failed, or needs to be retried.
+## Resonate's solution
 
-## Solution
+Each inbound request becomes a durable workflow keyed by a client-provided ID. The gateway returns the ID immediately; clients poll a status endpoint that asks Resonate whether the promise has resolved. Crashes don't lose progress — the workflow resumes on a survivor and the same ID still answers the poll.
 
-Resonate turns each inbound request into a durable workflow. The request handler enqueues work and immediately returns an identifier that clients can poll for status. Work execution becomes resilient to server restarts, retries, and long-running tasks.
+## Code walkthrough
 
-The example demonstrates how to expose submission and status endpoints, push long-running work into Resonate, and notify clients when it completes.
+Two processes: a **gateway** that accepts HTTP requests and a **worker** that runs the durable function.
 
-## Quick example
+### The gateway
 
+`POST /begin` enqueues durable work and returns a promise ID. `GET /wait` polls for completion. The same client-provided ID deduplicates retries — sending `/begin` twice with the same ID reconnects to the in-flight execution.
 
-
-
-
-
-    
-
-```python title="main.py - API Gateway"
-from fastapi import FastAPI
+```python title="main.py"
+from fastapi import FastAPI, HTTPException
 from resonate import Resonate
+import uuid
 
 app = FastAPI()
-resonate = Resonate.remote(group="gateway")
+resonate = Resonate().remote(group="gateway")
+
 
 @app.post("/begin")
 def begin(data=None, id=None):
-    # Start durable execution on a worker
-    handle = resonate.options(
-        target="poll://any@worker"
-    ).begin_rpc(id, "foo", data)
-    
-    return {
-        "promise": handle.id,
-        "status": "pending",
-        "wait": f"/wait?id={handle.id}"
-    }
+    # Client-provided ID enables deduplication and safe retries.
+    if id is None:
+        id = str(uuid.uuid4())
+    if data is None:
+        data = {"foo": "bar"}
+
+    handle = resonate.options(target="poll://any@worker").begin_rpc(
+        func="foo", id=id, data=data
+    )
+    return {"promise": handle.id, "status": "pending", "wait": f"/wait?id={handle.id}"}
+
 
 @app.get("/wait")
 def wait(id: str):
-    handle = resonate.get(id)
-    
-    if handle.done():
-        return {
-            "status": "resolved",
-            "result": handle.result()
-        }
-    else:
-        return {
-            "status": "pending",
-            "message": "Processing in progress"
-        }
+    try:
+        handle = resonate.get(id)
+        if handle.done():
+            return {"status": "resolved", "promise_id": id, "result": handle.result()}
+        return {"status": "pending", "promise_id": id, "message": "Processing in progress"}
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"{id} not found")
 ```
 
-```python title="worker.py - Background Worker"
-from resonate import Context, Resonate
+### The worker
 
-resonate = Resonate.remote(group="worker")
+`@resonate.register` exposes `foo` as a durable function. The gateway's `begin_rpc` dispatches the call to whichever worker in the `worker` group claims it first; if that worker dies mid-execution, another picks up the workflow.
+
+```python title="worker.py"
+from resonate import Context, Resonate
+from threading import Event
+import time
+
+resonate = Resonate().remote(group="worker")
+
 
 @resonate.register
 def foo(context: Context, data):
-    # Long-running work happens here
-    return {"result": f"Processed: {data}"}
+    # Real work goes here — external APIs, DB writes, anything serializable.
+    return {"result": f"Processed: {data}", "timestamp": time.time()}
 
-resonate.start()
+
+if __name__ == "__main__":
+    resonate.start()
+    Event().wait()
 ```
+
+## Run it locally
+
+You need the legacy Resonate Server, the worker, and the gateway.
+
+Clone the repo and install dependencies (uses [uv](https://docs.astral.sh/uv/)):
+
+```shell
+git clone https://github.com/resonatehq-examples/example-async-http-api-py
+cd example-async-http-api-py
+uv sync
+```
+
+In separate terminals:
+
+```shell title="Terminal 1 — Resonate Server (legacy)"
+brew install resonatehq/tap/resonate
+resonate serve
+```
+
+```shell title="Terminal 2 — worker"
+uv run python worker.py
+```
+
+```shell title="Terminal 3 — gateway"
+uv run uvicorn main:app --host 127.0.0.1 --port 5001
+```
+
+Begin a workflow:
+
+```shell
+curl -X POST "http://localhost:5001/begin?id=job-001" \
+  -H "Content-Type: application/json" \
+  -d '{"foo": "hello"}'
+```
+
+The response includes a `wait` URL. Poll it:
+
+```shell
+curl "http://localhost:5001/wait?id=job-001"
+```
+
+You'll see `pending` until the worker completes, then `resolved` with the result.
+
+## Try the dedup story
+
+Call `/begin` twice with the same `id`. Resonate doesn't run the work twice — the second call reconnects to the in-flight execution and the polling endpoint returns the same eventual result. This is the same idempotency primitive that makes safe retries cheap.
+
+## Related
+
+- [Human-in-the-loop](/get-started/examples/human-in-the-loop) — the same gateway+worker shape, with a workflow that suspends on a durable promise.
+- [Load balancing](/get-started/examples/load-balancing) — what happens when you run multiple workers in the same group.
 
 ---
 
