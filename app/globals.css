@@ -20,15 +20,15 @@
     @apply outline-2 outline-offset-2 outline-secondary;
   }
 
-  /* Shiki dual-theme support — fumadocs generates CSS vars per token */
+  /* Shiki dual-theme support — fumadocs generates CSS vars per token.
+     No background-color on spans: the wrapper supplies the background, and
+     painting Shiki's theme bg on every token row reintroduces the seam. */
   pre code span {
     color: var(--shiki-light);
-    background-color: var(--shiki-light-bg);
   }
 
   .dark pre code span {
     color: var(--shiki-dark);
-    background-color: var(--shiki-dark-bg);
   }
 }
 
@@ -142,6 +142,10 @@
 
   .docs-content img[src*="banner-"] {
     @apply w-full border-0 mb-6;
+  }
+
+  .docs-content .home-hero {
+    @apply border-0;
   }
 
   .docs-content hr {
