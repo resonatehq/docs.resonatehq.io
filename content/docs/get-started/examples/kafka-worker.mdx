@@ -16,11 +16,11 @@ keywords:
 A consumer pulls messages from a Kafka topic and dispatches each one through a durable Resonate workflow. Per-message state lives in durable promises, so a worker that dies mid-batch resumes cleanly without redoing completed steps.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
 </Callout>
 
 <Callout type="note" title="Kafka or Redpanda — same code">
-Both repos run against [Redpanda](https://redpanda.com/) for local development because the broker boots in seconds, but the code uses the Kafka wire protocol — `kafkajs` for TypeScript, `confluent-kafka-python` for Python. Point either at any Kafka-compatible broker — Apache Kafka, Redpanda, or a managed offering — by changing the bootstrap-server config.
+All three repos run against [Redpanda](https://redpanda.com/) for local development because the broker boots in seconds, but the code uses the Kafka wire protocol — `kafkajs` for TypeScript, `confluent-kafka-python` for Python, `rdkafka` for Rust. Point any of them at any Kafka-compatible broker — Apache Kafka, Redpanda, or a managed offering — by changing the bootstrap-server config.
 </Callout>
 
 <CloneRepoGrid>
@@ -33,6 +33,11 @@ Both repos run against [Redpanda](https://redpanda.com/) for local development b
     sdk="Python SDK"
     description="Consumer that dispatches a durable workflow per message, with batch-level retries."
     link="https://github.com/resonatehq-examples/example-kafka-worker-py"
+  />
+  <CloneRepoCard
+    sdk="Rust SDK"
+    description="rdkafka consumer that dispatches a durable workflow per message via spawn()."
+    link="https://github.com/resonatehq-examples/example-kafka-worker-rs"
   />
 </CloneRepoGrid>
 
@@ -58,6 +63,7 @@ The pattern is a small consume loop that hands each message to `workflow.begin_r
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -118,6 +124,26 @@ def workflow(ctx, record_id, offset):
 
 </TabItem>
 
+<TabItem value="rust">
+
+```rust title="src/lib.rs"
+use resonate::prelude::*;
+use std::time::Duration;
+
+#[resonate::function]
+pub async fn workflow(ctx: &Context, record_id: String, offset: i64) -> Result<()> {
+    println!("processing record {record_id} (offset {offset})");
+    // Loop until delete_batch reports no more rows.
+    while ctx.run(delete_batch, record_id.clone()).await? {
+        ctx.sleep(Duration::from_secs(5)).await?;
+    }
+    ctx.run(enqueue_completion, (record_id, offset)).await?;
+    Ok(())
+}
+```
+
+</TabItem>
+
 </Tabs>
 
 Each `ctx.run` is a checkpoint. A worker crash mid-loop resumes from the next batch rather than from message zero, and `delete_batch` / `deleteBatch` doesn't run again for batches that already completed.
@@ -130,6 +156,7 @@ Each `ctx.run` is a checkpoint. A worker crash mid-loop resumes from the next ba
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -178,9 +205,31 @@ def main():
 
 </TabItem>
 
+<TabItem value="rust">
+
+```rust title="src/bin/consumer.rs"
+let consumer: StreamConsumer = ClientConfig::new()
+    .set("group.id", CONSUMER_GROUP_ID)
+    .set("bootstrap.servers", "localhost:9092")
+    .create()?;
+consumer.subscribe(&[TOPIC_TO_DELETE])?;
+
+while let Some(msg) = consumer.recv().await.ok() {
+    let record_id: String = serde_json::from_slice(msg.payload().unwrap())?;
+    // .spawn() is non-blocking. record_id acts as the durable promise id.
+    let _: ResonateHandle<()> = resonate
+        .run(&record_id, "workflow", (record_id.clone(), msg.offset()))
+        .target("poll://any@workers")
+        .spawn()
+        .await?;
+}
+```
+
+</TabItem>
+
 </Tabs>
 
-`beginRun` / `begin_run` is non-blocking — the consumer keeps polling while the workflow runs in the background. The same `recordId` deduplicates retries by design.
+`beginRun` / `begin_run` / `.spawn()` is non-blocking — the consumer keeps polling while the workflow runs in the background. The same `recordId` deduplicates retries by design.
 
 ## Run it locally
 
@@ -192,6 +241,7 @@ Both repos ship a `docker-compose.yml` for Redpanda (Redpanda boots faster than 
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -247,6 +297,35 @@ uv run python -m record_deletor.delete
 ```shell title="Terminal 4 — produce records"
 uv run python -m record_producer.produce -n 10
 ```
+
+</TabItem>
+
+<TabItem value="rust">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-kafka-worker-rs
+cd example-kafka-worker-rs
+cargo build
+```
+
+```shell title="Terminal 1 — the broker"
+docker compose up
+```
+
+```shell title="Terminal 2 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 3 — the worker"
+cargo run --bin consumer
+```
+
+```shell title="Terminal 4 — produce records"
+cargo run --bin producer -- -n 10
+```
+
+(`rdkafka` requires `cmake` at build time — install via `brew install cmake` if missing.)
 
 </TabItem>
 
