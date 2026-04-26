@@ -16,10 +16,15 @@ keywords:
 A gateway calls service A, which calls service B, which calls service C. Each step uses Resonate's remote function invocation APIs, so the entire chain is durable — a crash on any service resumes the call without re-running prior steps.
 
 <Callout type="info" title="SDK versions">
-Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. TypeScript example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server.
 </Callout>
 
 <CloneRepoGrid>
+  <CloneRepoCard
+    sdk="TypeScript SDK"
+    description="Nine-service Express example demonstrating await-chain, detached, and fan-out RPC flows."
+    link="https://github.com/resonatehq-examples/example-async-rpc-ts"
+  />
   <CloneRepoCard
     sdk="Python SDK"
     description="Multi-service example demonstrating ephemeral-to-durable and durable-to-durable RPC."
@@ -46,6 +51,36 @@ The example chains a gateway through `service-a` → `service-b`. Each service i
 
 ### The gateway (ephemeral → durable)
 
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
+
+```typescript title="src/gateway.ts"
+app.post("/await-chain", async (_req, res) => {
+  const promiseId = "await-chain";
+  // Ephemeral-to-durable: HTTP handler calls into a durable service.
+  const handle = await resonate.beginRpc<number>(
+    promiseId,
+    "foo",
+    "foo",
+    resonate.options({ target: "poll://any@service-a" }),
+  );
+  // Block the HTTP response on the chain's result.
+  const message = await handle.result();
+  res.status(200).json({ message });
+});
+```
+
+</TabItem>
+
+<TabItem value="python">
+
 ```python title="src/gateway.py"
 @app.route("/await-chain", methods=["POST"])
 def await_chain_route_handler():
@@ -57,9 +92,60 @@ def await_chain_route_handler():
     return jsonify({"message": message}), 200
 ```
 
-`resonate.rpc` dispatches `foo` on whichever process is registered as `service-a`. The promise ID makes the call idempotent — re-running the same handler with the same ID reconnects to the in-flight execution rather than starting a duplicate chain.
+</TabItem>
+
+</Tabs>
+
+`resonate.beginRpc` (TypeScript) / `resonate.rpc` (Python) dispatches `foo` on whichever process is registered as `service-a`. The promise ID makes the call idempotent — re-running the same handler with the same ID reconnects to the in-flight execution rather than starting a duplicate chain.
 
 ### Service A → Service B (durable → durable)
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
+
+```typescript title="src/service_a.ts"
+function* foo(ctx: Context): Generator<any, number, any> {
+  // ctx.rpc dispatches to service-b and waits for the result.
+  // Both sides are durable; the call resumes if either process crashes.
+  const result: number = yield* ctx.rpc<number>(
+    "bar",
+    ctx.options({ target: "poll://any@service-b" }),
+  );
+  return result + 1;
+}
+
+resonate.register("foo", foo);
+```
+
+```typescript title="src/service_b.ts"
+function* bar(ctx: Context): Generator<any, number, any> {
+  const result: number = yield* ctx.rpc<number>(
+    "baz",
+    ctx.options({ target: "poll://any@service-c" }),
+  );
+  return result + 1;
+}
+
+resonate.register("bar", bar);
+```
+
+For fire-and-forget calls, swap `ctx.rpc` for `ctx.detached`:
+
+```typescript
+// Detached: dispatch and don't wait. Returns immediately.
+yield* ctx.detached("qux", ctx.options({ target: "poll://any@service-d" }));
+```
+
+</TabItem>
+
+<TabItem value="python">
 
 ```python title="src/service_a.py"
 @resonate.register
@@ -77,8 +163,6 @@ def bar(ctx):
     return result + 1
 ```
 
-The `ctx.rfc` call inside a durable function is the durable equivalent of `await someService.bar()`. The result is checkpointed, so a worker that completes `bar` and then dies still passes its result back when the chain resumes.
-
 For fire-and-forget calls — kicking off work without blocking on its result — swap `ctx.rfc` for `ctx.rfi`:
 
 ```python
@@ -86,9 +170,54 @@ For fire-and-forget calls — kicking off work without blocking on its result �
 ctx.rfi("qux").options(target="poll://service-d")
 ```
 
+</TabItem>
+
+</Tabs>
+
+The `ctx.rpc` / `ctx.rfc` call inside a durable function is the durable equivalent of `await someService.bar()`. The result is checkpointed, so a worker that completes `bar` and then dies still passes its result back when the chain resumes.
+
 ## Run it locally
 
-The example ships with nine services so you can exercise the await-chain, detached-chain, and fan-out flows.
+Both repos ship with nine services so you can exercise the await-chain, detached-chain, and fan-out flows.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-async-rpc-ts
+cd example-async-rpc-ts
+bun install
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+Start each service in its own terminal (`a` through `i`):
+
+```shell
+bun run a
+bun run b
+# ...c through i, one terminal each
+```
+
+Start the gateway:
+
+```shell
+bun run gateway
+```
+
+</TabItem>
+
+<TabItem value="python">
 
 ```shell
 git clone https://github.com/resonatehq-examples/example-async-rpc-py
@@ -114,6 +243,10 @@ Start the gateway:
 ```shell
 uv run python src/gateway.py
 ```
+
+</TabItem>
+
+</Tabs>
 
 Trigger the await-chain:
 
