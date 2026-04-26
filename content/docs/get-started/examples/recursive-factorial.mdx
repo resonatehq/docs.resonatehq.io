@@ -15,7 +15,7 @@ keywords:
 A workflow that computes `n!` by calling itself with `n-1`. Each recursive call dispatches via `ctx.rpc` to whichever worker in the group claims it — recursion ends up distributed across machines without any explicit coordination, and every step is checkpointed so a worker crash mid-recursion resumes cleanly.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
 </Callout>
 
 <CloneRepoGrid>
@@ -28,6 +28,11 @@ TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x a
     sdk="Python SDK"
     description="Workflow recurses via ctx.rpc, dispatched across the factorial-worker group."
     link="https://github.com/resonatehq-examples/example-recursive-factorial-py"
+  />
+  <CloneRepoCard
+    sdk="Rust SDK"
+    description="Workflow recurses via ctx.rpc, dispatched across the factorial-workers group."
+    link="https://github.com/resonatehq-examples/example-recursive-factorial-rs"
   />
 </CloneRepoGrid>
 
@@ -51,6 +56,7 @@ The pattern is one self-recursive function plus a client that kicks it off.
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -108,6 +114,38 @@ Event().wait()
 
 </TabItem>
 
+<TabItem value="rust">
+
+```rust title="src/bin/worker.rs"
+use resonate::prelude::*;
+
+#[resonate::function]
+async fn factorial(ctx: &Context, n: u64) -> Result<u64> {
+    if n <= 1 {
+        return Ok(1);
+    }
+    // ctx.rpc dispatches to any worker in the group.
+    let result: u64 = ctx
+        .rpc("factorial", n - 1)
+        .target("poll://any@factorial-workers")
+        .await?;
+    Ok(n * result)
+}
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        group: Some("factorial-workers".into()),
+        ..Default::default()
+    });
+    resonate.register(factorial).unwrap();
+    tokio::signal::ctrl_c().await.unwrap();
+}
+```
+
+</TabItem>
+
 </Tabs>
 
 ### Kicking it off
@@ -120,6 +158,7 @@ The client looks identical to any other RPC call — Resonate doesn't care that 
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -165,6 +204,29 @@ print(f"Result: {result}")
 
 </TabItem>
 
+<TabItem value="rust">
+
+```rust title="src/bin/client.rs"
+use resonate::prelude::*;
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        ..Default::default()
+    });
+    let n: u64 = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(5);
+    let result: u64 = resonate
+        .rpc(&format!("factorial-{n}"), "factorial", n)
+        .target("poll://any@factorial-workers")
+        .await
+        .unwrap();
+    println!("Factorial of {n} is {result}");
+}
+```
+
+</TabItem>
+
 </Tabs>
 
 ## Run it locally
@@ -177,6 +239,7 @@ Start the server, run a few workers, then dispatch from the client.
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -226,6 +289,29 @@ uv run python factorial_client.py 10
 ```
 
 Watch the three worker terminals — `factorial(10)`, `factorial(9)`, `factorial(8)` … fan out across the workers as recursion descends.
+
+</TabItem>
+
+<TabItem value="rust">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-recursive-factorial-rs
+cd example-recursive-factorial-rs
+cargo build
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminals 2–4 — three workers"
+cargo run --bin worker
+```
+
+```shell title="Terminal 5 — client"
+cargo run --bin client -- 10
+```
 
 </TabItem>
 
