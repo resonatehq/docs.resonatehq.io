@@ -16,7 +16,7 @@ keywords:
 Register a function to run on a cron expression and Resonate handles the rest. Every fired execution is a durable workflow — a worker that crashes mid-run hands off to a survivor, and a missed run because all workers were down still gets dispatched when one comes back.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
 </Callout>
 
 <CloneRepoGrid>
@@ -29,6 +29,11 @@ TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x a
     sdk="Python SDK"
     description="Cron-scheduled report generator with a separate worker process."
     link="https://github.com/resonatehq-examples/example-schedule-py"
+  />
+  <CloneRepoCard
+    sdk="Rust SDK"
+    description="Cron-scheduled report generator using resonate.schedule() with a separate worker."
+    link="https://github.com/resonatehq-examples/example-schedule-rs"
   />
 </CloneRepoGrid>
 
@@ -52,6 +57,7 @@ Two scripts: a one-shot **schedule registration** that tells the server about th
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -95,6 +101,30 @@ print("Schedule created. Start the worker to process executions.")
 
 </TabItem>
 
+<TabItem value="rust">
+
+```rust title="src/bin/schedule.rs"
+use example_schedule_rs::generate_report;
+use resonate::prelude::*;
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        ..Default::default()
+    });
+
+    resonate
+        .schedule("daily_report", "* * * * *", "generate_report", 123u64)
+        .await
+        .expect("schedule create failed");
+
+    println!("Schedule created. Start the worker to process executions.");
+}
+```
+
+</TabItem>
+
 </Tabs>
 
 The schedule lives on the server, not in the worker. You can run the registration script once and the schedule keeps firing across worker restarts and redeploys. Re-running the script with the same ID is a no-op.
@@ -107,6 +137,7 @@ The schedule lives on the server, not in the worker. You can run the registratio
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -137,6 +168,26 @@ resonate.start()
 
 </TabItem>
 
+<TabItem value="rust">
+
+```rust title="src/bin/worker.rs"
+use example_schedule_rs::generate_report;
+use resonate::prelude::*;
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        ..Default::default()
+    });
+    resonate.register(generate_report).unwrap();
+    println!("Worker started. Waiting for scheduled executions...");
+    tokio::signal::ctrl_c().await.unwrap();
+}
+```
+
+</TabItem>
+
 </Tabs>
 
 The worker is identical to any other Resonate worker — it doesn't know it's being driven by a schedule. The same function can be invoked by hand via `resonate invoke` or scheduled cron-style; both paths are durable executions.
@@ -149,6 +200,7 @@ The worker is identical to any other Resonate worker — it doesn't know it's be
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -198,6 +250,29 @@ uv run python worker.py
 ```
 
 The worker prints a log line every minute as the schedule fires. Kill it for a few minutes and restart — runs that fired while it was down are dispatched as soon as it reconnects.
+
+</TabItem>
+
+<TabItem value="rust">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-schedule-rs
+cd example-schedule-rs
+cargo build
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — register the schedule (one-shot)"
+cargo run --bin schedule
+```
+
+```shell title="Terminal 3 — worker"
+cargo run --bin worker
+```
 
 </TabItem>
 
