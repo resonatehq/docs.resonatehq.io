@@ -16,7 +16,7 @@ keywords:
 A workflow debits the source account, credits the target account, and returns confirmations. Each account update is a durable checkpoint, the transfer ID is the idempotency key, and the same ID retried in seconds, hours, or days returns the cached result instead of double-spending.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python and Rust example repos are forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x. Rust example repo is forthcoming.
 </Callout>
 
 <CloneRepoGrid>
@@ -24,6 +24,11 @@ TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python and Rust example repos a
     sdk="TypeScript SDK"
     description="Two-step money transfer with idempotent retries via Express + a SQLite-backed account ledger."
     link="https://github.com/resonatehq-examples/example-money-transfer-application-ts"
+  />
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Saga with debit + credit + compensating reversal against a SQLite ledger. Each step idempotent on a deterministic op id."
+    link="https://github.com/resonatehq-examples/example-money-transfer-py"
   />
 </CloneRepoGrid>
 
@@ -37,7 +42,17 @@ Each account update is a checkpoint. If the worker dies after the debit but befo
 
 ## Code walkthrough
 
-The workflow is a generator that calls `updateAccount` twice — once with a negative amount (debit) and once with a positive (credit). Each call is its own durable checkpoint.
+The workflow calls `updateAccount` (TypeScript) or `apply_entry` (Python) twice — once with a negative amount (debit) and once with a positive (credit). Each call is its own durable checkpoint. The Python repo also wires up a compensating debit-reversal in the failure path.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
 
 ```typescript title="src/workflow.ts"
 export function* transferMoney(
@@ -69,8 +84,6 @@ export function* transferMoney(
 }
 ```
 
-`ctx.getDependency('db')` lets `updateAccount` see the database without exposing it as a workflow argument — important, because workflow arguments must be serializable, and a DB handle is not.
-
 The HTTP entrypoint passes a path-param `id` straight through to `transferMoney`:
 
 ```typescript title="src/index.ts"
@@ -85,7 +98,58 @@ app.post("/transfer/:id", async (req, res) => {
 });
 ```
 
+</TabItem>
+
+<TabItem value="python">
+
+```python title="main.py"
+from resonate.retry_policies import Never
+
+
+def transfer_money(ctx: Context, transfer_id: str, source: str, target: str,
+                   amount: float, *, simulate_credit_failure: bool = False):
+    debit_id = f"{transfer_id}-debit"
+    credit_id = f"{transfer_id}-credit"
+    reversal_id = f"{transfer_id}-reversal"
+
+    # Step 1 — debit the source (durable checkpoint).
+    yield ctx.run(apply_entry, debit_id, source, -amount, "debit")
+
+    # Step 2 — credit the target. On failure, compensate by reversing
+    # the debit. Never() retry policy lets the saga's compensation be
+    # the response to a credit-side failure.
+    try:
+        yield ctx.run(
+            credit_target, credit_id, target, amount,
+            fail=simulate_credit_failure,
+        ).options(retry_policy=Never())
+    except Exception as err:
+        yield ctx.run(apply_entry, reversal_id, source, amount, "reversal")
+        return {"transfer_id": transfer_id, "status": "compensated", "error": str(err)}
+
+    return {"transfer_id": transfer_id, "status": "committed",
+            "source": source, "target": target, "amount": amount}
+```
+
+The deterministic `op_id` (`{transfer_id}-debit`, `-credit`, `-reversal`) plus an `INSERT OR IGNORE` in `apply_entry` makes each step idempotent — replaying the workflow after a crash is a no-op for completed steps.
+
+</TabItem>
+
+</Tabs>
+
+`ctx.getDependency('db')` / `ctx.get_dependency("db")` lets the step functions see the database without exposing it as a workflow argument — important, because workflow arguments must be serializable, and a DB handle is not.
+
 ## Run it locally
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
 
 ```shell
 git clone https://github.com/resonatehq-examples/example-money-transfer-application-ts
@@ -111,7 +175,29 @@ curl -X POST http://localhost:3000/transfer/transfer-001 \
   -d '{"source": "alice", "target": "bob", "amount": 50}'
 ```
 
-Check the balances afterwards via the same server. Now call `/transfer/transfer-001` again — the response is the same cached result; balances don't change.
+Call `/transfer/transfer-001` again — the response is the same cached result; balances don't change.
+
+</TabItem>
+
+<TabItem value="python">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-money-transfer-py
+cd example-money-transfer-py
+uv sync
+```
+
+The Python repo runs in embedded mode (`Resonate.local()`) — no separate Resonate Server is needed for the demo.
+
+```shell
+uv run python main.py
+```
+
+The script seeds Alice with $200, runs a happy-path transfer (`alice -> bob $50`), then runs a failed transfer (`alice -> bob $75`) that triggers the compensating reversal. Final balances: `alice=150, bob=50`.
+
+</TabItem>
+
+</Tabs>
 
 ## Try the recovery story
 
