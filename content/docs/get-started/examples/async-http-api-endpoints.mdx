@@ -16,10 +16,15 @@ keywords:
 A FastAPI gateway converts every inbound request into a durable workflow, returns a promise ID immediately, and exposes a `/wait` endpoint clients poll for completion.
 
 <Callout type="info" title="SDK versions">
-Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. TypeScript SDK example repo is forthcoming.
+Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. TypeScript: `@resonatehq/sdk` v0.10.0 (current).
 </Callout>
 
 <CloneRepoGrid>
+  <CloneRepoCard
+    sdk="TypeScript SDK"
+    description="Express gateway with /begin and /wait endpoints backed by a Resonate worker."
+    link="https://github.com/resonatehq-examples/example-async-http-api-ts"
+  />
   <CloneRepoCard
     sdk="Python SDK"
     description="FastAPI gateway with /begin and /wait endpoints backed by a Resonate worker."
@@ -42,6 +47,60 @@ Two processes: a **gateway** that accepts HTTP requests and a **worker** that ru
 ### The gateway
 
 `POST /begin` enqueues durable work and returns a promise ID. `GET /wait` polls for completion. The same client-provided ID deduplicates retries — sending `/begin` twice with the same ID reconnects to the in-flight execution.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
+
+```typescript title="gateway.ts"
+import express from "express";
+import { randomUUID } from "node:crypto";
+import { Resonate } from "@resonatehq/sdk";
+
+const app = express();
+app.use(express.json());
+
+const resonate = new Resonate({ url: "http://localhost:8001", group: "gateway" });
+
+app.post("/begin", async (req, res) => {
+  const id = (req.query.id as string) ?? randomUUID();
+  const data = req.body && Object.keys(req.body).length > 0 ? req.body : { foo: "bar" };
+
+  // beginRpc returns immediately. Same id reconnects to the in-flight execution.
+  const handle = await resonate.beginRpc(
+    id,
+    "foo",
+    data,
+    resonate.options({ target: "poll://any@worker" }),
+  );
+
+  res.json({ promise: handle.id, status: "pending", wait: `/wait?id=${handle.id}` });
+});
+
+app.get("/wait", async (req, res) => {
+  const id = req.query.id as string;
+  const handle = await resonate.get(id);
+
+  // done() is non-blocking — asks the server for current state.
+  if (await handle.done()) {
+    const result = await handle.result();
+    return res.json({ status: "resolved", promise_id: id, result });
+  }
+  res.json({ status: "pending", promise_id: id });
+});
+
+app.listen(5001, "127.0.0.1");
+```
+
+</TabItem>
+
+<TabItem value="python">
 
 ```python title="main.py"
 from fastapi import FastAPI, HTTPException
@@ -77,9 +136,41 @@ def wait(id: str):
         raise HTTPException(status_code=404, detail=f"{id} not found")
 ```
 
+</TabItem>
+
+</Tabs>
+
 ### The worker
 
-`@resonate.register` exposes `foo` as a durable function. The gateway's `begin_rpc` dispatches the call to whichever worker in the `worker` group claims it first; if that worker dies mid-execution, another picks up the workflow.
+`@resonate.register` (Python) or `resonate.register("foo", foo)` (TypeScript) exposes `foo` as a durable function. The gateway's `beginRpc` dispatches the call to whichever worker in the `worker` group claims it first; if that worker dies mid-execution, another picks up the workflow.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
+
+```typescript title="worker.ts"
+import { Resonate, type Context } from "@resonatehq/sdk";
+
+const resonate = new Resonate({ url: "http://localhost:8001", group: "worker" });
+
+// Inputs and return value must be JSON-serializable.
+function* foo(_: Context, data: unknown) {
+  // Real workloads call ctx.run(stepFn, ...) for checkpointed side effects.
+  return { result: `Processed: ${JSON.stringify(data)}`, timestamp: Date.now() };
+}
+
+resonate.register("foo", foo);
+```
+
+</TabItem>
+
+<TabItem value="python">
 
 ```python title="worker.py"
 from resonate import Context, Resonate
@@ -100,9 +191,48 @@ if __name__ == "__main__":
     Event().wait()
 ```
 
+</TabItem>
+
+</Tabs>
+
 ## Run it locally
 
-You need the legacy Resonate Server, the worker, and the gateway.
+You need a Resonate Server, the worker, and the gateway running in separate terminals.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
+
+Clone the repo and install:
+
+```shell
+git clone https://github.com/resonatehq-examples/example-async-http-api-ts
+cd example-async-http-api-ts
+bun install
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — worker"
+bun run worker
+```
+
+```shell title="Terminal 3 — gateway"
+bun run gateway
+```
+
+</TabItem>
+
+<TabItem value="python">
 
 Clone the repo and install dependencies (uses [uv](https://docs.astral.sh/uv/)):
 
@@ -111,8 +241,6 @@ git clone https://github.com/resonatehq-examples/example-async-http-api-py
 cd example-async-http-api-py
 uv sync
 ```
-
-In separate terminals:
 
 ```shell title="Terminal 1 — Resonate Server (legacy)"
 brew install resonatehq/tap/resonate
@@ -126,6 +254,10 @@ uv run python worker.py
 ```shell title="Terminal 3 — gateway"
 uv run uvicorn main:app --host 127.0.0.1 --port 5001
 ```
+
+</TabItem>
+
+</Tabs>
 
 Begin a workflow:
 
