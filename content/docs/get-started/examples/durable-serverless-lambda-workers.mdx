@@ -16,7 +16,7 @@ keywords:
 A Lambda function behind API Gateway acts as a stateless trigger. `POST /process-document` fires a durable Resonate workflow and returns `202` immediately. The workflow itself — download, OCR, LLM analysis, storage, notification — runs on a Resonate worker that doesn't share Lambda's 15-minute ceiling.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python and Rust example repos for this pattern are forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
 </Callout>
 
 <CloneRepoGrid>
@@ -24,6 +24,11 @@ TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python and Rust example repos f
     sdk="TypeScript SDK"
     description="Lambda + API Gateway triggering a long-running document-processing workflow."
     link="https://github.com/resonatehq-examples/example-aws-lambda-ts"
+  />
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Python Lambda as a thin trigger; the durable document workflow runs on a long-running Resonate worker."
+    link="https://github.com/resonatehq-examples/example-lambda-workers-py"
   />
 </CloneRepoGrid>
 
@@ -44,6 +49,16 @@ No CDK. No service registration. The Lambda calls Resonate the same way it would
 Two pieces inside the Lambda handler — start the workflow, poll its status — and the workflow itself, which lives in a separate file because it doesn't run in Lambda.
 
 ### The Lambda handler (the stateless trigger)
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
 
 ```typescript title="src/handler.ts"
 import { Resonate } from "@resonatehq/sdk";
@@ -76,9 +91,55 @@ async function handleStatus(event: APIGatewayEvent) {
 }
 ```
 
+</TabItem>
+
+<TabItem value="python">
+
+```python title="lambda_function.py"
+import json
+from resonate import Resonate
+
+# Module-level: created once per cold start, reused across warm invocations.
+resonate = Resonate.remote(group="gateway")  # talks to a remote Resonate Server
+
+
+def lambda_handler(event, context):
+    if event["path"] == "/process-document" and event["httpMethod"] == "POST":
+        job = json.loads(event["body"])
+        # begin_rpc dispatches to the worker group and returns immediately.
+        resonate.options(target="poll://any@worker").begin_rpc(
+            f"doc/{job['jobId']}", "process_document", job,
+        )
+        return {"statusCode": 202,
+                "body": json.dumps({"status": "accepted", "jobId": job["jobId"]})}
+
+    if event["path"].startswith("/status/"):
+        job_id = event["pathParameters"]["jobId"]
+        handle = resonate.get(f"doc/{job_id}")
+        if handle.done():
+            return {"statusCode": 200,
+                    "body": json.dumps({"status": "done", "result": handle.result()})}
+        return {"statusCode": 200,
+                "body": json.dumps({"status": "processing", "jobId": job_id})}
+```
+
+</TabItem>
+
+</Tabs>
+
 Same `jobId` deduplicates retries — API Gateway can re-fire the request without spawning duplicate work.
 
 ### The workflow (runs on the worker, not Lambda)
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
 
 ```typescript title="src/workflow.ts"
 import type { Context } from "@resonatehq/sdk";
@@ -95,11 +156,46 @@ export function* processDocument(ctx: Context, job: DocumentJob) {
 }
 ```
 
-The five steps are plain async functions invoked through `ctx.run`. Each result is checkpointed in a durable promise, so a worker crash mid-LLM-call resumes from the next step rather than re-running the whole pipeline.
+</TabItem>
+
+<TabItem value="python">
+
+```python title="worker.py"
+from resonate import Context, Resonate
+
+resonate = Resonate.remote(group="worker")
+
+
+@resonate.register
+def process_document(ctx: Context, job: dict):
+    # Each ctx.run is a checkpoint. Crash mid-step, resume from the next.
+    page_count = yield ctx.run(download_document, job)
+    text = yield ctx.run(extract_text, job, page_count)
+    analysis = yield ctx.run(analyze_document, job, text)
+    stored_at = yield ctx.run(store_results, job, analysis)
+    notified_at = yield ctx.run(notify_requester, job, stored_at)
+    return {"jobId": job["jobId"], **analysis, "stored_at": stored_at, "notified_at": notified_at}
+```
+
+</TabItem>
+
+</Tabs>
+
+The five steps are plain functions invoked through `ctx.run`. Each result is checkpointed in a durable promise, so a worker crash mid-LLM-call resumes from the next step rather than re-running the whole pipeline.
 
 ## Run it locally
 
-The repo includes a `local-demo` directory that simulates API Gateway + Lambda + the worker on your machine.
+Each repo simulates API Gateway + Lambda + the worker on your machine.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
 
 ```shell
 git clone https://github.com/resonatehq-examples/example-aws-lambda-ts
@@ -119,6 +215,33 @@ npm run worker
 ```shell title="Terminal 3 — local Lambda + API Gateway simulator"
 npm run local
 ```
+
+</TabItem>
+
+<TabItem value="python">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-lambda-workers-py
+cd example-lambda-workers-py
+uv sync
+```
+
+```shell title="Terminal 1 — Resonate Server (legacy)"
+brew install resonatehq/tap/resonate
+resonate serve
+```
+
+```shell title="Terminal 2 — worker"
+uv run python worker.py
+```
+
+```shell title="Terminal 3 — local Lambda invocation"
+uv run python lambda_function.py
+```
+
+</TabItem>
+
+</Tabs>
 
 Trigger a job:
 
