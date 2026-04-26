@@ -16,7 +16,7 @@ keywords:
 Three specialist agents — researcher, writer, reviewer — chained through an orchestrator. Each agent's output is a durable checkpoint, so a flaky LLM call mid-pipeline retries only the failing agent and the prior outputs stay cached.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python and Rust example repos are forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
 </Callout>
 
 <CloneRepoGrid>
@@ -24,6 +24,11 @@ TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python and Rust example repos a
     sdk="TypeScript SDK"
     description="Researcher → writer → reviewer pipeline with crash-recoverable handoffs."
     link="https://github.com/resonatehq-examples/example-multi-agent-orchestration-ts"
+  />
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Three-agent OpenAI pipeline with durable handoffs — failed agents retry, prior outputs stay cached."
+    link="https://github.com/resonatehq-examples/example-multi-agent-orchestration-py"
   />
 </CloneRepoGrid>
 
@@ -38,6 +43,16 @@ Each agent invocation is a `ctx.run` call. The orchestrator function chains them
 ## Code walkthrough
 
 The orchestrator is one generator function that calls three plain agent functions through `ctx.run`. The agents themselves are unremarkable — what matters is that Resonate sits between them.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
 
 ```typescript title="src/workflow.ts"
 import type { Context } from "@resonatehq/sdk";
@@ -66,9 +81,54 @@ export function* orchestrate(
 }
 ```
 
-The `crashOnWriter` argument is a demo lever — set it to `true` and the writer throws on its first attempt. Watch the logs: the researcher runs once, the writer retries until it succeeds, the reviewer runs once. Without checkpoints, the researcher would re-run on every writer retry.
+</TabItem>
+
+<TabItem value="python">
+
+```python title="src/agent.py"
+from resonate import Context, Resonate
+
+resonate = Resonate()
+
+
+@resonate.register
+def orchestrate(ctx: Context, topic: str, crash_on_writer: bool = False):
+    # 1. Researcher gathers findings on the topic.
+    findings = yield ctx.run(researcher, topic)
+
+    # 2. Writer produces a draft from those findings. Checkpointed —
+    #    if the writer crashes, the researcher's findings are NOT re-run.
+    draft = yield ctx.run(writer, topic, findings, crash_on_writer)
+
+    # 3. Reviewer checks the draft quality.
+    review = yield ctx.run(reviewer, draft)
+
+    approved = "APPROVED" in review.upper()
+    return {
+        "status": "published" if approved else "rejected",
+        "topic": topic, "findings": findings, "draft": draft, "review": review,
+    }
+```
+
+The OpenAI client is injected into the workflow via `resonate.set_dependency("openai", OpenAI(...))` and accessed inside each agent with `ctx.get_dependency("openai")` — keeps the agent functions free of global imports and easy to test.
+
+</TabItem>
+
+</Tabs>
+
+The `crash` argument is a demo lever — set it to `true` and the writer throws on its first attempt. Watch the logs: the researcher runs once, the writer retries until it succeeds, the reviewer runs once. Without checkpoints, the researcher would re-run on every writer retry.
 
 To extend the pipeline with human approval, replace the inline `approved` calculation with a durable promise:
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
 
 ```typescript
 // Suspend until an external system (HTTP handler, CLI, button click)
@@ -76,9 +136,33 @@ To extend the pipeline with human approval, replace the inline `approved` calcul
 const approved = yield* ctx.promise<boolean>({ id: `approval/${topic}` });
 ```
 
+</TabItem>
+
+<TabItem value="python">
+
+```python
+# Suspend until an external system resolves the promise.
+approval = yield ctx.promise(id=f"approval/{topic}")
+approved = yield approval
+```
+
+</TabItem>
+
+</Tabs>
+
 That promise survives process restarts — the orchestrator can be killed and the workflow waits in the server's promise store until a human responds.
 
 ## Run it locally
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
 
 ```shell
 git clone https://github.com/resonatehq-examples/example-multi-agent-orchestration-ts
@@ -98,7 +182,42 @@ Run with the writer crash flag — the researcher runs once, the writer retries:
 bun run src/index.ts -- --crash
 ```
 
-Watch the logs; the researcher's "gathering findings" message only appears once across the retry sequence.
+</TabItem>
+
+<TabItem value="python">
+
+Set up the repo and your OpenAI key:
+
+```shell
+git clone https://github.com/resonatehq-examples/example-multi-agent-orchestration-py
+cd example-multi-agent-orchestration-py
+uv sync
+cp .env.example .env  # add your OPENAI_API_KEY
+```
+
+```shell title="Terminal 1 — Resonate Server (legacy)"
+brew install resonatehq/tap/resonate
+resonate serve
+```
+
+```shell title="Terminal 2 — worker"
+uv run python -m src.agent
+```
+
+```shell title="Terminal 3 — invoke"
+resonate invoke orchestration.1 \
+  --func orchestrate \
+  --arg '"The future of durable execution in AI applications"' \
+  --arg false
+```
+
+Set the second `--arg` to `true` to trigger the writer-crash demo. The researcher's "Researching" log only appears once across the retry sequence.
+
+</TabItem>
+
+</Tabs>
+
+Watch the logs across the retry sequence — the researcher's "gathering findings" message only appears once.
 
 ## Try the human-in-the-loop extension
 
