@@ -16,14 +16,19 @@ keywords:
 A consumer pulls messages from a Kafka topic and dispatches each one through a durable Resonate workflow. Per-message state lives in durable promises, so a worker that dies mid-batch resumes cleanly without redoing completed steps.
 
 <Callout type="info" title="SDK versions">
-Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. TypeScript SDK example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server.
 </Callout>
 
 <Callout type="note" title="Kafka or Redpanda — same code">
-The example repo runs against [Redpanda](https://redpanda.com/) for local development because the broker boots in seconds, but the code uses the Kafka wire protocol via `confluent-kafka-python`. Point it at any Kafka-compatible broker — Apache Kafka, Redpanda, or a managed offering — by changing the bootstrap-server config.
+Both repos run against [Redpanda](https://redpanda.com/) for local development because the broker boots in seconds, but the code uses the Kafka wire protocol — `kafkajs` for TypeScript, `confluent-kafka-python` for Python. Point either at any Kafka-compatible broker — Apache Kafka, Redpanda, or a managed offering — by changing the bootstrap-server config.
 </Callout>
 
 <CloneRepoGrid>
+  <CloneRepoCard
+    sdk="TypeScript SDK"
+    description="kafkajs consumer that dispatches a durable workflow per message, with batch-level retries."
+    link="https://github.com/resonatehq-examples/example-kafka-worker-ts"
+  />
   <CloneRepoCard
     sdk="Python SDK"
     description="Consumer that dispatches a durable workflow per message, with batch-level retries."
@@ -46,6 +51,40 @@ Each Kafka message becomes the ID of a durable workflow. Resonate runs the workf
 The pattern is a small consume loop that hands each message to `workflow.begin_run`. The workflow itself does the per-message work — here, deleting batches of records until none remain, then emitting a completion event.
 
 ### The durable workflow
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
+
+```typescript title="src/workflow.ts"
+import { Resonate, type Context } from "@resonatehq/sdk";
+
+export const resonate = new Resonate({
+  url: "http://localhost:8001",
+  group: "workers",
+});
+
+function* workflow(ctx: Context, recordId: string, offset: string) {
+  console.log(`processing record ${recordId} (offset ${offset})`);
+  // Loop until deleteBatch reports no more rows.
+  while (yield* ctx.run(deleteBatch, recordId)) {
+    yield* ctx.sleep(5_000);
+  }
+  yield* ctx.run(enqueueCompletion, recordId, offset);
+}
+
+resonate.register("workflow", workflow);
+```
+
+</TabItem>
+
+<TabItem value="python">
 
 ```python title="record_deletor/delete.py"
 from resonate import Resonate
@@ -77,9 +116,42 @@ def workflow(ctx, record_id, offset):
     yield ctx.run(enqueue, record_id, offset)
 ```
 
-Each `ctx.run` is a checkpoint. A worker crash mid-loop resumes from the next batch rather than from message zero, and `delete_batch` doesn't run again for batches that already completed.
+</TabItem>
+
+</Tabs>
+
+Each `ctx.run` is a checkpoint. A worker crash mid-loop resumes from the next batch rather than from message zero, and `delete_batch` / `deleteBatch` doesn't run again for batches that already completed.
 
 ### The Kafka consumer
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
+
+```typescript title="src/consumer.ts"
+const consumer = kafka.consumer({ groupId: CONSUMER_GROUP_ID });
+await consumer.connect();
+await consumer.subscribe({ topic: TOPIC_TO_DELETE, fromBeginning: true });
+
+await consumer.run({
+  eachMessage: async ({ message }) => {
+    const recordId = JSON.parse(message.value!.toString("utf-8")) as string;
+    // beginRun is non-blocking. The recordId acts as the durable promise id,
+    // so duplicate invocations dedupe.
+    await resonate.beginRun(recordId, "workflow", recordId, message.offset);
+  },
+});
+```
+
+</TabItem>
+
+<TabItem value="python">
 
 ```python title="record_deletor/delete.py"
 def consume():
@@ -104,11 +176,52 @@ def main():
     consume()
 ```
 
-`begin_run` is non-blocking — the consumer keeps polling while the workflow runs in the background. The same `record_id` deduplicates retries by design.
+</TabItem>
+
+</Tabs>
+
+`beginRun` / `begin_run` is non-blocking — the consumer keeps polling while the workflow runs in the background. The same `recordId` deduplicates retries by design.
 
 ## Run it locally
 
-The repo ships a `redpanda/` directory with docker-compose for the broker (Redpanda boots faster than Apache Kafka locally; the worker code is identical for both).
+Both repos ship a `docker-compose.yml` for Redpanda (Redpanda boots faster than Apache Kafka locally; the worker code is identical for both).
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-kafka-worker-ts
+cd example-kafka-worker-ts
+bun install
+```
+
+```shell title="Terminal 1 — the broker"
+docker compose up
+```
+
+```shell title="Terminal 2 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 3 — the worker"
+bun run consumer
+```
+
+```shell title="Terminal 4 — produce records"
+bun run producer -- -n 10
+```
+
+</TabItem>
+
+<TabItem value="python">
 
 Clone the repo (uses [uv](https://docs.astral.sh/uv/)):
 
@@ -131,11 +244,13 @@ resonate serve
 uv run python -m record_deletor.delete
 ```
 
-Produce some test messages from a fourth terminal:
-
 ```shell title="Terminal 4 — produce records"
 uv run python -m record_producer.produce -n 10
 ```
+
+</TabItem>
+
+</Tabs>
 
 Watch the worker terminal — it consumes each message, runs the durable workflow, and re-emits a completion event when each finishes.
 
