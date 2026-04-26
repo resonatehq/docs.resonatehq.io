@@ -15,7 +15,7 @@ keywords:
 Run several workers in the same group. Calls to `target: "poll://any@<group>"` get dispatched to whichever worker claims them first. When a worker dies mid-execution, Resonate reassigns the work to a survivor — no service registry, no leader election, no glue.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
 </Callout>
 
 <CloneRepoGrid>
@@ -28,6 +28,11 @@ TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x a
     sdk="Python SDK"
     description="Worker group with random-cost compute jobs dispatched via async RPC."
     link="https://github.com/resonatehq-examples/example-load-balancing-py"
+  />
+  <CloneRepoCard
+    sdk="Rust SDK"
+    description="Worker group with random-cost compute jobs dispatched via async RPC + spawn()."
+    link="https://github.com/resonatehq-examples/example-load-balancing-rs"
   />
 </CloneRepoGrid>
 
@@ -55,6 +60,7 @@ Each worker process is identical except for the `group` it joins. Run as many as
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -105,6 +111,35 @@ Event().wait()
 
 </TabItem>
 
+<TabItem value="rust">
+
+```rust title="src/bin/worker.rs"
+use resonate::prelude::*;
+use std::time::Duration;
+
+#[resonate::function]
+async fn compute_something(ctx: &Context, id: String, compute_cost: u64) -> Result<()> {
+    println!("{id} starting computation");
+    ctx.sleep(Duration::from_secs(compute_cost)).await?;
+    println!("{id} computed something that cost {compute_cost} seconds");
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        group: Some("workers".into()),
+        ..Default::default()
+    });
+    resonate.register(compute_something).unwrap();
+    println!("worker is running...");
+    tokio::signal::ctrl_c().await.unwrap();
+}
+```
+
+</TabItem>
+
 </Tabs>
 
 ### Dispatching to the group
@@ -117,6 +152,7 @@ The caller picks a target with the `poll://any@<group>` schema. `any` means "whi
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -161,6 +197,34 @@ _ = resonate.options(target="poll://any@worker-group").begin_rpc(
 
 </TabItem>
 
+<TabItem value="rust">
+
+```rust title="src/bin/client.rs"
+use rand::Rng;
+use resonate::prelude::*;
+use uuid::Uuid;
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        ..Default::default()
+    });
+    let id = Uuid::new_v4().to_string();
+    let cost: u64 = rand::thread_rng().gen_range(1..=10);
+
+    let _: () = resonate
+        .rpc(&id, "compute_something", (id.clone(), cost))
+        .target("poll://any@workers")
+        .spawn()
+        .await
+        .unwrap();
+    resonate.stop().await;
+}
+```
+
+</TabItem>
+
 </Tabs>
 
 ## Run it locally
@@ -173,6 +237,7 @@ Start the server, run several workers, then dispatch repeatedly from the client.
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -222,6 +287,29 @@ for i in 1 2 3 4 5 6; do uv run python invoke.py; done
 ```
 
 Watch the work spread across the three worker terminals. Kill one of them mid-execution — Resonate reassigns its in-flight workflow to a survivor.
+
+</TabItem>
+
+<TabItem value="rust">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-load-balancing-rs
+cd example-load-balancing-rs
+cargo build
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminals 2–4 — three workers"
+cargo run --bin worker
+```
+
+```shell title="Terminal 5 — dispatch in a loop"
+for i in 1 2 3 4 5 6; do cargo run --bin client; done
+```
 
 </TabItem>
 
