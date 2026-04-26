@@ -15,7 +15,7 @@ keywords:
 The smallest example that exercises the durable execution loop. A registered workflow function calls two leaf functions through `ctx.run`, and Resonate checkpoints each return value.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Rust: v0.1.0, in active development. Python example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x. Rust: v0.1.0, in active development.
 </Callout>
 
 <CloneRepoGrid>
@@ -23,6 +23,11 @@ TypeScript: `@resonatehq/sdk` v0.10.0 (current). Rust: v0.1.0, in active develop
     sdk="TypeScript SDK"
     description="A workflow with two leaf functions, run via the in-process Resonate client."
     link="https://github.com/resonatehq-examples/example-hello-world-ts"
+  />
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="A workflow with two leaf functions using Resonate.local() — no server required."
+    link="https://github.com/resonatehq-examples/example-hello-world-py"
   />
   <CloneRepoCard
     sdk="Rust SDK"
@@ -41,13 +46,14 @@ Two things, both small. **Register** a function with the Resonate instance — t
 
 ## Code walkthrough
 
-The workflow is a generator (TypeScript) or `#[resonate::function]` async fn (Rust). It receives a `Context` and calls leaf functions through `ctx.run`. Leaves can be plain functions — Resonate handles the dispatch and the checkpointing.
+The workflow is a generator (TypeScript and Python) or `#[resonate::function]` async fn (Rust). It receives a `Context` and calls leaf functions through `ctx.run`. Leaves can be plain functions — Resonate handles the dispatch and the checkpointing.
 
 <Tabs
     groupId="preferred-language"
     defaultValue="typescript"
     values={[
         {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
         {label: 'Rust', value: 'rust'},
     ]}>
 
@@ -79,6 +85,37 @@ const fooR = resonate.register("foo", foo);
 const result = await fooR.run("greeting-workflow", "World");
 console.log(result);
 resonate.stop();
+```
+
+</TabItem>
+
+<TabItem value="python">
+
+```python title="main.py"
+from resonate import Resonate, Context
+from typing import Generator, Any
+
+resonate = Resonate.local()
+
+
+def bar(_: Context, greetee: str) -> str:
+    return f"Hello {greetee} from bar!"
+
+
+def baz(_: Context, greetee: str) -> str:
+    return f"Hello {greetee} from baz!"
+
+
+@resonate.register
+def foo(ctx: Context, greetee: str) -> Generator[Any, Any, str]:
+    # Each ctx.run is a checkpoint — its return value is durably stored.
+    bar_greeting = yield ctx.run(bar, greetee=greetee)
+    baz_greeting = yield ctx.run(baz, greetee=greetee)
+    return f"Hello {greetee} from foo! {bar_greeting} {baz_greeting}"
+
+
+result = foo.run("greeting-workflow", greetee="World")
+print(result)
 ```
 
 </TabItem>
@@ -117,7 +154,7 @@ async fn main() {
 
 </Tabs>
 
-The TypeScript example invokes the workflow in-process via `fooR.run(...)` — no server needed for this minimal demo. The Rust example registers the function with a long-running worker and waits for an invocation from the Resonate CLI.
+The TypeScript and Python examples invoke the workflow in-process — no server needed for this minimal demo. The Rust example registers the function with a long-running worker and waits for an invocation from the Resonate CLI.
 
 ## Run it locally
 
@@ -126,6 +163,7 @@ The TypeScript example invokes the workflow in-process via `fooR.run(...)` — n
     defaultValue="typescript"
     values={[
         {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
         {label: 'Rust', value: 'rust'},
     ]}>
 
@@ -146,6 +184,26 @@ npx tsx index.ts
 ```
 
 You should see three log lines (`running foo`, `running bar`, `running baz`, possibly with `foo` repeating as the workflow replays after each yield) followed by the assembled greeting.
+
+</TabItem>
+
+<TabItem value="python">
+
+Clone the repo:
+
+```shell
+git clone https://github.com/resonatehq-examples/example-hello-world-py
+cd example-hello-world-py
+uv sync
+```
+
+Run the workflow in-process:
+
+```shell
+uv run main.py
+```
+
+`Resonate.local()` runs everything in-process — no server required for this minimal demo.
 
 </TabItem>
 
