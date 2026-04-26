@@ -15,7 +15,7 @@ keywords:
 A workflow yields `ctx.sleep` and the runtime suspends it. Hours, days, or weeks later the worker wakes the workflow up exactly where it stopped — no cron, no scheduler, no external state.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0 — `ctx.sleep` is supported in the SDK; the `example-durable-sleep-rs` repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
 </Callout>
 
 <CloneRepoGrid>
@@ -28,6 +28,11 @@ TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x a
     sdk="Python SDK"
     description="A worker that sleeps for N seconds, dispatched via async RPC."
     link="https://github.com/resonatehq-examples/example-durable-sleep-py"
+  />
+  <CloneRepoCard
+    sdk="Rust SDK"
+    description="A worker that sleeps for N seconds via ctx.sleep(Duration), dispatched via async RPC."
+    link="https://github.com/resonatehq-examples/example-durable-sleep-rs"
   />
 </CloneRepoGrid>
 
@@ -131,6 +136,7 @@ The client uses async RPC to dispatch by ID. Reusing the same ID reconnects to a
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -170,6 +176,30 @@ print(handle.result())
 
 </TabItem>
 
+<TabItem value="rust">
+
+```rust title="src/bin/client.rs"
+use resonate::prelude::*;
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        ..Default::default()
+    });
+
+    let result: String = resonate
+        .rpc("sleep-workflow-1", "sleeping_workflow", 5u64)
+        .target("poll://any@workers")
+        .await
+        .expect("rpc to worker failed");
+
+    println!("{result}");
+}
+```
+
+</TabItem>
+
 </Tabs>
 
 ## Run it locally
@@ -182,6 +212,7 @@ You need the Resonate Server, the worker, and a client to dispatch.
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -232,6 +263,31 @@ uv run python worker.py
 
 ```shell title="Terminal 3 — client"
 uv run python client.py
+```
+
+After ~5 seconds the client prints the completion message. Kill the worker mid-sleep and restart — the workflow resumes and still completes.
+
+</TabItem>
+
+<TabItem value="rust">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-durable-sleep-rs
+cd example-durable-sleep-rs
+cargo build
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — worker"
+cargo run --bin worker
+```
+
+```shell title="Terminal 3 — client"
+cargo run --bin client
 ```
 
 After ~5 seconds the client prints the completion message. Kill the worker mid-sleep and restart — the workflow resumes and still completes.
