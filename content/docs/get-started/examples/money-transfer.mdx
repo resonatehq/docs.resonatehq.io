@@ -16,7 +16,7 @@ keywords:
 A workflow debits the source account, credits the target account, and returns confirmations. Each account update is a durable checkpoint, the transfer ID is the idempotency key, and the same ID retried in seconds, hours, or days returns the cached result instead of double-spending.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x. Rust example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x. Rust: v0.1.0, in active development.
 </Callout>
 
 <CloneRepoGrid>
@@ -29,6 +29,11 @@ TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x. 
     sdk="Python SDK"
     description="Saga with debit + credit + compensating reversal against a SQLite ledger. Each step idempotent on a deterministic op id."
     link="https://github.com/resonatehq-examples/example-money-transfer-py"
+  />
+  <CloneRepoCard
+    sdk="Rust SDK"
+    description="Saga with debit + credit + compensating reversal against a SQLite ledger using rusqlite + Resonate.local()."
+    link="https://github.com/resonatehq-examples/example-money-transfer-rs"
   />
 </CloneRepoGrid>
 
@@ -50,6 +55,7 @@ The workflow calls `updateAccount` (TypeScript) or `apply_entry` (Python) twice 
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -135,9 +141,42 @@ The deterministic `op_id` (`{transfer_id}-debit`, `-credit`, `-reversal`) plus a
 
 </TabItem>
 
+<TabItem value="rust">
+
+```rust title="src/main.rs"
+#[resonate::function]
+async fn transfer_money(
+    ctx: &Context, transfer_id: String, source: String, target: String,
+    amount: f64, simulate_credit_failure: bool,
+) -> Result<TransferResult> {
+    let debit_id = format!("{transfer_id}-debit");
+    let credit_id = format!("{transfer_id}-credit");
+    let reversal_id = format!("{transfer_id}-reversal");
+
+    // Step 1 — debit (durable checkpoint).
+    ctx.run(apply_entry, (debit_id, source.clone(), -amount, "debit".into())).await?;
+
+    // Step 2 — credit. On Err, compensate.
+    match ctx
+        .run(credit_target, (credit_id, target, amount, simulate_credit_failure))
+        .await
+    {
+        Ok(_) => Ok(TransferResult::committed(transfer_id, source, /*...*/)),
+        Err(_) => {
+            ctx.run(apply_entry, (reversal_id, source, amount, "reversal".into())).await?;
+            Ok(TransferResult::compensated(transfer_id))
+        }
+    }
+}
+```
+
+The Rust example uses `Resonate.local()` (embedded mode, no server required) plus `with_dependency::<Mutex<Connection>>(...)` to inject the SQLite handle. `ctx.run(...).await` returns a `Result`, so saga compensation is just an `if let Err`.
+
+</TabItem>
+
 </Tabs>
 
-`ctx.getDependency('db')` / `ctx.get_dependency("db")` lets the step functions see the database without exposing it as a workflow argument — important, because workflow arguments must be serializable, and a DB handle is not.
+`ctx.getDependency('db')` / `ctx.get_dependency("db")` / `info.get_dependency::<T>()` (Rust) lets the step functions see the database without exposing it as a workflow argument — important, because workflow arguments must be serializable, and a DB handle is not.
 
 ## Run it locally
 
@@ -147,6 +186,7 @@ The deterministic `op_id` (`{transfer_id}-debit`, `-credit`, `-reversal`) plus a
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -194,6 +234,24 @@ uv run python main.py
 ```
 
 The script seeds Alice with $200, runs a happy-path transfer (`alice -> bob $50`), then runs a failed transfer (`alice -> bob $75`) that triggers the compensating reversal. Final balances: `alice=150, bob=50`.
+
+</TabItem>
+
+<TabItem value="rust">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-money-transfer-rs
+cd example-money-transfer-rs
+cargo build
+```
+
+The Rust repo runs in embedded mode (`Resonate::local()`) — no separate Resonate Server is needed for the demo.
+
+```shell
+cargo run
+```
+
+Same demo shape: seeds Alice with $200, runs a happy-path transfer, then a forced-failure transfer that compensates. Final balances: `alice=150, bob=50`.
 
 </TabItem>
 
