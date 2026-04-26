@@ -16,7 +16,7 @@ keywords:
 A FastMCP server exposes three tools — start, probe, await — backed by a durable Resonate workflow. The LLM kicks off long jobs, polls them, and collects results without blocking on the work.
 
 <Callout type="info" title="SDK versions">
-Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. TypeScript SDK example repo is forthcoming.
+Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development. TypeScript SDK example repo is forthcoming.
 </Callout>
 
 <CloneRepoGrid>
@@ -24,6 +24,11 @@ Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. TypeScript SDK
     sdk="Python SDK"
     description="MCP server with three tools backed by a durable weather-data workflow."
     link="https://github.com/resonatehq-examples/example-async-tools-mcp-server-py"
+  />
+  <CloneRepoCard
+    sdk="Rust SDK"
+    description="rmcp-based MCP server with a get_forecast tool backed by a durable Resonate workflow."
+    link="https://github.com/resonatehq-examples/example-mcp-tools-rs"
   />
 </CloneRepoGrid>
 
@@ -41,7 +46,17 @@ The server exposes one durable function (`weather_data`) and three thin MCP tool
 
 ### The durable function
 
-`@resonate.register` turns `weather_data` into a workflow that an MCP tool can dispatch by ID. Whatever the tool does — call an external API, stream rows from a DB, transform a payload — happens here, with retries and crash recovery wrapped around it.
+The MCP tool dispatches a Resonate workflow that does the actual side-effecting work. Whatever the tool does — call an external API, stream rows from a DB, transform a payload — happens here, with retries and crash recovery wrapped around it.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
+    ]}>
+
+<TabItem value="python">
 
 ```python title="weather_data.py — the durable function"
 from resonate import Resonate
@@ -71,9 +86,45 @@ def weather_data(ctx, latitude, longitude, year, month, timezone="America/Edmont
     return response.json()
 ```
 
+</TabItem>
+
+<TabItem value="rust">
+
+```rust title="src/bin/worker.rs"
+use resonate::prelude::*;
+
+#[resonate::function]
+async fn get_forecast(ctx: &Context, lat: f64, lon: f64) -> Result<String> {
+    // ctx.run checkpoints the HTTP call — a retry of the MCP tool with the
+    // same lat/lon reconnects to this workflow rather than re-fetching.
+    let json = ctx.run(fetch_nws, (lat, lon)).await?;
+    Ok(json)
+}
+
+#[resonate::function]
+async fn fetch_nws(lat: f64, lon: f64) -> Result<String> {
+    let url = format!("https://api.weather.gov/points/{lat},{lon}");
+    // ...HTTP call returning the response body.
+}
+```
+
+</TabItem>
+
+</Tabs>
+
 ### The three async MCP tools
 
-Each tool is a thin shell around a Resonate API call: kick off, poll, await.
+Each tool is a thin shell around a Resonate API call: kick off, poll, await (Python). The Rust port collapses the same pattern into a single tool that dispatches via `resonate.rpc(...)` and awaits a deterministic-ID promise — same dedup, fewer tools.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
+    ]}>
+
+<TabItem value="python">
 
 ```python title="weather_data.py — the MCP tools"
 @mcp.tool()
@@ -104,11 +155,45 @@ def await_result(job_names):
     return {n: resonate.get(n).result() for n in job_names}
 ```
 
-The same `job_name` is the deduplication key: if the agent retries `start_gathering` with the same arguments, Resonate reconnects to the in-flight execution rather than running the work twice.
+</TabItem>
+
+<TabItem value="rust">
+
+```rust title="src/bin/weather_server.rs"
+#[tool_router(server_handler)]
+impl WeatherBridge {
+    #[tool(description = "Get the forecast for the given lat/lon.")]
+    async fn get_forecast(&self, Parameters(p): Parameters<ForecastArgs>) -> Result<CallToolResult> {
+        let id = format!("forecast-{}-{}", p.lat, p.lon);
+        // Same id reconnects to an in-flight execution rather than re-fetching.
+        let result: String = self.resonate
+            .rpc(&id, "get_forecast", (p.lat, p.lon))
+            .target("poll://any@workers")
+            .await?;
+        Ok(CallToolResult::success(vec![Content::text(result)]))
+    }
+}
+```
+
+</TabItem>
+
+</Tabs>
+
+The same job/promise ID is the deduplication key: if the agent retries with the same arguments, Resonate reconnects to the in-flight execution rather than running the work twice.
 
 ## Run it locally
 
-You need the legacy Resonate Server, the MCP server, and Claude Desktop (or any MCP client) configured to load the proxy.
+You need a Resonate Server, the MCP server, and Claude Desktop (or any MCP client) configured to load the server.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
+    ]}>
+
+<TabItem value="python">
 
 Clone the repo and install dependencies (uses [uv](https://docs.astral.sh/uv/)):
 
@@ -118,20 +203,41 @@ cd example-async-tools-mcp-server-py
 uv sync
 ```
 
-Start the legacy server:
-
 ```shell title="Terminal 1 — Resonate Server (legacy)"
 brew install resonatehq/tap/resonate
 resonate serve
 ```
 
-Run the MCP server (it exposes the tools over HTTP at `http://localhost:5001/mcp`):
-
 ```shell title="Terminal 2 — MCP server"
 uv run python weather_data.py
 ```
 
-Configure Claude Desktop to launch the proxy. Add to `claude_desktop_config.json` (the Developers tab in Claude's settings shows the path):
+</TabItem>
+
+<TabItem value="rust">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-mcp-tools-rs
+cd example-mcp-tools-rs
+cargo build
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — durable worker"
+cargo run --bin worker
+```
+
+The MCP server (`weather-server` binary) is launched by Claude Desktop directly via stdio — see the config below.
+
+</TabItem>
+
+</Tabs>
+
+Configure Claude Desktop to launch the server. Add to `claude_desktop_config.json` (the Developers tab in Claude's settings shows the path):
 
 ```json
 {
