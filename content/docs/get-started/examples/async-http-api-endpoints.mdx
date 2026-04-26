@@ -16,7 +16,7 @@ keywords:
 A FastAPI gateway converts every inbound request into a durable workflow, returns a promise ID immediately, and exposes a `/wait` endpoint clients poll for completion.
 
 <Callout type="info" title="SDK versions">
-Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. TypeScript: `@resonatehq/sdk` v0.10.0 (current).
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
 </Callout>
 
 <CloneRepoGrid>
@@ -29,6 +29,11 @@ Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. TypeScript: `@
     sdk="Python SDK"
     description="FastAPI gateway with /begin and /wait endpoints backed by a Resonate worker."
     link="https://github.com/resonatehq-examples/example-async-http-api-py"
+  />
+  <CloneRepoCard
+    sdk="Rust SDK"
+    description="axum gateway with /begin and /wait endpoints backed by a Resonate worker."
+    link="https://github.com/resonatehq-examples/example-async-http-api-rs"
   />
 </CloneRepoGrid>
 
@@ -54,6 +59,7 @@ Two processes: a **gateway** that accepts HTTP requests and a **worker** that ru
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -138,6 +144,41 @@ def wait(id: str):
 
 </TabItem>
 
+<TabItem value="rust">
+
+```rust title="src/bin/gateway.rs"
+use axum::{routing::{get, post}, Json, Router};
+use resonate::prelude::*;
+use uuid::Uuid;
+
+async fn begin(State(r): State<Resonate>, Json(body): Json<Value>) -> impl IntoResponse {
+    let id = body.get("id").and_then(|v| v.as_str()).map(String::from)
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+    // .spawn() returns a handle without blocking on completion.
+    let _: ResonateHandle<Value> = r
+        .rpc(&id, "foo", body.clone())
+        .target("poll://any@worker")
+        .spawn()
+        .await
+        .unwrap();
+
+    Json(json!({ "promise": id, "status": "pending", "wait": format!("/wait?id={id}") }))
+}
+
+async fn wait(State(r): State<Resonate>, Query(q): Query<HashMap<String, String>>) -> impl IntoResponse {
+    let id = q.get("id").cloned().unwrap_or_default();
+    let handle: ResonateHandle<Value> = r.get(&id).await.unwrap();
+    if handle.done().await.unwrap() {
+        let result = handle.result().await.unwrap();
+        return Json(json!({ "status": "resolved", "promise_id": id, "result": result }));
+    }
+    Json(json!({ "status": "pending", "promise_id": id }))
+}
+```
+
+</TabItem>
+
 </Tabs>
 
 ### The worker
@@ -150,6 +191,7 @@ def wait(id: str):
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -193,6 +235,32 @@ if __name__ == "__main__":
 
 </TabItem>
 
+<TabItem value="rust">
+
+```rust title="src/bin/worker.rs"
+use resonate::prelude::*;
+use serde_json::Value;
+
+#[resonate::function]
+async fn foo(_: &Context, data: Value) -> Result<Value> {
+    // Real workloads call ctx.run(stepFn, ...) for checkpointed side effects.
+    Ok(json!({ "result": format!("Processed: {data}"), "timestamp": now() }))
+}
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        group: Some("worker".into()),
+        ..Default::default()
+    });
+    resonate.register(foo).unwrap();
+    tokio::signal::ctrl_c().await.unwrap();
+}
+```
+
+</TabItem>
+
 </Tabs>
 
 ## Run it locally
@@ -205,6 +273,7 @@ You need a Resonate Server, the worker, and the gateway running in separate term
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -253,6 +322,29 @@ uv run python worker.py
 
 ```shell title="Terminal 3 — gateway"
 uv run uvicorn main:app --host 127.0.0.1 --port 5001
+```
+
+</TabItem>
+
+<TabItem value="rust">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-async-http-api-rs
+cd example-async-http-api-rs
+cargo build
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — worker"
+cargo run --bin worker
+```
+
+```shell title="Terminal 3 — gateway"
+cargo run --bin gateway
 ```
 
 </TabItem>
