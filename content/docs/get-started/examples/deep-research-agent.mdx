@@ -17,7 +17,7 @@ keywords:
 A research agent receives a broad topic, asks an LLM to break it into 2–3 subtopics, and recursively dispatches each subtopic to itself. Every LLM call and every recursive subagent is a durable promise — kill the worker mid-research, the tree resumes from the last unanswered branch.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
 </Callout>
 
 <CloneRepoGrid>
@@ -30,6 +30,11 @@ TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x a
     sdk="Python SDK"
     description="Recursive research agent with parallel subagents via ctx.rfi."
     link="https://github.com/resonatehq-examples/example-openai-deep-research-agent-py"
+  />
+  <CloneRepoCard
+    sdk="Rust SDK"
+    description="Recursive research agent with parallel subagents via ctx.run().spawn()."
+    link="https://github.com/resonatehq-examples/example-openai-deep-research-agent-rs"
   />
 </CloneRepoGrid>
 
@@ -53,6 +58,7 @@ The agent is a single recursive function. Its only inputs are a topic and a dept
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -132,9 +138,47 @@ def research(ctx: Context, topic: str, depth: int):
 
 </TabItem>
 
+<TabItem value="rust">
+
+```rust title="src/main.rs"
+#[resonate::function]
+async fn research(ctx: &Context, topic: String, depth: u32) -> Result<String> {
+    let mut messages = vec![
+        json!({"role": "system", "content": SYSTEM_PROMPT}),
+        json!({"role": "user", "content": format!("Research {topic}")}),
+    ];
+
+    loop {
+        let message = ctx.run(prompt, (messages.clone(), depth > 0)).await?;
+        messages.push(message.clone());
+
+        if let Some(tool_calls) = message["tool_calls"].as_array() {
+            // Fan out: spawn one durable subagent per tool call.
+            let mut handles = vec![];
+            for tc in tool_calls {
+                let args: Value = serde_json::from_str(tc["function"]["arguments"].as_str().unwrap())?;
+                if tc["function"]["name"] == "research" {
+                    let h = ctx.run(research, (args["topic"].as_str().unwrap().into(), depth - 1)).spawn().await?;
+                    handles.push((tc.clone(), h));
+                }
+            }
+            // Fan in.
+            for (tc, h) in handles {
+                let result = h.await?;
+                messages.push(json!({"role": "tool", "tool_call_id": tc["id"], "content": result}));
+            }
+        } else {
+            return Ok(message["content"].as_str().unwrap_or("").to_string());
+        }
+    }
+}
+```
+
+</TabItem>
+
 </Tabs>
 
-The recursion is the whole pattern. `ctx.beginRpc` (TS) / `ctx.rfi` (Python) dispatches a child `research` execution and returns a handle immediately — children run in parallel, each checkpointing on its own LLM calls. The outer loop awaits handles in order and feeds their results back to the LLM as tool messages.
+The recursion is the whole pattern. `ctx.beginRpc` (TS) / `ctx.rfi` (Python) / `ctx.run(...).spawn()` (Rust) dispatches a child `research` execution and returns a handle immediately — children run in parallel, each checkpointing on its own LLM calls. The outer loop awaits handles in order and feeds their results back to the LLM as tool messages.
 
 ## Run it locally
 
@@ -146,6 +190,7 @@ You need an OpenAI API key, the Resonate Server, and the worker.
     values={[
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
     ]}>
 
 <TabItem value="typescript">
@@ -189,6 +234,28 @@ uv run python research.py
 ```
 
 The agent prints a recursive trace as it decomposes the topic. Try killing the worker mid-research and restarting — execution resumes from the last unfinished branch.
+
+</TabItem>
+
+<TabItem value="rust">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-openai-deep-research-agent-rs
+cd example-openai-deep-research-agent-rs
+cargo build
+export OPENAI_API_KEY=sk-...
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — agent"
+cargo run --bin research -- run-1 "Distributed systems" 2
+```
+
+The CLI takes `<id> <topic> [depth]`. Increase the depth and watch the call graph grow.
 
 </TabItem>
 
