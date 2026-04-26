@@ -16,7 +16,7 @@ keywords:
 A workflow spawns four notification channels (email, SMS, Slack, push) in parallel and joins their results. Total wall time approaches the slowest channel, not the sum. If one channel fails and retries, the others stay checkpointed — they don't re-send.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Rust: v0.1.0, in active development. Python example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
 </Callout>
 
 <CloneRepoGrid>
@@ -24,6 +24,11 @@ TypeScript: `@resonatehq/sdk` v0.10.0 (current). Rust: v0.1.0, in active develop
     sdk="TypeScript SDK"
     description="Notification fan-out across email, SMS, Slack, and push using ctx.beginRun."
     link="https://github.com/resonatehq-examples/example-fan-out-fan-in-ts"
+  />
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Notification fan-out across email, SMS, Slack, and push using ctx.rfi handles."
+    link="https://github.com/resonatehq-examples/example-fan-out-fan-in-py"
   />
   <CloneRepoCard
     sdk="Rust SDK"
@@ -49,6 +54,7 @@ The fan-out is N spawn calls. The fan-in is N awaits. The fact that each is dura
     defaultValue="typescript"
     values={[
         {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
         {label: 'Rust', value: 'rust'},
     ]}>
 
@@ -84,6 +90,39 @@ export function* notifyAll(ctx: Context, event: OrderEvent, simulateCrash: boole
   };
 }
 ```
+
+</TabItem>
+
+<TabItem value="python">
+
+```python title="workflow.py"
+from resonate import Context
+from channels import send_email, send_push, send_slack, send_sms
+
+
+def notify_all(ctx: Context, event: dict, simulate_crash: bool):
+    # Fan-out: ctx.rfi(...) returns a handle without blocking.
+    email_p = yield ctx.rfi(send_email, event).options(id=f"{ctx.id}.email")
+    sms_p   = yield ctx.rfi(send_sms, event).options(id=f"{ctx.id}.sms")
+    slack_p = yield ctx.rfi(send_slack, event).options(id=f"{ctx.id}.slack")
+    push_p  = yield ctx.rfi(send_push, event, simulate_crash).options(id=f"{ctx.id}.push")
+
+    # Fan-in: each handle is durable. If push retries, email/sms/slack stay
+    # checkpointed and do NOT re-send.
+    email = yield email_p
+    sms   = yield sms_p
+    slack = yield slack_p
+    push  = yield push_p
+
+    results = [email, sms, slack, push]
+    return {
+        "order_id": event["order_id"],
+        "channels_notified": sum(1 for r in results if r.get("success")),
+        "results": results,
+    }
+```
+
+The Python equivalent of TypeScript's `ctx.beginRun` is `ctx.rfi` — it returns a handle immediately, and the workflow awaits each handle to fan in.
 
 </TabItem>
 
@@ -135,6 +174,7 @@ The TypeScript example includes a `--crash` flag that simulates the push channel
     defaultValue="typescript"
     values={[
         {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
         {label: 'Rust', value: 'rust'},
     ]}>
 
@@ -159,6 +199,31 @@ bun run src/index.ts -- --crash
 ```
 
 The log output shows the wall time vs the sum of the individual channel times — fan-out collapses the total to roughly `max(channels)`.
+
+</TabItem>
+
+<TabItem value="python">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-fan-out-fan-in-py
+cd example-fan-out-fan-in-py
+uv sync
+```
+
+```shell title="Terminal 1 — Resonate Server (legacy)"
+brew install resonatehq/tap/resonate
+resonate serve
+```
+
+```shell title="Terminal 2 — happy path"
+uv run python main.py
+```
+
+Or with the crash flag — push fails, retries, but the other three stay completed:
+
+```shell
+uv run python main.py --crash
+```
 
 </TabItem>
 
