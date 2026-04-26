@@ -16,7 +16,7 @@ keywords:
 A webhook receives a payment event, kicks off a durable workflow keyed by the provider's event ID, and acknowledges immediately. Duplicate deliveries (network retries, slow ACKs) reconnect to the in-flight execution rather than re-charging the card. A crash mid-processing resumes from the next unfinished step.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python and Rust example repos are forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x. Rust example repo is forthcoming.
 </Callout>
 
 <CloneRepoGrid>
@@ -24,6 +24,11 @@ TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python and Rust example repos a
     sdk="TypeScript SDK"
     description="Stripe-style webhook with validate → charge → receipt → ledger, exactly once."
     link="https://github.com/resonatehq-examples/example-webhook-handler-ts"
+  />
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="FastAPI webhook with the same validate → charge → receipt → ledger pipeline, exactly once."
+    link="https://github.com/resonatehq-examples/example-webhook-handler-py"
   />
 </CloneRepoGrid>
 
@@ -43,6 +48,16 @@ The handler ACKs the webhook in well under five seconds because it just dispatch
 
 Receive, dispatch, ACK. The whole point is that the workflow runs in the background — Stripe (or any provider) gets its fast 200 OK regardless of how long the actual processing takes.
 
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
+
 ```typescript title="src/index.ts"
 app.post("/webhook", (req, res) => {
   const event = req.body as WebhookEvent;
@@ -58,11 +73,39 @@ app.post("/webhook", (req, res) => {
 });
 ```
 
+</TabItem>
+
+<TabItem value="python">
+
+```python title="main.py"
+@app.post("/webhook")
+async def webhook(event: WebhookEvent):
+    # The event_id IS the workflow ID.
+    # Stripe retries with the same event_id reconnect to the in-flight execution.
+    process_payment.run(f"webhook/{event['event_id']}", event, simulate_crash)
+    # Fast ACK — Stripe needs a 200 within 5 seconds.
+    return {"received": True}
+```
+
+</TabItem>
+
+</Tabs>
+
 A separate `GET /status/:event_id` lets you poll the workflow's result if you need it.
 
 ### The exactly-once workflow
 
-Every step is a `ctx.run` checkpoint. If the worker dies after `chargeCard` but before `updateLedger`, restart resumes at `sendReceipt` — the card is not charged again.
+Every step is a `ctx.run` checkpoint. If the worker dies after `charge_card` but before `update_ledger`, restart resumes at `send_receipt` — the card is not charged again.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
 
 ```typescript title="src/workflow.ts"
 export function* processPayment(
@@ -83,9 +126,43 @@ export function* processPayment(
 }
 ```
 
-The repo includes a `--crash` flag that simulates `chargeCard` failing on the first attempt — re-running the workflow shows the charge happening exactly once even across retries.
+</TabItem>
+
+<TabItem value="python">
+
+```python title="workflow.py"
+@resonate.register
+def process_payment(ctx: Context, event: WebhookEvent, simulate_crash: bool):
+    # Validate signature and event structure.
+    yield ctx.run(validate_event, event)
+
+    # Charge the card. Checkpointed — duplicates skip this step.
+    charge_id = yield ctx.run(charge_card, event, simulate_crash)
+
+    # Send the receipt.
+    yield ctx.run(send_receipt, event, charge_id)
+
+    # Update the accounting ledger.
+    return (yield ctx.run(update_ledger, event, charge_id))
+```
+
+</TabItem>
+
+</Tabs>
+
+Both repos include a `--crash` flag that simulates `charge_card` failing on the first attempt — re-running the workflow shows the charge happening exactly once even across retries.
 
 ## Run it locally
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
 
 ```shell
 git clone https://github.com/resonatehq-examples/example-webhook-handler-ts
@@ -102,6 +179,26 @@ resonate dev
 bun run src/index.ts
 ```
 
+</TabItem>
+
+<TabItem value="python">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-webhook-handler-py
+cd example-webhook-handler-py
+uv sync
+```
+
+The Python repo runs in embedded mode (`Resonate.local()`) so no separate server is needed for the demo.
+
+```shell title="Terminal 1 — webhook server"
+uv run python main.py
+```
+
+</TabItem>
+
+</Tabs>
+
 Send a webhook:
 
 ```shell
@@ -114,13 +211,33 @@ Send the same webhook again. Watch the logs — the second delivery doesn't re-c
 
 ## Try the crash story
 
-Run with the crash flag:
+Run with the crash flag — `chargeCard` / `charge_card` throws on its first attempt, the workflow retries, and the second attempt succeeds. The card is charged exactly once.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+    ]}>
+
+<TabItem value="typescript">
 
 ```shell
 bun run src/index.ts -- --crash
 ```
 
-Send a webhook. The `chargeCard` step throws, the workflow retries, the second attempt succeeds. The card is charged exactly once — there's no duplicate-charge window between the failure and the retry.
+</TabItem>
+
+<TabItem value="python">
+
+```shell
+uv run python main.py --crash
+```
+
+</TabItem>
+
+</Tabs>
 
 ## Related
 
