@@ -16,10 +16,10 @@ This repo's own git history. Pushed to `resonatehq/docs.resonatehq.io` on GitHub
 
 | | |
 |---|---|
-| Framework | Docusaurus (TypeScript config) |
-| Package mgr | yarn (`yarn.lock` present — yarn is canonical here, not npm) |
-| Build | `yarn build` |
-| Linter | Docusaurus defaults |
+| Framework | Next.js (fumadocs, post-Docusaurus migration) |
+| Package mgr | npm (`package-lock.json` is canonical) |
+| Build | `npm run build` |
+| Linter | Next.js defaults |
 | Deploy | Vercel via `vercel.json` |
 | License | Apache-2.0 |
 
@@ -38,14 +38,13 @@ This repo's own git history. Pushed to `resonatehq/docs.resonatehq.io` on GitHub
 ## Run
 
 ```bash
-yarn                # install
-yarn start          # local dev server (Cully runs this himself — don't auto-start)
-yarn build          # production build → build/
-yarn serve          # serve built output
-yarn clear          # clear Docusaurus cache
+npm install         # install
+npm run dev         # local dev server (Cully runs this himself — don't auto-start)
+npm run build       # production build → .next/, plus regenerated public/llms*.txt
+npm start           # serve built output
 ```
 
-**Use yarn, not npm.** The lockfile is `yarn.lock`. Mixing package managers will break things.
+**Use npm, not yarn.** The canonical lockfile is `package-lock.json`. A stray `yarn.lock` from the Docusaurus era exists in `.gitignore` and should not be committed — mixing package managers will drift the dep tree.
 
 ## Deploy
 
@@ -60,7 +59,7 @@ yarn clear          # clear Docusaurus cache
 1. **Voice = Echo.** Technical, precise, friendly but not casual. Match the tone of existing pages.
 2. **Code samples must run against the current SDK.** Stale snippets are the #1 doc bug. When you change a snippet, run it locally against the SDK or note the SDK version it targets.
 3. **Don't ship docs for unreleased APIs** unless you mark them clearly as experimental/preview.
-4. **Yarn, not npm.** Don't introduce a `package-lock.json`.
+4. **npm, not yarn.** The canonical lockfile is `package-lock.json`. Don't reintroduce a tracked `yarn.lock`.
 5. **Open a PR, don't push to `main` directly.** Vercel previews make review trivial.
 6. **Big architecture changes (new server, new protocol, JWT auth, v0.10.0 SDK) need a coordinated docs sweep, not piecemeal edits.** Talk to Cully before starting one.
 7. **Don't name competitors.** Same workspace rule as the marketing site.
