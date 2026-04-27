@@ -10,7 +10,7 @@ This repo's own git history. Pushed to `resonatehq/docs.resonatehq.io` on GitHub
 
 ## Status
 
-**Stalled relative to the new architecture.** No updates reflecting the new Go server, formal protocol spec, JWT auth, or the v0.10.0 SDK rewrite. Current docs describe the legacy generation. Updating this is a **known active priority** — see `docs/board/PRIORITIES.md` (Zone 1) for the current phasing.
+**Stalled relative to the new architecture.** No updates reflecting the new Rust server, formal protocol spec, JWT auth, or the v0.10.0 SDK rewrite. Current docs describe the legacy generation. Updating this is a known active priority — coordinate with Cully before starting a sweep.
 
 ## Stack
 
@@ -55,11 +55,9 @@ yarn clear          # clear Docusaurus cache
 - **Build badge:** the README shows `deploy-badge.vercel.app/?url=https://docs.resonatehq.io/`
 - **Rollback:** Vercel dashboard
 
-Full procedure: `docs/protocols/DEPLOYMENT.md`.
-
 ## Rules
 
-1. **Voice = Echo.** Technical, precise, friendly but not casual. Read `docs/shared/IDENTITY.md` before writing.
+1. **Voice = Echo.** Technical, precise, friendly but not casual. Match the tone of existing pages.
 2. **Code samples must run against the current SDK.** Stale snippets are the #1 doc bug. When you change a snippet, run it locally against the SDK or note the SDK version it targets.
 3. **Don't ship docs for unreleased APIs** unless you mark them clearly as experimental/preview.
 4. **Yarn, not npm.** Don't introduce a `package-lock.json`.
