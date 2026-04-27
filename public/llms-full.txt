@@ -8003,10 +8003,11 @@ title: Async agent tools
 A FastMCP server exposes three tools — start, probe, await — backed by a durable Resonate workflow. The LLM kicks off long jobs, polls them, and collects results without blocking on the work.
 
 
-Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. TypeScript SDK example repo is forthcoming.
+Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development. TypeScript SDK example repo is forthcoming.
 
 
 
+  
   
 
 
@@ -8024,7 +8025,11 @@ The server exposes one durable function (`weather_data`) and three thin MCP tool
 
 ### The durable function
 
-`@resonate.register` turns `weather_data` into a workflow that an MCP tool can dispatch by ID. Whatever the tool does — call an external API, stream rows from a DB, transform a payload — happens here, with retries and crash recovery wrapped around it.
+The MCP tool dispatches a Resonate workflow that does the actual side-effecting work. Whatever the tool does — call an external API, stream rows from a DB, transform a payload — happens here, with retries and crash recovery wrapped around it.
+
+
+
+
 
 ```python title="weather_data.py — the durable function"
 from resonate import Resonate
@@ -8054,9 +8059,39 @@ def weather_data(ctx, latitude, longitude, year, month, timezone="America/Edmont
     return response.json()
 ```
 
+
+
+
+
+```rust title="src/bin/worker.rs"
+use resonate::prelude::*;
+
+#[resonate::function]
+async fn get_forecast(ctx: &Context, lat: f64, lon: f64) -> Result {
+    // ctx.run checkpoints the HTTP call — a retry of the MCP tool with the
+    // same lat/lon reconnects to this workflow rather than re-fetching.
+    let json = ctx.run(fetch_nws, (lat, lon)).await?;
+    Ok(json)
+}
+
+#[resonate::function]
+async fn fetch_nws(lat: f64, lon: f64) -> Result {
+    let url = format!("https://api.weather.gov/points/{lat},{lon}");
+    // ...HTTP call returning the response body.
+}
+```
+
+
+
+
+
 ### The three async MCP tools
 
-Each tool is a thin shell around a Resonate API call: kick off, poll, await.
+Each tool is a thin shell around a Resonate API call: kick off, poll, await (Python). The Rust port collapses the same pattern into a single tool that dispatches via `resonate.rpc(...)` and awaits a deterministic-ID promise — same dedup, fewer tools.
+
+
+
+
 
 ```python title="weather_data.py — the MCP tools"
 @mcp.tool()
@@ -8087,11 +8122,39 @@ def await_result(job_names):
     return {n: resonate.get(n).result() for n in job_names}
 ```
 
-The same `job_name` is the deduplication key: if the agent retries `start_gathering` with the same arguments, Resonate reconnects to the in-flight execution rather than running the work twice.
+
+
+
+
+```rust title="src/bin/weather_server.rs"
+#[tool_router(server_handler)]
+impl WeatherBridge {
+    #[tool(description = "Get the forecast for the given lat/lon.")]
+    async fn get_forecast(&self, Parameters(p): Parameters) -> Result {
+        let id = format!("forecast-{}-{}", p.lat, p.lon);
+        // Same id reconnects to an in-flight execution rather than re-fetching.
+        let result: String = self.resonate
+            .rpc(&id, "get_forecast", (p.lat, p.lon))
+            .target("poll://any@workers")
+            .await?;
+        Ok(CallToolResult::success(vec![Content::text(result)]))
+    }
+}
+```
+
+
+
+
+
+The same job/promise ID is the deduplication key: if the agent retries with the same arguments, Resonate reconnects to the in-flight execution rather than running the work twice.
 
 ## Run it locally
 
-You need the legacy Resonate Server, the MCP server, and Claude Desktop (or any MCP client) configured to load the proxy.
+You need a Resonate Server, the MCP server, and Claude Desktop (or any MCP client) configured to load the server.
+
+
+
+
 
 Clone the repo and install dependencies (uses [uv](https://docs.astral.sh/uv/)):
 
@@ -8101,20 +8164,41 @@ cd example-async-tools-mcp-server-py
 uv sync
 ```
 
-Start the legacy server:
-
 ```shell title="Terminal 1 — Resonate Server (legacy)"
 brew install resonatehq/tap/resonate
 resonate serve
 ```
 
-Run the MCP server (it exposes the tools over HTTP at `http://localhost:5001/mcp`):
-
 ```shell title="Terminal 2 — MCP server"
 uv run python weather_data.py
 ```
 
-Configure Claude Desktop to launch the proxy. Add to `claude_desktop_config.json` (the Developers tab in Claude's settings shows the path):
+
+
+
+
+```shell
+git clone https://github.com/resonatehq-examples/example-mcp-tools-rs
+cd example-mcp-tools-rs
+cargo build
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — durable worker"
+cargo run --bin worker
+```
+
+The MCP server (`weather-server` binary) is launched by Claude Desktop directly via stdio — see the config below.
+
+
+
+
+
+Configure Claude Desktop to launch the server. Add to `claude_desktop_config.json` (the Developers tab in Claude's settings shows the path):
 
 ```json
 {
@@ -8154,10 +8238,12 @@ title: Async HTTP APIs
 A FastAPI gateway converts every inbound request into a durable workflow, returns a promise ID immediately, and exposes a `/wait` endpoint clients poll for completion.
 
 
-Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. TypeScript SDK example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
 
 
 
+  
+  
   
 
 
@@ -8176,6 +8262,50 @@ Two processes: a **gateway** that accepts HTTP requests and a **worker** that ru
 ### The gateway
 
 `POST /begin` enqueues durable work and returns a promise ID. `GET /wait` polls for completion. The same client-provided ID deduplicates retries — sending `/begin` twice with the same ID reconnects to the in-flight execution.
+
+
+
+
+
+```typescript title="gateway.ts"
+const app = express();
+app.use(express.json());
+
+const resonate = new Resonate({ url: "http://localhost:8001", group: "gateway" });
+
+app.post("/begin", async (req, res) => {
+  const id = (req.query.id as string) ?? randomUUID();
+  const data = req.body && Object.keys(req.body).length > 0 ? req.body : { foo: "bar" };
+
+  // beginRpc returns immediately. Same id reconnects to the in-flight execution.
+  const handle = await resonate.beginRpc(
+    id,
+    "foo",
+    data,
+    resonate.options({ target: "poll://any@worker" }),
+  );
+
+  res.json({ promise: handle.id, status: "pending", wait: `/wait?id=${handle.id}` });
+});
+
+app.get("/wait", async (req, res) => {
+  const id = req.query.id as string;
+  const handle = await resonate.get(id);
+
+  // done() is non-blocking — asks the server for current state.
+  if (await handle.done()) {
+    const result = await handle.result();
+    return res.json({ status: "resolved", promise_id: id, result });
+  }
+  res.json({ status: "pending", promise_id: id });
+});
+
+app.listen(5001, "127.0.0.1");
+```
+
+
+
+
 
 ```python title="main.py"
 from fastapi import FastAPI, HTTPException
@@ -8211,9 +8341,68 @@ def wait(id: str):
         raise HTTPException(status_code=404, detail=f"{id} not found")
 ```
 
+
+
+
+
+```rust title="src/bin/gateway.rs"
+use axum::{routing::{get, post}, Json, Router};
+use resonate::prelude::*;
+use uuid::Uuid;
+
+async fn begin(State(r): State, Json(body): Json) -> impl IntoResponse {
+    let id = body.get("id").and_then(|v| v.as_str()).map(String::from)
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+    // .spawn() returns a handle without blocking on completion.
+    let _: ResonateHandle = r
+        .rpc(&id, "foo", body.clone())
+        .target("poll://any@worker")
+        .spawn()
+        .await
+        .unwrap();
+
+    Json(json!({ "promise": id, "status": "pending", "wait": format!("/wait?id={id}") }))
+}
+
+async fn wait(State(r): State, Query(q): Query>) -> impl IntoResponse {
+    let id = q.get("id").cloned().unwrap_or_default();
+    let handle: ResonateHandle = r.get(&id).await.unwrap();
+    if handle.done().await.unwrap() {
+        let result = handle.result().await.unwrap();
+        return Json(json!({ "status": "resolved", "promise_id": id, "result": result }));
+    }
+    Json(json!({ "status": "pending", "promise_id": id }))
+}
+```
+
+
+
+
+
 ### The worker
 
-`@resonate.register` exposes `foo` as a durable function. The gateway's `begin_rpc` dispatches the call to whichever worker in the `worker` group claims it first; if that worker dies mid-execution, another picks up the workflow.
+`@resonate.register` (Python) or `resonate.register("foo", foo)` (TypeScript) exposes `foo` as a durable function. The gateway's `beginRpc` dispatches the call to whichever worker in the `worker` group claims it first; if that worker dies mid-execution, another picks up the workflow.
+
+
+
+
+
+```typescript title="worker.ts"
+const resonate = new Resonate({ url: "http://localhost:8001", group: "worker" });
+
+// Inputs and return value must be JSON-serializable.
+function* foo(_: Context, data: unknown) {
+  // Real workloads call ctx.run(stepFn, ...) for checkpointed side effects.
+  return { result: `Processed: ${JSON.stringify(data)}`, timestamp: Date.now() };
+}
+
+resonate.register("foo", foo);
+```
+
+
+
+
 
 ```python title="worker.py"
 from resonate import Context, Resonate
@@ -8234,9 +8423,68 @@ if __name__ == "__main__":
     Event().wait()
 ```
 
+
+
+
+
+```rust title="src/bin/worker.rs"
+use resonate::prelude::*;
+use serde_json::Value;
+
+#[resonate::function]
+async fn foo(_: &Context, data: Value) -> Result {
+    // Real workloads call ctx.run(stepFn, ...) for checkpointed side effects.
+    Ok(json!({ "result": format!("Processed: {data}"), "timestamp": now() }))
+}
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        group: Some("worker".into()),
+        ..Default::default()
+    });
+    resonate.register(foo).unwrap();
+    tokio::signal::ctrl_c().await.unwrap();
+}
+```
+
+
+
+
+
 ## Run it locally
 
-You need the legacy Resonate Server, the worker, and the gateway.
+You need a Resonate Server, the worker, and the gateway running in separate terminals.
+
+
+
+
+
+Clone the repo and install:
+
+```shell
+git clone https://github.com/resonatehq-examples/example-async-http-api-ts
+cd example-async-http-api-ts
+bun install
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — worker"
+bun run worker
+```
+
+```shell title="Terminal 3 — gateway"
+bun run gateway
+```
+
+
+
+
 
 Clone the repo and install dependencies (uses [uv](https://docs.astral.sh/uv/)):
 
@@ -8245,8 +8493,6 @@ git clone https://github.com/resonatehq-examples/example-async-http-api-py
 cd example-async-http-api-py
 uv sync
 ```
-
-In separate terminals:
 
 ```shell title="Terminal 1 — Resonate Server (legacy)"
 brew install resonatehq/tap/resonate
@@ -8260,6 +8506,33 @@ uv run python worker.py
 ```shell title="Terminal 3 — gateway"
 uv run uvicorn main:app --host 127.0.0.1 --port 5001
 ```
+
+
+
+
+
+```shell
+git clone https://github.com/resonatehq-examples/example-async-http-api-rs
+cd example-async-http-api-rs
+cargo build
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — worker"
+cargo run --bin worker
+```
+
+```shell title="Terminal 3 — gateway"
+cargo run --bin gateway
+```
+
+
+
+
 
 Begin a workflow:
 
@@ -8299,10 +8572,11 @@ title: Async RPC
 A gateway calls service A, which calls service B, which calls service C. Each step uses Resonate's remote function invocation APIs, so the entire chain is durable — a crash on any service resumes the call without re-running prior steps.
 
 
-Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. TypeScript example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server.
 
 
 
+  
   
 
 
@@ -8325,6 +8599,30 @@ The example chains a gateway through `service-a` → `service-b`. Each service i
 
 ### The gateway (ephemeral → durable)
 
+
+
+
+
+```typescript title="src/gateway.ts"
+app.post("/await-chain", async (_req, res) => {
+  const promiseId = "await-chain";
+  // Ephemeral-to-durable: HTTP handler calls into a durable service.
+  const handle = await resonate.beginRpc<number>(
+    promiseId,
+    "foo",
+    "foo",
+    resonate.options({ target: "poll://any@service-a" }),
+  );
+  // Block the HTTP response on the chain's result.
+  const message = await handle.result();
+  res.status(200).json({ message });
+});
+```
+
+
+
+
+
 ```python title="src/gateway.py"
 @app.route("/await-chain", methods=["POST"])
 def await_chain_route_handler():
@@ -8336,9 +8634,54 @@ def await_chain_route_handler():
     return jsonify({"message": message}), 200
 ```
 
-`resonate.rpc` dispatches `foo` on whichever process is registered as `service-a`. The promise ID makes the call idempotent — re-running the same handler with the same ID reconnects to the in-flight execution rather than starting a duplicate chain.
+
+
+
+
+`resonate.beginRpc` (TypeScript) / `resonate.rpc` (Python) dispatches `foo` on whichever process is registered as `service-a`. The promise ID makes the call idempotent — re-running the same handler with the same ID reconnects to the in-flight execution rather than starting a duplicate chain.
 
 ### Service A → Service B (durable → durable)
+
+
+
+
+
+```typescript title="src/service_a.ts"
+function* foo(ctx: Context): Generator<any, number, any> {
+  // ctx.rpc dispatches to service-b and waits for the result.
+  // Both sides are durable; the call resumes if either process crashes.
+  const result: number = yield* ctx.rpc<number>(
+    "bar",
+    ctx.options({ target: "poll://any@service-b" }),
+  );
+  return result + 1;
+}
+
+resonate.register("foo", foo);
+```
+
+```typescript title="src/service_b.ts"
+function* bar(ctx: Context): Generator<any, number, any> {
+  const result: number = yield* ctx.rpc<number>(
+    "baz",
+    ctx.options({ target: "poll://any@service-c" }),
+  );
+  return result + 1;
+}
+
+resonate.register("bar", bar);
+```
+
+For fire-and-forget calls, swap `ctx.rpc` for `ctx.detached`:
+
+```typescript
+// Detached: dispatch and don't wait. Returns immediately.
+yield* ctx.detached("qux", ctx.options({ target: "poll://any@service-d" }));
+```
+
+
+
+
 
 ```python title="src/service_a.py"
 @resonate.register
@@ -8356,8 +8699,6 @@ def bar(ctx):
     return result + 1
 ```
 
-The `ctx.rfc` call inside a durable function is the durable equivalent of `await someService.bar()`. The result is checkpointed, so a worker that completes `bar` and then dies still passes its result back when the chain resumes.
-
 For fire-and-forget calls — kicking off work without blocking on its result — swap `ctx.rfc` for `ctx.rfi`:
 
 ```python
@@ -8365,9 +8706,48 @@ For fire-and-forget calls — kicking off work without blocking on its result �
 ctx.rfi("qux").options(target="poll://service-d")
 ```
 
+
+
+
+
+The `ctx.rpc` / `ctx.rfc` call inside a durable function is the durable equivalent of `await someService.bar()`. The result is checkpointed, so a worker that completes `bar` and then dies still passes its result back when the chain resumes.
+
 ## Run it locally
 
-The example ships with nine services so you can exercise the await-chain, detached-chain, and fan-out flows.
+Both repos ship with nine services so you can exercise the await-chain, detached-chain, and fan-out flows.
+
+
+
+
+
+```shell
+git clone https://github.com/resonatehq-examples/example-async-rpc-ts
+cd example-async-rpc-ts
+bun install
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+Start each service in its own terminal (`a` through `i`):
+
+```shell
+bun run a
+bun run b
+# ...c through i, one terminal each
+```
+
+Start the gateway:
+
+```shell
+bun run gateway
+```
+
+
+
+
 
 ```shell
 git clone https://github.com/resonatehq-examples/example-async-rpc-py
@@ -8393,6 +8773,10 @@ Start the gateway:
 ```shell
 uv run python src/gateway.py
 ```
+
+
+
+
 
 Trigger the await-chain:
 
@@ -8424,10 +8808,11 @@ title: Deep research agent
 A research agent receives a broad topic, asks an LLM to break it into 2–3 subtopics, and recursively dispatches each subtopic to itself. Every LLM call and every recursive subagent is a durable promise — kill the worker mid-research, the tree resumes from the last unanswered branch.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
 
 
 
+  
   
   
 
@@ -8527,7 +8912,45 @@ def research(ctx: Context, topic: str, depth: int):
 
 
 
-The recursion is the whole pattern. `ctx.beginRpc` (TS) / `ctx.rfi` (Python) dispatches a child `research` execution and returns a handle immediately — children run in parallel, each checkpointing on its own LLM calls. The outer loop awaits handles in order and feeds their results back to the LLM as tool messages.
+```rust title="src/main.rs"
+#[resonate::function]
+async fn research(ctx: &Context, topic: String, depth: u32) -> Result {
+    let mut messages = vec![
+        json!({"role": "system", "content": SYSTEM_PROMPT}),
+        json!({"role": "user", "content": format!("Research {topic}")}),
+    ];
+
+    loop {
+        let message = ctx.run(prompt, (messages.clone(), depth > 0)).await?;
+        messages.push(message.clone());
+
+        if let Some(tool_calls) = message["tool_calls"].as_array() {
+            // Fan out: spawn one durable subagent per tool call.
+            let mut handles = vec![];
+            for tc in tool_calls {
+                let args: Value = serde_json::from_str(tc["function"]["arguments"].as_str().unwrap())?;
+                if tc["function"]["name"] == "research" {
+                    let h = ctx.run(research, (args["topic"].as_str().unwrap().into(), depth - 1)).spawn().await?;
+                    handles.push((tc.clone(), h));
+                }
+            }
+            // Fan in.
+            for (tc, h) in handles {
+                let result = h.await?;
+                messages.push(json!({"role": "tool", "tool_call_id": tc["id"], "content": result}));
+            }
+        } else {
+            return Ok(message["content"].as_str().unwrap_or("").to_string());
+        }
+    }
+}
+```
+
+
+
+
+
+The recursion is the whole pattern. `ctx.beginRpc` (TS) / `ctx.rfi` (Python) / `ctx.run(...).spawn()` (Rust) dispatches a child `research` execution and returns a handle immediately — children run in parallel, each checkpointing on its own LLM calls. The outer loop awaits handles in order and feeds their results back to the LLM as tool messages.
 
 ## Run it locally
 
@@ -8576,6 +8999,28 @@ uv run python research.py
 ```
 
 The agent prints a recursive trace as it decomposes the topic. Try killing the worker mid-research and restarting — execution resumes from the last unfinished branch.
+
+
+
+
+
+```shell
+git clone https://github.com/resonatehq-examples/example-openai-deep-research-agent-rs
+cd example-openai-deep-research-agent-rs
+cargo build
+export OPENAI_API_KEY=sk-...
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — agent"
+cargo run --bin research -- run-1 "Distributed systems" 2
+```
+
+The CLI takes `<id> <topic> [depth]`. Increase the depth and watch the call graph grow.
 
 
 
@@ -8708,10 +9153,11 @@ title: Lambda workers
 A Lambda function behind API Gateway acts as a stateless trigger. `POST /process-document` fires a durable Resonate workflow and returns `202` immediately. The workflow itself — download, OCR, LLM analysis, storage, notification — runs on a Resonate worker that doesn't share Lambda's 15-minute ceiling.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python and Rust example repos for this pattern are forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
 
 
 
+  
   
 
 
@@ -8732,6 +9178,10 @@ No CDK. No service registration. The Lambda calls Resonate the same way it would
 Two pieces inside the Lambda handler — start the workflow, poll its status — and the workflow itself, which lives in a separate file because it doesn't run in Lambda.
 
 ### The Lambda handler (the stateless trigger)
+
+
+
+
 
 ```typescript title="src/handler.ts"
 // Module-level: created once per cold start, reused across warm invocations.
@@ -8761,9 +9211,49 @@ async function handleStatus(event: APIGatewayEvent) {
 }
 ```
 
+
+
+
+
+```python title="lambda_function.py"
+import json
+from resonate import Resonate
+
+# Module-level: created once per cold start, reused across warm invocations.
+resonate = Resonate.remote(group="gateway")  # talks to a remote Resonate Server
+
+
+def lambda_handler(event, context):
+    if event["path"] == "/process-document" and event["httpMethod"] == "POST":
+        job = json.loads(event["body"])
+        # begin_rpc dispatches to the worker group and returns immediately.
+        resonate.options(target="poll://any@worker").begin_rpc(
+            f"doc/{job['jobId']}", "process_document", job,
+        )
+        return {"statusCode": 202,
+                "body": json.dumps({"status": "accepted", "jobId": job["jobId"]})}
+
+    if event["path"].startswith("/status/"):
+        job_id = event["pathParameters"]["jobId"]
+        handle = resonate.get(f"doc/{job_id}")
+        if handle.done():
+            return {"statusCode": 200,
+                    "body": json.dumps({"status": "done", "result": handle.result()})}
+        return {"statusCode": 200,
+                "body": json.dumps({"status": "processing", "jobId": job_id})}
+```
+
+
+
+
+
 Same `jobId` deduplicates retries — API Gateway can re-fire the request without spawning duplicate work.
 
 ### The workflow (runs on the worker, not Lambda)
+
+
+
+
 
 ```typescript title="src/workflow.ts"
 export function* processDocument(ctx: Context, job: DocumentJob) {
@@ -8778,11 +9268,40 @@ export function* processDocument(ctx: Context, job: DocumentJob) {
 }
 ```
 
-The five steps are plain async functions invoked through `ctx.run`. Each result is checkpointed in a durable promise, so a worker crash mid-LLM-call resumes from the next step rather than re-running the whole pipeline.
+
+
+
+
+```python title="worker.py"
+from resonate import Context, Resonate
+
+resonate = Resonate.remote(group="worker")
+
+
+@resonate.register
+def process_document(ctx: Context, job: dict):
+    # Each ctx.run is a checkpoint. Crash mid-step, resume from the next.
+    page_count = yield ctx.run(download_document, job)
+    text = yield ctx.run(extract_text, job, page_count)
+    analysis = yield ctx.run(analyze_document, job, text)
+    stored_at = yield ctx.run(store_results, job, analysis)
+    notified_at = yield ctx.run(notify_requester, job, stored_at)
+    return {"jobId": job["jobId"], **analysis, "stored_at": stored_at, "notified_at": notified_at}
+```
+
+
+
+
+
+The five steps are plain functions invoked through `ctx.run`. Each result is checkpointed in a durable promise, so a worker crash mid-LLM-call resumes from the next step rather than re-running the whole pipeline.
 
 ## Run it locally
 
-The repo includes a `local-demo` directory that simulates API Gateway + Lambda + the worker on your machine.
+Each repo simulates API Gateway + Lambda + the worker on your machine.
+
+
+
+
 
 ```shell
 git clone https://github.com/resonatehq-examples/example-aws-lambda-ts
@@ -8802,6 +9321,33 @@ npm run worker
 ```shell title="Terminal 3 — local Lambda + API Gateway simulator"
 npm run local
 ```
+
+
+
+
+
+```shell
+git clone https://github.com/resonatehq-examples/example-lambda-workers-py
+cd example-lambda-workers-py
+uv sync
+```
+
+```shell title="Terminal 1 — Resonate Server (legacy)"
+brew install resonatehq/tap/resonate
+resonate serve
+```
+
+```shell title="Terminal 2 — worker"
+uv run python worker.py
+```
+
+```shell title="Terminal 3 — local Lambda invocation"
+uv run python lambda_function.py
+```
+
+
+
+
 
 Trigger a job:
 
@@ -8841,10 +9387,11 @@ title: Durable sleep
 A workflow yields `ctx.sleep` and the runtime suspends it. Hours, days, or weeks later the worker wakes the workflow up exactly where it stopped — no cron, no scheduler, no external state.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0 — `ctx.sleep` is supported in the SDK; the `example-durable-sleep-rs` repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
 
 
 
+  
   
   
 
@@ -8972,6 +9519,30 @@ print(handle.result())
 
 
 
+```rust title="src/bin/client.rs"
+use resonate::prelude::*;
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        ..Default::default()
+    });
+
+    let result: String = resonate
+        .rpc("sleep-workflow-1", "sleeping_workflow", 5u64)
+        .target("poll://any@workers")
+        .await
+        .expect("rpc to worker failed");
+
+    println!("{result}");
+}
+```
+
+
+
+
+
 ## Run it locally
 
 You need the Resonate Server, the worker, and a client to dispatch.
@@ -9034,6 +9605,31 @@ After ~5 seconds the client prints the completion message. Kill the worker mid-s
 
 
 
+```shell
+git clone https://github.com/resonatehq-examples/example-durable-sleep-rs
+cd example-durable-sleep-rs
+cargo build
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — worker"
+cargo run --bin worker
+```
+
+```shell title="Terminal 3 — client"
+cargo run --bin client
+```
+
+After ~5 seconds the client prints the completion message. Kill the worker mid-sleep and restart — the workflow resumes and still completes.
+
+
+
+
+
 ## Try the long-sleep story
 
 Change the sleep duration to a day, week, or month. The workflow sleeps without holding a process open — kill the worker, redeploy your code, restart your laptop. When the wake-up time arrives, Resonate dispatches the workflow to whichever worker is alive.
@@ -9056,10 +9652,11 @@ title: Fan-out / fan-in
 A workflow spawns four notification channels (email, SMS, Slack, push) in parallel and joins their results. Total wall time approaches the slowest channel, not the sum. If one channel fails and retries, the others stay checkpointed — they don't re-send.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Rust: v0.1.0, in active development. Python example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
 
 
 
+  
   
   
 
@@ -9107,6 +9704,39 @@ export function* notifyAll(ctx: Context, event: OrderEvent, simulateCrash: boole
   };
 }
 ```
+
+
+
+
+
+```python title="workflow.py"
+from resonate import Context
+from channels import send_email, send_push, send_slack, send_sms
+
+
+def notify_all(ctx: Context, event: dict, simulate_crash: bool):
+    # Fan-out: ctx.rfi(...) returns a handle without blocking.
+    email_p = yield ctx.rfi(send_email, event).options(id=f"{ctx.id}.email")
+    sms_p   = yield ctx.rfi(send_sms, event).options(id=f"{ctx.id}.sms")
+    slack_p = yield ctx.rfi(send_slack, event).options(id=f"{ctx.id}.slack")
+    push_p  = yield ctx.rfi(send_push, event, simulate_crash).options(id=f"{ctx.id}.push")
+
+    # Fan-in: each handle is durable. If push retries, email/sms/slack stay
+    # checkpointed and do NOT re-send.
+    email = yield email_p
+    sms   = yield sms_p
+    slack = yield slack_p
+    push  = yield push_p
+
+    results = [email, sms, slack, push]
+    return {
+        "order_id": event["order_id"],
+        "channels_notified": sum(1 for r in results if r.get("success")),
+        "results": results,
+    }
+```
+
+The Python equivalent of TypeScript's `ctx.beginRun` is `ctx.rfi` — it returns a handle immediately, and the workflow awaits each handle to fan in.
 
 
 
@@ -9182,6 +9812,31 @@ The log output shows the wall time vs the sum of the individual channel times �
 
 
 ```shell
+git clone https://github.com/resonatehq-examples/example-fan-out-fan-in-py
+cd example-fan-out-fan-in-py
+uv sync
+```
+
+```shell title="Terminal 1 — Resonate Server (legacy)"
+brew install resonatehq/tap/resonate
+resonate serve
+```
+
+```shell title="Terminal 2 — happy path"
+uv run python main.py
+```
+
+Or with the crash flag — push fails, retries, but the other three stay completed:
+
+```shell
+uv run python main.py --crash
+```
+
+
+
+
+
+```shell
 git clone https://github.com/resonatehq-examples/example-fan-out-fan-in-rs
 cd example-fan-out-fan-in-rs
 cargo build
@@ -9228,10 +9883,11 @@ title: Hello world
 The smallest example that exercises the durable execution loop. A registered workflow function calls two leaf functions through `ctx.run`, and Resonate checkpoints each return value.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Rust: v0.1.0, in active development. Python example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x. Rust: v0.1.0, in active development.
 
 
 
+  
   
   
 
@@ -9246,7 +9902,7 @@ Two things, both small. **Register** a function with the Resonate instance — t
 
 ## Code walkthrough
 
-The workflow is a generator (TypeScript) or `#[resonate::function]` async fn (Rust). It receives a `Context` and calls leaf functions through `ctx.run`. Leaves can be plain functions — Resonate handles the dispatch and the checkpointing.
+The workflow is a generator (TypeScript and Python) or `#[resonate::function]` async fn (Rust). It receives a `Context` and calls leaf functions through `ctx.run`. Leaves can be plain functions — Resonate handles the dispatch and the checkpointing.
 
 
 
@@ -9275,6 +9931,37 @@ const fooR = resonate.register("foo", foo);
 const result = await fooR.run("greeting-workflow", "World");
 console.log(result);
 resonate.stop();
+```
+
+
+
+
+
+```python title="main.py"
+from resonate import Resonate, Context
+from typing import Generator, Any
+
+resonate = Resonate.local()
+
+
+def bar(_: Context, greetee: str) -> str:
+    return f"Hello {greetee} from bar!"
+
+
+def baz(_: Context, greetee: str) -> str:
+    return f"Hello {greetee} from baz!"
+
+
+@resonate.register
+def foo(ctx: Context, greetee: str) -> Generator[Any, Any, str]:
+    # Each ctx.run is a checkpoint — its return value is durably stored.
+    bar_greeting = yield ctx.run(bar, greetee=greetee)
+    baz_greeting = yield ctx.run(baz, greetee=greetee)
+    return f"Hello {greetee} from foo! {bar_greeting} {baz_greeting}"
+
+
+result = foo.run("greeting-workflow", greetee="World")
+print(result)
 ```
 
 
@@ -9313,7 +10000,7 @@ async fn main() {
 
 
 
-The TypeScript example invokes the workflow in-process via `fooR.run(...)` — no server needed for this minimal demo. The Rust example registers the function with a long-running worker and waits for an invocation from the Resonate CLI.
+The TypeScript and Python examples invoke the workflow in-process — no server needed for this minimal demo. The Rust example registers the function with a long-running worker and waits for an invocation from the Resonate CLI.
 
 ## Run it locally
 
@@ -9336,6 +10023,26 @@ npx tsx index.ts
 ```
 
 You should see three log lines (`running foo`, `running bar`, `running baz`, possibly with `foo` repeating as the workflow replays after each yield) followed by the assembled greeting.
+
+
+
+
+
+Clone the repo:
+
+```shell
+git clone https://github.com/resonatehq-examples/example-hello-world-py
+cd example-hello-world-py
+uv sync
+```
+
+Run the workflow in-process:
+
+```shell
+uv run main.py
+```
+
+`Resonate.local()` runs everything in-process — no server required for this minimal demo.
 
 
 
@@ -9738,14 +10445,16 @@ title: Kafka worker
 A consumer pulls messages from a Kafka topic and dispatches each one through a durable Resonate workflow. Per-message state lives in durable promises, so a worker that dies mid-batch resumes cleanly without redoing completed steps.
 
 
-Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. TypeScript SDK example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
 
 
 
-The example repo runs against [Redpanda](https://redpanda.com/) for local development because the broker boots in seconds, but the code uses the Kafka wire protocol via `confluent-kafka-python`. Point it at any Kafka-compatible broker — Apache Kafka, Redpanda, or a managed offering — by changing the bootstrap-server config.
+All three repos run against [Redpanda](https://redpanda.com/) for local development because the broker boots in seconds, but the code uses the Kafka wire protocol — `kafkajs` for TypeScript, `confluent-kafka-python` for Python, `rdkafka` for Rust. Point any of them at any Kafka-compatible broker — Apache Kafka, Redpanda, or a managed offering — by changing the bootstrap-server config.
 
 
 
+  
+  
   
 
 
@@ -9764,6 +10473,32 @@ Each Kafka message becomes the ID of a durable workflow. Resonate runs the workf
 The pattern is a small consume loop that hands each message to `workflow.begin_run`. The workflow itself does the per-message work — here, deleting batches of records until none remain, then emitting a completion event.
 
 ### The durable workflow
+
+
+
+
+
+```typescript title="src/workflow.ts"
+export const resonate = new Resonate({
+  url: "http://localhost:8001",
+  group: "workers",
+});
+
+function* workflow(ctx: Context, recordId: string, offset: string) {
+  console.log(`processing record ${recordId} (offset ${offset})`);
+  // Loop until deleteBatch reports no more rows.
+  while (yield* ctx.run(deleteBatch, recordId)) {
+    yield* ctx.sleep(5_000);
+  }
+  yield* ctx.run(enqueueCompletion, recordId, offset);
+}
+
+resonate.register("workflow", workflow);
+```
+
+
+
+
 
 ```python title="record_deletor/delete.py"
 from resonate import Resonate
@@ -9795,9 +10530,56 @@ def workflow(ctx, record_id, offset):
     yield ctx.run(enqueue, record_id, offset)
 ```
 
-Each `ctx.run` is a checkpoint. A worker crash mid-loop resumes from the next batch rather than from message zero, and `delete_batch` doesn't run again for batches that already completed.
+
+
+
+
+```rust title="src/lib.rs"
+use resonate::prelude::*;
+use std::time::Duration;
+
+#[resonate::function]
+pub async fn workflow(ctx: &Context, record_id: String, offset: i64) -> Result<()> {
+    println!("processing record {record_id} (offset {offset})");
+    // Loop until delete_batch reports no more rows.
+    while ctx.run(delete_batch, record_id.clone()).await? {
+        ctx.sleep(Duration::from_secs(5)).await?;
+    }
+    ctx.run(enqueue_completion, (record_id, offset)).await?;
+    Ok(())
+}
+```
+
+
+
+
+
+Each `ctx.run` is a checkpoint. A worker crash mid-loop resumes from the next batch rather than from message zero, and `delete_batch` / `deleteBatch` doesn't run again for batches that already completed.
 
 ### The Kafka consumer
+
+
+
+
+
+```typescript title="src/consumer.ts"
+const consumer = kafka.consumer({ groupId: CONSUMER_GROUP_ID });
+await consumer.connect();
+await consumer.subscribe({ topic: TOPIC_TO_DELETE, fromBeginning: true });
+
+await consumer.run({
+  eachMessage: async ({ message }) => {
+    const recordId = JSON.parse(message.value!.toString("utf-8")) as string;
+    // beginRun is non-blocking. The recordId acts as the durable promise id,
+    // so duplicate invocations dedupe.
+    await resonate.beginRun(recordId, "workflow", recordId, message.offset);
+  },
+});
+```
+
+
+
+
 
 ```python title="record_deletor/delete.py"
 def consume():
@@ -9822,11 +10604,68 @@ def main():
     consume()
 ```
 
-`begin_run` is non-blocking — the consumer keeps polling while the workflow runs in the background. The same `record_id` deduplicates retries by design.
+
+
+
+
+```rust title="src/bin/consumer.rs"
+let consumer: StreamConsumer = ClientConfig::new()
+    .set("group.id", CONSUMER_GROUP_ID)
+    .set("bootstrap.servers", "localhost:9092")
+    .create()?;
+consumer.subscribe(&[TOPIC_TO_DELETE])?;
+
+while let Some(msg) = consumer.recv().await.ok() {
+    let record_id: String = serde_json::from_slice(msg.payload().unwrap())?;
+    // .spawn() is non-blocking. record_id acts as the durable promise id.
+    let _: ResonateHandle<()> = resonate
+        .run(&record_id, "workflow", (record_id.clone(), msg.offset()))
+        .target("poll://any@workers")
+        .spawn()
+        .await?;
+}
+```
+
+
+
+
+
+`beginRun` / `begin_run` / `.spawn()` is non-blocking — the consumer keeps polling while the workflow runs in the background. The same `recordId` deduplicates retries by design.
 
 ## Run it locally
 
-The repo ships a `redpanda/` directory with docker-compose for the broker (Redpanda boots faster than Apache Kafka locally; the worker code is identical for both).
+Both repos ship a `docker-compose.yml` for Redpanda (Redpanda boots faster than Apache Kafka locally; the worker code is identical for both).
+
+
+
+
+
+```shell
+git clone https://github.com/resonatehq-examples/example-kafka-worker-ts
+cd example-kafka-worker-ts
+bun install
+```
+
+```shell title="Terminal 1 — the broker"
+docker compose up
+```
+
+```shell title="Terminal 2 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 3 — the worker"
+bun run consumer
+```
+
+```shell title="Terminal 4 — produce records"
+bun run producer -- -n 10
+```
+
+
+
+
 
 Clone the repo (uses [uv](https://docs.astral.sh/uv/)):
 
@@ -9849,11 +10688,42 @@ resonate serve
 uv run python -m record_deletor.delete
 ```
 
-Produce some test messages from a fourth terminal:
-
 ```shell title="Terminal 4 — produce records"
 uv run python -m record_producer.produce -n 10
 ```
+
+
+
+
+
+```shell
+git clone https://github.com/resonatehq-examples/example-kafka-worker-rs
+cd example-kafka-worker-rs
+cargo build
+```
+
+```shell title="Terminal 1 — the broker"
+docker compose up
+```
+
+```shell title="Terminal 2 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 3 — the worker"
+cargo run --bin consumer
+```
+
+```shell title="Terminal 4 — produce records"
+cargo run --bin producer -- -n 10
+```
+
+(`rdkafka` requires `cmake` at build time — install via `brew install cmake` if missing.)
+
+
+
+
 
 Watch the worker terminal — it consumes each message, runs the durable workflow, and re-emits a completion event when each finishes.
 
@@ -9879,10 +10749,11 @@ title: Load balancing
 Run several workers in the same group. Calls to `target: "poll://any@<group>"` get dispatched to whichever worker claims them first. When a worker dies mid-execution, Resonate reassigns the work to a survivor — no service registry, no leader election, no glue.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
 
 
 
+  
   
   
 
@@ -9954,6 +10825,35 @@ Event().wait()
 
 
 
+```rust title="src/bin/worker.rs"
+use resonate::prelude::*;
+use std::time::Duration;
+
+#[resonate::function]
+async fn compute_something(ctx: &Context, id: String, compute_cost: u64) -> Result<()> {
+    println!("{id} starting computation");
+    ctx.sleep(Duration::from_secs(compute_cost)).await?;
+    println!("{id} computed something that cost {compute_cost} seconds");
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        group: Some("workers".into()),
+        ..Default::default()
+    });
+    resonate.register(compute_something).unwrap();
+    println!("worker is running...");
+    tokio::signal::ctrl_c().await.unwrap();
+}
+```
+
+
+
+
+
 ### Dispatching to the group
 
 The caller picks a target with the `poll://any@<group>` schema. `any` means "whichever worker in the group claims it first."
@@ -9995,6 +10895,34 @@ compute_cost = randint(1, 10)
 _ = resonate.options(target="poll://any@worker-group").begin_rpc(
     promise_id, "compute_something", promise_id, compute_cost,
 )
+```
+
+
+
+
+
+```rust title="src/bin/client.rs"
+use rand::Rng;
+use resonate::prelude::*;
+use uuid::Uuid;
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        ..Default::default()
+    });
+    let id = Uuid::new_v4().to_string();
+    let cost: u64 = rand::thread_rng().gen_range(1..=10);
+
+    let _: () = resonate
+        .rpc(&id, "compute_something", (id.clone(), cost))
+        .target("poll://any@workers")
+        .spawn()
+        .await
+        .unwrap();
+    resonate.stop().await;
+}
 ```
 
 
@@ -10059,6 +10987,29 @@ Watch the work spread across the three worker terminals. Kill one of them mid-ex
 
 
 
+```shell
+git clone https://github.com/resonatehq-examples/example-load-balancing-rs
+cd example-load-balancing-rs
+cargo build
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminals 2–4 — three workers"
+cargo run --bin worker
+```
+
+```shell title="Terminal 5 — dispatch in a loop"
+for i in 1 2 3 4 5 6; do cargo run --bin client; done
+```
+
+
+
+
+
 ## Try the recovery story
 
 Start three workers and dispatch enough jobs to keep all of them busy. Kill the worker holding a long-running job. The Resonate Server detects the loss, reassigns the workflow's durable promise to one of the survivors, and the work continues. The client never sees an error — it just gets a slightly delayed result.
@@ -10081,10 +11032,12 @@ title: Money transfer
 A workflow debits the source account, credits the target account, and returns confirmations. Each account update is a durable checkpoint, the transfer ID is the idempotency key, and the same ID retried in seconds, hours, or days returns the cached result instead of double-spending.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python and Rust example repos are forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x. Rust: v0.1.0, in active development.
 
 
 
+  
+  
   
 
 
@@ -10098,7 +11051,11 @@ Each account update is a checkpoint. If the worker dies after the debit but befo
 
 ## Code walkthrough
 
-The workflow is a generator that calls `updateAccount` twice — once with a negative amount (debit) and once with a positive (credit). Each call is its own durable checkpoint.
+The workflow calls `updateAccount` (TypeScript) or `apply_entry` (Python) twice — once with a negative amount (debit) and once with a positive (credit). Each call is its own durable checkpoint. The Python repo also wires up a compensating debit-reversal in the failure path.
+
+
+
+
 
 ```typescript title="src/workflow.ts"
 export function* transferMoney(
@@ -10130,8 +11087,6 @@ export function* transferMoney(
 }
 ```
 
-`ctx.getDependency('db')` lets `updateAccount` see the database without exposing it as a workflow argument — important, because workflow arguments must be serializable, and a DB handle is not.
-
 The HTTP entrypoint passes a path-param `id` straight through to `transferMoney`:
 
 ```typescript title="src/index.ts"
@@ -10146,7 +11101,85 @@ app.post("/transfer/:id", async (req, res) => {
 });
 ```
 
+
+
+
+
+```python title="main.py"
+from resonate.retry_policies import Never
+
+
+def transfer_money(ctx: Context, transfer_id: str, source: str, target: str,
+                   amount: float, *, simulate_credit_failure: bool = False):
+    debit_id = f"{transfer_id}-debit"
+    credit_id = f"{transfer_id}-credit"
+    reversal_id = f"{transfer_id}-reversal"
+
+    # Step 1 — debit the source (durable checkpoint).
+    yield ctx.run(apply_entry, debit_id, source, -amount, "debit")
+
+    # Step 2 — credit the target. On failure, compensate by reversing
+    # the debit. Never() retry policy lets the saga's compensation be
+    # the response to a credit-side failure.
+    try:
+        yield ctx.run(
+            credit_target, credit_id, target, amount,
+            fail=simulate_credit_failure,
+        ).options(retry_policy=Never())
+    except Exception as err:
+        yield ctx.run(apply_entry, reversal_id, source, amount, "reversal")
+        return {"transfer_id": transfer_id, "status": "compensated", "error": str(err)}
+
+    return {"transfer_id": transfer_id, "status": "committed",
+            "source": source, "target": target, "amount": amount}
+```
+
+The deterministic `op_id` (`{transfer_id}-debit`, `-credit`, `-reversal`) plus an `INSERT OR IGNORE` in `apply_entry` makes each step idempotent — replaying the workflow after a crash is a no-op for completed steps.
+
+
+
+
+
+```rust title="src/main.rs"
+#[resonate::function]
+async fn transfer_money(
+    ctx: &Context, transfer_id: String, source: String, target: String,
+    amount: f64, simulate_credit_failure: bool,
+) -> Result {
+    let debit_id = format!("{transfer_id}-debit");
+    let credit_id = format!("{transfer_id}-credit");
+    let reversal_id = format!("{transfer_id}-reversal");
+
+    // Step 1 — debit (durable checkpoint).
+    ctx.run(apply_entry, (debit_id, source.clone(), -amount, "debit".into())).await?;
+
+    // Step 2 — credit. On Err, compensate.
+    match ctx
+        .run(credit_target, (credit_id, target, amount, simulate_credit_failure))
+        .await
+    {
+        Ok(_) => Ok(TransferResult::committed(transfer_id, source, /*...*/)),
+        Err(_) => {
+            ctx.run(apply_entry, (reversal_id, source, amount, "reversal".into())).await?;
+            Ok(TransferResult::compensated(transfer_id))
+        }
+    }
+}
+```
+
+The Rust example uses `Resonate.local()` (embedded mode, no server required) plus `with_dependency::>(...)` to inject the SQLite handle. `ctx.run(...).await` returns a `Result`, so saga compensation is just an `if let Err`.
+
+
+
+
+
+`ctx.getDependency('db')` / `ctx.get_dependency("db")` / `info.get_dependency::()` (Rust) lets the step functions see the database without exposing it as a workflow argument — important, because workflow arguments must be serializable, and a DB handle is not.
+
 ## Run it locally
+
+
+
+
 
 ```shell
 git clone https://github.com/resonatehq-examples/example-money-transfer-application-ts
@@ -10172,7 +11205,47 @@ curl -X POST http://localhost:3000/transfer/transfer-001 \
   -d '{"source": "alice", "target": "bob", "amount": 50}'
 ```
 
-Check the balances afterwards via the same server. Now call `/transfer/transfer-001` again — the response is the same cached result; balances don't change.
+Call `/transfer/transfer-001` again — the response is the same cached result; balances don't change.
+
+
+
+
+
+```shell
+git clone https://github.com/resonatehq-examples/example-money-transfer-py
+cd example-money-transfer-py
+uv sync
+```
+
+The Python repo runs in embedded mode (`Resonate.local()`) — no separate Resonate Server is needed for the demo.
+
+```shell
+uv run python main.py
+```
+
+The script seeds Alice with $200, runs a happy-path transfer (`alice -> bob $50`), then runs a failed transfer (`alice -> bob $75`) that triggers the compensating reversal. Final balances: `alice=150, bob=50`.
+
+
+
+
+
+```shell
+git clone https://github.com/resonatehq-examples/example-money-transfer-rs
+cd example-money-transfer-rs
+cargo build
+```
+
+The Rust repo runs in embedded mode (`Resonate::local()`) — no separate Resonate Server is needed for the demo.
+
+```shell
+cargo run
+```
+
+Same demo shape: seeds Alice with $200, runs a happy-path transfer, then a forced-failure transfer that compensates. Final balances: `alice=150, bob=50`.
+
+
+
+
 
 ## Try the recovery story
 
@@ -10196,10 +11269,11 @@ title: Multi-agent orchestration
 Three specialist agents — researcher, writer, reviewer — chained through an orchestrator. Each agent's output is a durable checkpoint, so a flaky LLM call mid-pipeline retries only the failing agent and the prior outputs stay cached.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python and Rust example repos are forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
 
 
 
+  
   
 
 
@@ -10214,6 +11288,10 @@ Each agent invocation is a `ctx.run` call. The orchestrator function chains them
 ## Code walkthrough
 
 The orchestrator is one generator function that calls three plain agent functions through `ctx.run`. The agents themselves are unremarkable — what matters is that Resonate sits between them.
+
+
+
+
 
 ```typescript title="src/workflow.ts"
 export function* orchestrate(
@@ -10239,9 +11317,48 @@ export function* orchestrate(
 }
 ```
 
-The `crashOnWriter` argument is a demo lever — set it to `true` and the writer throws on its first attempt. Watch the logs: the researcher runs once, the writer retries until it succeeds, the reviewer runs once. Without checkpoints, the researcher would re-run on every writer retry.
+
+
+
+
+```python title="src/agent.py"
+from resonate import Context, Resonate
+
+resonate = Resonate()
+
+
+@resonate.register
+def orchestrate(ctx: Context, topic: str, crash_on_writer: bool = False):
+    # 1. Researcher gathers findings on the topic.
+    findings = yield ctx.run(researcher, topic)
+
+    # 2. Writer produces a draft from those findings. Checkpointed —
+    #    if the writer crashes, the researcher's findings are NOT re-run.
+    draft = yield ctx.run(writer, topic, findings, crash_on_writer)
+
+    # 3. Reviewer checks the draft quality.
+    review = yield ctx.run(reviewer, draft)
+
+    approved = "APPROVED" in review.upper()
+    return {
+        "status": "published" if approved else "rejected",
+        "topic": topic, "findings": findings, "draft": draft, "review": review,
+    }
+```
+
+The OpenAI client is injected into the workflow via `resonate.set_dependency("openai", OpenAI(...))` and accessed inside each agent with `ctx.get_dependency("openai")` — keeps the agent functions free of global imports and easy to test.
+
+
+
+
+
+The `crash` argument is a demo lever — set it to `true` and the writer throws on its first attempt. Watch the logs: the researcher runs once, the writer retries until it succeeds, the reviewer runs once. Without checkpoints, the researcher would re-run on every writer retry.
 
 To extend the pipeline with human approval, replace the inline `approved` calculation with a durable promise:
+
+
+
+
 
 ```typescript
 // Suspend until an external system (HTTP handler, CLI, button click)
@@ -10249,9 +11366,27 @@ To extend the pipeline with human approval, replace the inline `approved` calcul
 const approved = yield* ctx.promise<boolean>({ id: `approval/${topic}` });
 ```
 
+
+
+
+
+```python
+# Suspend until an external system resolves the promise.
+approval = yield ctx.promise(id=f"approval/{topic}")
+approved = yield approval
+```
+
+
+
+
+
 That promise survives process restarts — the orchestrator can be killed and the workflow waits in the server's promise store until a human responds.
 
 ## Run it locally
+
+
+
+
 
 ```shell
 git clone https://github.com/resonatehq-examples/example-multi-agent-orchestration-ts
@@ -10271,7 +11406,42 @@ Run with the writer crash flag — the researcher runs once, the writer retries:
 bun run src/index.ts -- --crash
 ```
 
-Watch the logs; the researcher's "gathering findings" message only appears once across the retry sequence.
+
+
+
+
+Set up the repo and your OpenAI key:
+
+```shell
+git clone https://github.com/resonatehq-examples/example-multi-agent-orchestration-py
+cd example-multi-agent-orchestration-py
+uv sync
+cp .env.example .env  # add your OPENAI_API_KEY
+```
+
+```shell title="Terminal 1 — Resonate Server (legacy)"
+brew install resonatehq/tap/resonate
+resonate serve
+```
+
+```shell title="Terminal 2 — worker"
+uv run python -m src.agent
+```
+
+```shell title="Terminal 3 — invoke"
+resonate invoke orchestration.1 \
+  --func orchestrate \
+  --arg '"The future of durable execution in AI applications"' \
+  --arg false
+```
+
+Set the second `--arg` to `true` to trigger the writer-crash demo. The researcher's "Researching" log only appears once across the retry sequence.
+
+
+
+
+
+Watch the logs across the retry sequence — the researcher's "gathering findings" message only appears once.
 
 ## Try the human-in-the-loop extension
 
@@ -10295,10 +11465,11 @@ title: Recursive factorial
 A workflow that computes `n!` by calling itself with `n-1`. Each recursive call dispatches via `ctx.rpc` to whichever worker in the group claims it — recursion ends up distributed across machines without any explicit coordination, and every step is checkpointed so a worker crash mid-recursion resumes cleanly.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
 
 
 
+  
   
   
 
@@ -10374,6 +11545,38 @@ Event().wait()
 
 
 
+```rust title="src/bin/worker.rs"
+use resonate::prelude::*;
+
+#[resonate::function]
+async fn factorial(ctx: &Context, n: u64) -> Result<u64> {
+    if n <= 1 {
+        return Ok(1);
+    }
+    // ctx.rpc dispatches to any worker in the group.
+    let result: u64 = ctx
+        .rpc("factorial", n - 1)
+        .target("poll://any@factorial-workers")
+        .await?;
+    Ok(n * result)
+}
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        group: Some("factorial-workers".into()),
+        ..Default::default()
+    });
+    resonate.register(factorial).unwrap();
+    tokio::signal::ctrl_c().await.unwrap();
+}
+```
+
+
+
+
+
 ### Kicking it off
 
 The client looks identical to any other RPC call — Resonate doesn't care that the workflow happens to recurse internally.
@@ -10417,6 +11620,29 @@ result = resonate.options(target="poll://any@factorial-worker").rpc(
     f"factorial-{args.n}", "factorial", n=args.n,
 )
 print(f"Result: {result}")
+```
+
+
+
+
+
+```rust title="src/bin/client.rs"
+use resonate::prelude::*;
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        ..Default::default()
+    });
+    let n: u64 = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(5);
+    let result: u64 = resonate
+        .rpc(&format!("factorial-{n}"), "factorial", n)
+        .target("poll://any@factorial-workers")
+        .await
+        .unwrap();
+    println!("Factorial of {n} is {result}");
+}
 ```
 
 
@@ -10481,6 +11707,29 @@ Watch the three worker terminals — `factorial(10)`, `factorial(9)`, `factorial
 
 
 
+```shell
+git clone https://github.com/resonatehq-examples/example-recursive-factorial-rs
+cd example-recursive-factorial-rs
+cargo build
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminals 2–4 — three workers"
+cargo run --bin worker
+```
+
+```shell title="Terminal 5 — client"
+cargo run --bin client -- 10
+```
+
+
+
+
+
 ## Try the recovery story
 
 While the recursion is in flight (start with `n=20` to give it some depth), kill one of the workers. Resonate reassigns its in-flight `factorial(k)` to a survivor. Already-completed sub-results stay completed; only the unfinished branch resumes. The final answer is unchanged.
@@ -10503,10 +11752,11 @@ title: Schedule
 Register a function to run on a cron expression and Resonate handles the rest. Every fired execution is a durable workflow — a worker that crashes mid-run hands off to a survivor, and a missed run because all workers were down still gets dispatched when one comes back.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
 
 
 
+  
   
   
 
@@ -10567,6 +11817,30 @@ print("Schedule created. Start the worker to process executions.")
 
 
 
+```rust title="src/bin/schedule.rs"
+use example_schedule_rs::generate_report;
+use resonate::prelude::*;
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        ..Default::default()
+    });
+
+    resonate
+        .schedule("daily_report", "* * * * *", "generate_report", 123u64)
+        .await
+        .expect("schedule create failed");
+
+    println!("Schedule created. Start the worker to process executions.");
+}
+```
+
+
+
+
+
 The schedule lives on the server, not in the worker. You can run the registration script once and the schedule keeps firing across worker restarts and redeploys. Re-running the script with the same ID is a no-op.
 
 ### Run the worker
@@ -10594,6 +11868,26 @@ resonate.register(generate_report)
 
 print("Worker started. Waiting for scheduled executions...")
 resonate.start()
+```
+
+
+
+
+
+```rust title="src/bin/worker.rs"
+use example_schedule_rs::generate_report;
+use resonate::prelude::*;
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        ..Default::default()
+    });
+    resonate.register(generate_report).unwrap();
+    println!("Worker started. Waiting for scheduled executions...");
+    tokio::signal::ctrl_c().await.unwrap();
+}
 ```
 
 
@@ -10658,6 +11952,29 @@ The worker prints a log line every minute as the schedule fires. Kill it for a f
 
 
 
+```shell
+git clone https://github.com/resonatehq-examples/example-schedule-rs
+cd example-schedule-rs
+cargo build
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — register the schedule (one-shot)"
+cargo run --bin schedule
+```
+
+```shell title="Terminal 3 — worker"
+cargo run --bin worker
+```
+
+
+
+
+
 ## Try the catch-up story
 
 Stop the worker for a few minutes. Schedule fires keep accumulating on the server. When you restart the worker, the queued runs dispatch in order — none are lost. Now bring up two workers in the same group and watch fires distribute across them.
@@ -10680,10 +11997,11 @@ title: Webhook handler
 A webhook receives a payment event, kicks off a durable workflow keyed by the provider's event ID, and acknowledges immediately. Duplicate deliveries (network retries, slow ACKs) reconnect to the in-flight execution rather than re-charging the card. A crash mid-processing resumes from the next unfinished step.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python and Rust example repos are forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x. Rust example repo is forthcoming.
 
 
 
+  
   
 
 
@@ -10703,6 +12021,10 @@ The handler ACKs the webhook in well under five seconds because it just dispatch
 
 Receive, dispatch, ACK. The whole point is that the workflow runs in the background — Stripe (or any provider) gets its fast 200 OK regardless of how long the actual processing takes.
 
+
+
+
+
 ```typescript title="src/index.ts"
 app.post("/webhook", (req, res) => {
   const event = req.body as WebhookEvent;
@@ -10718,11 +12040,33 @@ app.post("/webhook", (req, res) => {
 });
 ```
 
+
+
+
+
+```python title="main.py"
+@app.post("/webhook")
+async def webhook(event: WebhookEvent):
+    # The event_id IS the workflow ID.
+    # Stripe retries with the same event_id reconnect to the in-flight execution.
+    process_payment.run(f"webhook/{event['event_id']}", event, simulate_crash)
+    # Fast ACK — Stripe needs a 200 within 5 seconds.
+    return {"received": True}
+```
+
+
+
+
+
 A separate `GET /status/:event_id` lets you poll the workflow's result if you need it.
 
 ### The exactly-once workflow
 
-Every step is a `ctx.run` checkpoint. If the worker dies after `chargeCard` but before `updateLedger`, restart resumes at `sendReceipt` — the card is not charged again.
+Every step is a `ctx.run` checkpoint. If the worker dies after `charge_card` but before `update_ledger`, restart resumes at `send_receipt` — the card is not charged again.
+
+
+
+
 
 ```typescript title="src/workflow.ts"
 export function* processPayment(
@@ -10743,9 +12087,37 @@ export function* processPayment(
 }
 ```
 
-The repo includes a `--crash` flag that simulates `chargeCard` failing on the first attempt — re-running the workflow shows the charge happening exactly once even across retries.
+
+
+
+
+```python title="workflow.py"
+@resonate.register
+def process_payment(ctx: Context, event: WebhookEvent, simulate_crash: bool):
+    # Validate signature and event structure.
+    yield ctx.run(validate_event, event)
+
+    # Charge the card. Checkpointed — duplicates skip this step.
+    charge_id = yield ctx.run(charge_card, event, simulate_crash)
+
+    # Send the receipt.
+    yield ctx.run(send_receipt, event, charge_id)
+
+    # Update the accounting ledger.
+    return (yield ctx.run(update_ledger, event, charge_id))
+```
+
+
+
+
+
+Both repos include a `--crash` flag that simulates `charge_card` failing on the first attempt — re-running the workflow shows the charge happening exactly once even across retries.
 
 ## Run it locally
+
+
+
+
 
 ```shell
 git clone https://github.com/resonatehq-examples/example-webhook-handler-ts
@@ -10762,6 +12134,26 @@ resonate dev
 bun run src/index.ts
 ```
 
+
+
+
+
+```shell
+git clone https://github.com/resonatehq-examples/example-webhook-handler-py
+cd example-webhook-handler-py
+uv sync
+```
+
+The Python repo runs in embedded mode (`Resonate.local()`) so no separate server is needed for the demo.
+
+```shell title="Terminal 1 — webhook server"
+uv run python main.py
+```
+
+
+
+
+
 Send a webhook:
 
 ```shell
@@ -10774,13 +12166,27 @@ Send the same webhook again. Watch the logs — the second delivery doesn't re-c
 
 ## Try the crash story
 
-Run with the crash flag:
+Run with the crash flag — `chargeCard` / `charge_card` throws on its first attempt, the workflow retries, and the second attempt succeeds. The card is charged exactly once.
+
+
+
+
 
 ```shell
 bun run src/index.ts -- --crash
 ```
 
-Send a webhook. The `chargeCard` step throws, the workflow retries, the second attempt succeeds. The card is charged exactly once — there's no duplicate-charge window between the failure and the retry.
+
+
+
+
+```shell
+uv run python main.py --crash
+```
+
+
+
+
 
 ## Related
 
