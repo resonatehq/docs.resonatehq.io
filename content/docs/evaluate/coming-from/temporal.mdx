@@ -7,7 +7,7 @@ keywords:
 ---
 
 <Callout type="info" title="SDK version">
-This page reflects `@resonatehq/sdk` v0.10.0 (current on npm) and `resonate-sdk` v0.6.7 for Python.
+This page reflects `@resonatehq/sdk` v0.10.1 (current on npm) and `resonate-sdk` v0.6.7 for Python.
 </Callout>
 
 **Are you coming from Temporal?**
@@ -193,7 +193,7 @@ function* foo(context: Context) {
 
 ```typescript
 // client.ts
-await resonate.promises.settle(promiseId, "resolved", { data: JSON.stringify(data) });
+await resonate.promises.resolve(promiseId, { data: JSON.stringify(data) });
 ```
 
     </TabItem>

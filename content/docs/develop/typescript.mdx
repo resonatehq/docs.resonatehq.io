@@ -9,7 +9,7 @@ keywords:
 ---
 
 <Callout type="info" title="SDK version">
-This page reflects `@resonatehq/sdk` v0.10.0 (current on npm). APIs are subject to change in future releases.
+This page reflects `@resonatehq/sdk` v0.10.1 (current on npm). APIs are subject to change in future releases.
 </Callout>
 
 **Requires Node.js 22 or later.**
@@ -428,43 +428,68 @@ await resonate.promises.create(
 );
 ```
 
-### `.promises.settle()`
+### `.promises.resolve()`
 
-Resonate's `.promises.settle()` method settles a promise by ID into a terminal state.
-The `state` argument is a discriminator that determines whether the promise is resolved, rejected, or canceled.
+Resonate's `.promises.resolve()` method settles a promise by ID into the `resolved` terminal state.
 
 This is useful for HITL use cases where you want to wait for a human to approve a function execution.
 It works well in conjunction with the [`.promise()`](#promise) method.
 
 ```ts
-await resonate.promises.settle(
+await resonate.promises.resolve(
   id: string,
-  state: "resolved" | "rejected" | "rejected_canceled",
   options?: { data?: string; headers?: Record<string, string> }
 );
 ```
 
-Examples for each state:
+Examples:
 
 ```ts
 // Resolve a promise (optionally with data)
-await resonate.promises.settle("promise-id", "resolved");
-await resonate.promises.settle("promise-id", "resolved", {
+await resonate.promises.resolve("promise-id");
+await resonate.promises.resolve("promise-id", {
   data: JSON.stringify({ approved: true }),
 });
-
-// Reject a promise (optionally with data describing the failure)
-await resonate.promises.settle("promise-id", "rejected");
-await resonate.promises.settle("promise-id", "rejected", {
-  data: JSON.stringify({ reason: "denied" }),
-});
-
-// Cancel a promise
-await resonate.promises.settle("promise-id", "rejected_canceled");
 ```
 
-The three `state` values correspond directly to the promise terminal states — `resolved`, `rejected`, and `rejected_canceled`.
-Canceling a promise is just a `rejected_canceled` settle; there is no separate `cancel` method.
+### `.promises.reject()`
+
+Resonate's `.promises.reject()` method settles a promise by ID into the `rejected` terminal state.
+
+```ts
+await resonate.promises.reject(
+  id: string,
+  options?: { data?: string; headers?: Record<string, string> }
+);
+```
+
+Examples:
+
+```ts
+// Reject a promise (optionally with data describing the failure)
+await resonate.promises.reject("promise-id");
+await resonate.promises.reject("promise-id", {
+  data: JSON.stringify({ reason: "denied" }),
+});
+```
+
+### `.promises.cancel()`
+
+Resonate's `.promises.cancel()` method settles a promise by ID into the `rejected_canceled` terminal state.
+
+```ts
+await resonate.promises.cancel(
+  id: string,
+  options?: { data?: string; headers?: Record<string, string> }
+);
+```
+
+Example:
+
+```ts
+// Cancel a promise
+await resonate.promises.cancel("promise-id");
+```
 
 ## Context APIs
 
@@ -617,7 +642,7 @@ Context's `.promise()` method allows you to get or create a promise that can be 
 A new promise is created and its ID is generated automatically.
 
 This is very useful for HITL (Human-In-The-Loop) use cases where you want to block progress until a human has taken an action or provided data.
-It works well in conjunction with the [`.promises.settle()`](#promisessettle) method.
+It works well in conjunction with the [`.promises.resolve()`](#promisesresolve), [`.promises.reject()`](#promisesreject), and [`.promises.cancel()`](#promisescancel) methods.
 
 ```ts
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
