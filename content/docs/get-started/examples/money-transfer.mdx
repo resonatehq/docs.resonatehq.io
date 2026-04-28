@@ -1,0 +1,267 @@
+---
+title: Money transfer
+pageTitle: Money transfer with the saga pattern
+description: A two-step transfer (debit source, credit target) where each step is a durable checkpoint and the same transfer ID deduplicates retries.
+keywords:
+  - saga
+  - money-transfer
+  - idempotency
+  - durable-workflow
+  - examples
+---
+
+<img src="/images/example-money-transfer-dark.png" alt="Money Transfer banner" className="hidden dark:block" />
+<img src="/images/example-money-transfer-light.png" alt="Money Transfer banner" className="block dark:hidden" />
+
+A workflow debits the source account, credits the target account, and returns confirmations. Each account update is a durable checkpoint, the transfer ID is the idempotency key, and the same ID retried in seconds, hours, or days returns the cached result instead of double-spending.
+
+<Callout type="info" title="SDK versions">
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x. Rust: v0.1.0, in active development.
+</Callout>
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="TypeScript SDK"
+    description="Two-step money transfer with idempotent retries via Express + a SQLite-backed account ledger."
+    link="https://github.com/resonatehq-examples/example-money-transfer-application-ts"
+  />
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Saga with debit + credit + compensating reversal against a SQLite ledger. Each step idempotent on a deterministic op id."
+    link="https://github.com/resonatehq-examples/example-money-transfer-py"
+  />
+  <CloneRepoCard
+    sdk="Rust SDK"
+    description="Saga with debit + credit + compensating reversal against a SQLite ledger using rusqlite + Resonate.local()."
+    link="https://github.com/resonatehq-examples/example-money-transfer-rs"
+  />
+</CloneRepoGrid>
+
+## The problem
+
+Moving money between accounts is the textbook saga: you have to debit one account and credit another, but the operations live in different rows (or different databases) and have to either both happen or neither. A crash between the debit and the credit creates lost money. A retry that re-fires the debit creates duplicate money. Compensating transactions and idempotency keys are the conventional fix, and getting both right is famously hard.
+
+## Resonate's solution
+
+Each account update is a checkpoint. If the worker dies after the debit but before the credit, restart resumes at the credit — the debit is not re-issued. The transfer ID is the workflow ID; calling the endpoint a second time with the same ID returns the cached result rather than running the workflow again. The "saga" is just two `ctx.run` calls in sequence, with the durability story handled by Resonate.
+
+## Code walkthrough
+
+The workflow calls `updateAccount` (TypeScript) or `apply_entry` (Python) twice — once with a negative amount (debit) and once with a positive (credit). Each call is its own durable checkpoint. The Python repo also wires up a compensating debit-reversal in the failure path.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
+    ]}>
+
+<TabItem value="typescript">
+
+```typescript title="src/workflow.ts"
+export function* transferMoney(
+  ctx: Context,
+  transferId: string,
+  request: TransferRequest,
+): Generator<any, TransferResult, any> {
+  const { source, target, amount } = request;
+  const db = ctx.getDependency("db");
+
+  try {
+    // Step 1 — debit source. Checkpointed.
+    const sourceConfirmation = yield* ctx.run(
+      updateAccount, db, `${transferId}-source`, source, -amount,
+    );
+
+    // Step 2 — credit target. Checkpointed.
+    const targetConfirmation = yield* ctx.run(
+      updateAccount, db, `${transferId}-target`, target, amount,
+    );
+
+    return { success: true, transferId, source, target, amount,
+             sourceConfirmation, targetConfirmation };
+  } catch (error) {
+    // Compensation logic for the debit goes here when needed.
+    return { success: false, transferId, source, target, amount,
+             error: String(error) };
+  }
+}
+```
+
+The HTTP entrypoint passes a path-param `id` straight through to `transferMoney`:
+
+```typescript title="src/index.ts"
+app.post("/transfer/:id", async (req, res) => {
+  const { id } = req.params;
+  const { source, target, amount } = req.body;
+
+  // Same `id` returns the same result — calling /transfer/abc twice
+  // does not double-debit.
+  const result = await transferMoneyR.run(id, id, { source, target, amount });
+  res.json(result);
+});
+```
+
+</TabItem>
+
+<TabItem value="python">
+
+```python title="main.py"
+from resonate.retry_policies import Never
+
+
+def transfer_money(ctx: Context, transfer_id: str, source: str, target: str,
+                   amount: float, *, simulate_credit_failure: bool = False):
+    debit_id = f"{transfer_id}-debit"
+    credit_id = f"{transfer_id}-credit"
+    reversal_id = f"{transfer_id}-reversal"
+
+    # Step 1 — debit the source (durable checkpoint).
+    yield ctx.run(apply_entry, debit_id, source, -amount, "debit")
+
+    # Step 2 — credit the target. On failure, compensate by reversing
+    # the debit. Never() retry policy lets the saga's compensation be
+    # the response to a credit-side failure.
+    try:
+        yield ctx.run(
+            credit_target, credit_id, target, amount,
+            fail=simulate_credit_failure,
+        ).options(retry_policy=Never())
+    except Exception as err:
+        yield ctx.run(apply_entry, reversal_id, source, amount, "reversal")
+        return {"transfer_id": transfer_id, "status": "compensated", "error": str(err)}
+
+    return {"transfer_id": transfer_id, "status": "committed",
+            "source": source, "target": target, "amount": amount}
+```
+
+The deterministic `op_id` (`{transfer_id}-debit`, `-credit`, `-reversal`) plus an `INSERT OR IGNORE` in `apply_entry` makes each step idempotent — replaying the workflow after a crash is a no-op for completed steps.
+
+</TabItem>
+
+<TabItem value="rust">
+
+```rust title="src/main.rs"
+#[resonate::function]
+async fn transfer_money(
+    ctx: &Context, transfer_id: String, source: String, target: String,
+    amount: f64, simulate_credit_failure: bool,
+) -> Result<TransferResult> {
+    let debit_id = format!("{transfer_id}-debit");
+    let credit_id = format!("{transfer_id}-credit");
+    let reversal_id = format!("{transfer_id}-reversal");
+
+    // Step 1 — debit (durable checkpoint).
+    ctx.run(apply_entry, (debit_id, source.clone(), -amount, "debit".into())).await?;
+
+    // Step 2 — credit. On Err, compensate.
+    match ctx
+        .run(credit_target, (credit_id, target, amount, simulate_credit_failure))
+        .await
+    {
+        Ok(_) => Ok(TransferResult::committed(transfer_id, source, /*...*/)),
+        Err(_) => {
+            ctx.run(apply_entry, (reversal_id, source, amount, "reversal".into())).await?;
+            Ok(TransferResult::compensated(transfer_id))
+        }
+    }
+}
+```
+
+The Rust example uses `Resonate.local()` (embedded mode, no server required) plus `with_dependency::<Mutex<Connection>>(...)` to inject the SQLite handle. `ctx.run(...).await` returns a `Result`, so saga compensation is just an `if let Err`.
+
+</TabItem>
+
+</Tabs>
+
+`ctx.getDependency('db')` / `ctx.get_dependency("db")` / `info.get_dependency::<T>()` (Rust) lets the step functions see the database without exposing it as a workflow argument — important, because workflow arguments must be serializable, and a DB handle is not.
+
+## Run it locally
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
+    ]}>
+
+<TabItem value="typescript">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-money-transfer-application-ts
+cd example-money-transfer-application-ts
+npm install
+cp .env.example .env
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — server"
+npm start
+```
+
+Initiate a transfer:
+
+```shell
+curl -X POST http://localhost:3000/transfer/transfer-001 \
+  -H "Content-Type: application/json" \
+  -d '{"source": "alice", "target": "bob", "amount": 50}'
+```
+
+Call `/transfer/transfer-001` again — the response is the same cached result; balances don't change.
+
+</TabItem>
+
+<TabItem value="python">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-money-transfer-py
+cd example-money-transfer-py
+uv sync
+```
+
+The Python repo runs in embedded mode (`Resonate.local()`) — no separate Resonate Server is needed for the demo.
+
+```shell
+uv run python main.py
+```
+
+The script seeds Alice with $200, runs a happy-path transfer (`alice -> bob $50`), then runs a failed transfer (`alice -> bob $75`) that triggers the compensating reversal. Final balances: `alice=150, bob=50`.
+
+</TabItem>
+
+<TabItem value="rust">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-money-transfer-rs
+cd example-money-transfer-rs
+cargo build
+```
+
+The Rust repo runs in embedded mode (`Resonate::local()`) — no separate Resonate Server is needed for the demo.
+
+```shell
+cargo run
+```
+
+Same demo shape: seeds Alice with $200, runs a happy-path transfer, then a forced-failure transfer that compensates. Final balances: `alice=150, bob=50`.
+
+</TabItem>
+
+</Tabs>
+
+## Try the recovery story
+
+Modify `updateAccount` to throw on the second call (the credit). Run the workflow — the debit checkpoints, the credit fails. Fix the code, restart the server. The workflow resumes at the credit step; the debit is not re-issued. This is the recovery story sagas are usually written by hand to provide.
+
+## Related
+
+- [Async HTTP API endpoints](/get-started/examples/async-http-api-endpoints) — the same idempotency-via-workflow-ID primitive, exposed over HTTP polling.
+- [Human-in-the-loop](/get-started/examples/human-in-the-loop) — adds external resolution to the saga shape.

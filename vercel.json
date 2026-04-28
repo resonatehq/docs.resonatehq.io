@@ -1,4 +1,5 @@
 {
+  "framework": "nextjs",
   "redirects": [
     {
       "source": "/evaluate/coming-from-temporal",
@@ -12,12 +13,12 @@
     },
     {
       "source": "/get-started/new-project/ai-agent-loops",
-      "destination": "/get-started/project-templates/deep-research-agent",
+      "destination": "/get-started/examples/deep-research-agent",
       "permanent": true
     },
     {
       "source": "/get-started/new-project/:path*",
-      "destination": "/get-started/project-templates/:path*",
+      "destination": "/get-started/examples/:path*",
       "permanent": true
     },
     {
@@ -28,6 +29,51 @@
     {
       "source": "/get-started/project-templates/:path*",
       "destination": "/get-started/examples/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/get-started/examples/redpanda-worker",
+      "destination": "/get-started/examples/kafka-worker",
+      "permanent": true
+    },
+    {
+      "source": "/learn/python-sdk/website-summarization-agent",
+      "destination": "/get-started/examples",
+      "permanent": true
+    },
+    {
+      "source": "/learn/typescript-sdk/website-summarization-agent",
+      "destination": "/get-started/examples",
+      "permanent": true
+    },
+    {
+      "source": "/learn/deployments/google-cloud-run",
+      "destination": "/get-started/examples/durable-serverless-cloud-run-workers",
+      "permanent": true
+    },
+    {
+      "source": "/learn/deployments/digital-ocean-droplet",
+      "destination": "/deploy/run-server",
+      "permanent": true
+    },
+    {
+      "source": "/learn/deployments/:path*",
+      "destination": "/deploy",
+      "permanent": true
+    },
+    {
+      "source": "/learn/deployments",
+      "destination": "/deploy",
+      "permanent": true
+    },
+    {
+      "source": "/learn/:path*",
+      "destination": "/get-started/examples",
+      "permanent": true
+    },
+    {
+      "source": "/learn",
+      "destination": "/get-started/examples",
       "permanent": true
     },
     {
@@ -99,6 +145,40 @@
       "source": "/operate/observe/traces",
       "destination": "/deploy/tracing",
       "permanent": true
+    },
+    {
+      "source": "/docs",
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/docs/:path*",
+      "destination": "/:path*",
+      "permanent": true
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+      ]
+    },
+    {
+      "source": "/llms.txt",
+      "headers": [
+        { "key": "Content-Type", "value": "text/plain; charset=utf-8" },
+        { "key": "Cache-Control", "value": "public, max-age=3600, s-maxage=86400" }
+      ]
+    },
+    {
+      "source": "/llms-full.txt",
+      "headers": [
+        { "key": "Content-Type", "value": "text/plain; charset=utf-8" },
+        { "key": "Cache-Control", "value": "public, max-age=3600, s-maxage=86400" }
+      ]
     }
   ]
 }

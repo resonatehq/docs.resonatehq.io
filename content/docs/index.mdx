@@ -1,0 +1,74 @@
+---
+title: Home
+pageTitle: Resonate documentation
+description: Resonate — agent-native durable execution. Generated, optimized, absurdly cheap.
+---
+
+<img src="/images/home-hero-dark.png" alt="Resonate" className="home-hero hidden dark:block" />
+<img src="/images/home-hero-light.png" alt="Resonate" className="home-hero block dark:hidden" />
+
+**Resonate is the durable execution engine that agents build with, deploy on, and operate.** It is the implementation of a distributed async/await programming model: a formal, language- and transport-agnostic protocol for writing functions that survive process restarts, run for hours or months, and coordinate across many machines.
+
+Resonate is built on three pillars:
+
+- **Agent-native** — The SDK, docs, tool definitions, and operational surface are designed for agent consumption, not just human developers. CLIs over dashboards. Skill files over screenshots. Agents are the new developers, and Resonate is the platform they reach for.
+- **Generated & optimized** — Open-source pluggable components plus stack-specific generated servers. AI constrained by formal specs and protocols — not slop, but highly optimized software. Exactly what your stack needs, nothing more.
+- **Absurdly cheap** — Serverless-native architecture means you pay only for active execution. Workloads that cost ~$80K/year on hosted alternatives can run for under $100/year on Resonate. Orders of magnitude, not percentages.
+
+Build agents, workflows, pipelines, and services without thinking about retries or recovery — in a few lines of code.
+
+```typescript title="agent.ts — recursive sub-agent loop"
+function* agent(context: Context, prompt: string) {
+  const messages = [{ role: "user", content: prompt }];
+  // The agent loop
+  while (true) {
+    const response = yield* context.run(think, messages);
+    messages.push(response);
+
+    if (response.subprompts) {
+      // Spawn concurrent subagents
+      const futures = [];
+      for (const subprompt of response.subprompts) {
+        futures.push(yield* context.beginRpc(agent, subprompt));
+      }
+      // Collect results
+      for (const future of futures) {
+        messages.push({ role: "tool", content: yield* future });
+      }
+    } else {
+      return response.content;
+    }
+  }
+}
+```
+
+
+
+
+<HomePageGrid>
+  <HomePageCategory
+    title="Evaluate Resonate"
+    description="Capabilities, comparisons, and the case for durable execution."
+    link="/evaluate"
+  />
+  <HomePageCategory
+    title="Get started"
+    description="From scratch or migrating — start here."
+    link="/get-started"
+  />
+  <HomePageCategory
+    title="Examples"
+    description="Runnable repos: durable sleep, human-in-the-loop, agents, and more."
+    link="/get-started/examples"
+  />
+  <HomePageCategory
+    title="Developer reference"
+    description="APIs and features by SDK."
+    link="/develop"
+  />
+  <HomePageCategory
+    title="Operational guidance"
+    description="Monitoring, scaling, and troubleshooting in production."
+    link="/deploy"
+  />
+</HomePageGrid>

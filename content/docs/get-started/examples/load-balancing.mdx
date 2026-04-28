@@ -1,0 +1,325 @@
+---
+title: Load balancing
+pageTitle: Load balancing across worker instances
+description: Run multiple workers in a group; Resonate dispatches work to whichever is available, recovers it when one dies.
+keywords:
+  - load-balancing
+  - service-discovery
+  - workers
+  - examples
+---
+
+<img src="/images/example-load-balancing-dark.png" alt="Load Balancing banner" className="hidden dark:block" />
+<img src="/images/example-load-balancing-light.png" alt="Load Balancing banner" className="block dark:hidden" />
+
+Run several workers in the same group. Calls to `target: "poll://any@<group>"` get dispatched to whichever worker claims them first. When a worker dies mid-execution, Resonate reassigns the work to a survivor — no service registry, no leader election, no glue.
+
+<Callout type="info" title="SDK versions">
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
+</Callout>
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="TypeScript SDK"
+    description="Worker group with random-cost compute jobs dispatched via async RPC."
+    link="https://github.com/resonatehq-examples/example-load-balancing-ts"
+  />
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Worker group with random-cost compute jobs dispatched via async RPC."
+    link="https://github.com/resonatehq-examples/example-load-balancing-py"
+  />
+  <CloneRepoCard
+    sdk="Rust SDK"
+    description="Worker group with random-cost compute jobs dispatched via async RPC + spawn()."
+    link="https://github.com/resonatehq-examples/example-load-balancing-rs"
+  />
+</CloneRepoGrid>
+
+## The problem
+
+A single worker eventually runs out of capacity, and a single worker is also a single point of failure. The textbook fix is to run several — but that opens its own can: which worker has spare capacity, how does the caller find one, what happens when the chosen worker dies mid-job, who takes the work over?
+
+Most teams end up bolting service discovery, load balancing, and recovery onto application code in three different places, each with its own bugs.
+
+## Resonate's solution
+
+Resonate ships service discovery, load balancing, and crash recovery behind one primitive: the `target` schema. Workers in the same group long-poll the server; the caller dispatches with `target: "poll://any@<group>"` and the server hands the work to whichever worker is ready. If that worker dies before completing, the workflow's durable promise stays open and another worker in the group picks it up.
+
+## Code walkthrough
+
+Two pieces: a **worker** that registers a durable function and joins a group, and a **client** that dispatches work to that group.
+
+### The worker group
+
+Each worker process is identical except for the `group` it joins. Run as many as you want — they share work automatically.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
+    ]}>
+
+<TabItem value="typescript">
+
+```typescript title="worker.ts"
+import { Resonate } from "@resonatehq/sdk";
+import type { Context } from "@resonatehq/sdk";
+
+const resonate = new Resonate({
+  url: "http://localhost:8001",
+  group: "workers",
+});
+
+function computeSomething(ctx: Context, args: { id: string; computeCost: number }) {
+  console.log(`${args.id} starting computation`);
+  setTimeout(() => {
+    console.log(`${args.id} computed something that cost ${args.computeCost} seconds`);
+  }, args.computeCost * 1000);
+}
+
+resonate.register("computeSomething", computeSomething);
+console.log("worker is running...");
+```
+
+</TabItem>
+
+<TabItem value="python">
+
+```python title="worker.py"
+from resonate import Resonate
+from threading import Event
+import time
+
+resonate = Resonate.remote(group="worker-group")
+
+
+@resonate.register
+def compute_something(_, id, compute_cost):
+    print(f"starting computation {id}")
+    time.sleep(compute_cost)
+    print(f"computed something that cost {compute_cost} seconds")
+
+
+resonate.start()
+print("worker running...")
+Event().wait()
+```
+
+</TabItem>
+
+<TabItem value="rust">
+
+```rust title="src/bin/worker.rs"
+use resonate::prelude::*;
+use std::time::Duration;
+
+#[resonate::function]
+async fn compute_something(ctx: &Context, id: String, compute_cost: u64) -> Result<()> {
+    println!("{id} starting computation");
+    ctx.sleep(Duration::from_secs(compute_cost)).await?;
+    println!("{id} computed something that cost {compute_cost} seconds");
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        group: Some("workers".into()),
+        ..Default::default()
+    });
+    resonate.register(compute_something).unwrap();
+    println!("worker is running...");
+    tokio::signal::ctrl_c().await.unwrap();
+}
+```
+
+</TabItem>
+
+</Tabs>
+
+### Dispatching to the group
+
+The caller picks a target with the `poll://any@<group>` schema. `any` means "whichever worker in the group claims it first."
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
+    ]}>
+
+<TabItem value="typescript">
+
+```typescript title="client.ts"
+import { Resonate } from "@resonatehq/sdk";
+import { v4 as uuid } from "uuid";
+
+const resonate = new Resonate({
+  url: "http://localhost:8001",
+  group: "client",
+});
+
+const id = uuid();
+const computeCost = Math.floor(Math.random() * 10) + 1;
+await resonate.beginRpc(
+  id,
+  "computeSomething",
+  { id, computeCost },
+  resonate.options({ target: "poll://any@workers" }),
+);
+resonate.stop();
+```
+
+</TabItem>
+
+<TabItem value="python">
+
+```python title="invoke.py"
+from resonate import Resonate
+from uuid import uuid4
+from random import randint
+
+resonate = Resonate.remote(group="invoke-group")
+
+promise_id = str(uuid4())
+compute_cost = randint(1, 10)
+_ = resonate.options(target="poll://any@worker-group").begin_rpc(
+    promise_id, "compute_something", promise_id, compute_cost,
+)
+```
+
+</TabItem>
+
+<TabItem value="rust">
+
+```rust title="src/bin/client.rs"
+use rand::Rng;
+use resonate::prelude::*;
+use uuid::Uuid;
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        ..Default::default()
+    });
+    let id = Uuid::new_v4().to_string();
+    let cost: u64 = rand::thread_rng().gen_range(1..=10);
+
+    let _: () = resonate
+        .rpc(&id, "compute_something", (id.clone(), cost))
+        .target("poll://any@workers")
+        .spawn()
+        .await
+        .unwrap();
+    resonate.stop().await;
+}
+```
+
+</TabItem>
+
+</Tabs>
+
+## Run it locally
+
+Start the server, run several workers, then dispatch repeatedly from the client.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
+    ]}>
+
+<TabItem value="typescript">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-load-balancing-ts
+cd example-load-balancing-ts
+npm install
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminals 2–4 — three workers"
+npx tsx worker.ts
+```
+
+```shell title="Terminal 5 — dispatch in a loop"
+for i in 1 2 3 4 5 6; do npx tsx client.ts; done
+```
+
+Watch the work spread across the three worker terminals. Now kill one of them mid-execution — Resonate reassigns its in-flight workflow to a survivor.
+
+</TabItem>
+
+<TabItem value="python">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-load-balancing-py
+cd example-load-balancing-py
+uv sync
+```
+
+```shell title="Terminal 1 — Resonate Server (legacy)"
+brew install resonatehq/tap/resonate
+resonate serve
+```
+
+```shell title="Terminals 2–4 — three workers"
+uv run python worker.py
+```
+
+```shell title="Terminal 5 — dispatch in a loop"
+for i in 1 2 3 4 5 6; do uv run python invoke.py; done
+```
+
+Watch the work spread across the three worker terminals. Kill one of them mid-execution — Resonate reassigns its in-flight workflow to a survivor.
+
+</TabItem>
+
+<TabItem value="rust">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-load-balancing-rs
+cd example-load-balancing-rs
+cargo build
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminals 2–4 — three workers"
+cargo run --bin worker
+```
+
+```shell title="Terminal 5 — dispatch in a loop"
+for i in 1 2 3 4 5 6; do cargo run --bin client; done
+```
+
+</TabItem>
+
+</Tabs>
+
+## Try the recovery story
+
+Start three workers and dispatch enough jobs to keep all of them busy. Kill the worker holding a long-running job. The Resonate Server detects the loss, reassigns the workflow's durable promise to one of the survivors, and the work continues. The client never sees an error — it just gets a slightly delayed result.
+
+## Related
+
+- [Human-in-the-loop](/get-started/examples/human-in-the-loop) — same group dispatch, with a workflow that suspends on a durable promise.
+- [Async HTTP API endpoints](/get-started/examples/async-http-api-endpoints) — long-running HTTP work without holding the connection.

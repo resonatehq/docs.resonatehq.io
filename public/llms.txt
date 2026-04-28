@@ -1,0 +1,54 @@
+# Resonate Documentation
+
+> Resonate — durable execution, dead simple.
+
+- [Errors](/debug/errors): Error codes and what they mean.
+- [Debug a Resonate application](/debug): Diagnose and fix issues in Resonate applications.
+- [Troubleshooting](/debug/troubleshooting): Common problems and how to fix them.
+- [Availability](/deploy/availability): High availability strategies for Resonate deployments.
+- [Deployment patterns](/deploy/deployment-patterns): Deploy Resonate to different environments - Docker, Kubernetes, serverless, and more.
+- [Deploy a Resonate application](/deploy): Deploy Resonate from development to production.
+- [Logging](/deploy/logging): Server and SDK logs for observing application behavior.
+- [Message transports](/deploy/message-transports): Configure message transport plugins for communication between workers and server.
+- [Metrics](/deploy/metrics): Prometheus metrics exposed by the Resonate server.
+- [Run a server](/deploy/run-server): Start the Resonate server with persistent storage.
+- [Scaling](/deploy/scaling): Scale Resonate workers horizontally to handle increased load.
+- [Security](/deploy/security): Authentication and production security.
+- [Serverless workers](/deploy/serverless-workers): Deploy workers to serverless platforms (Lambda, Cloud Functions, etc).
+- [Tracing](/deploy/tracing): OpenTelemetry tracing for Resonate applications.
+- [Upgrade server](/deploy/upgrade-server): Upgrade the Resonate server to a new version.
+- [Constraints and gotchas](/develop/constraints): Understanding the rules and limitations when building with Resonate.
+- [Develop with Resonate](/develop): Build distributed applications without the distributed systems complexity.
+- [Python SDK skills](/develop/python): APIs that stay simple, even when your use cases aren’t
+- [Rust SDK skills](/develop/rust): APIs that stay simple, even when your use cases aren't
+- [TypeScript SDK skills](/develop/typescript): APIs that stay simple, even when your use cases aren’t
+- [BYODE](/evaluate/coming-from/byode): Compare Resonate with building your own durable execution stack.
+- [Coming from DBOS](/evaluate/coming-from/dbos): Compare Resonate with DBOS to understand key differences and similarities.
+- [Coming from](/evaluate/coming-from): Compare Resonate with other durable execution platforms and approaches.
+- [Coming from Restate](/evaluate/coming-from/restate): Compare Resonate with Restate to understand how the platforms differ.
+- [Coming from Temporal](/evaluate/coming-from/temporal): If you are coming from Temporal, this guide will help you understand the differences and similarities between Temporal and Resonate.
+- [How it works](/evaluate/how-it-works): Architecture overview of checkpoints, replay, and message flow in Resonate.
+- [Evaluate Resonate](/evaluate): Get started with Resonate by evaluating its features and capabilities.
+- [Why Resonate](/evaluate/why-resonate): Resonate is the durable execution engine that agents build with, deploy on, and operate — at a fraction of the cost of anything else.
+- [Resonate CLI](/get-started/cli-guide): Learn how to use the Resonate command-line interface effectively.
+- [Async agent tools](/get-started/examples/async-agent-tools): Convert synchronous MCP tool calls into durable async jobs an LLM can fire-and-forget then poll for results.
+- [Async HTTP APIs](/get-started/examples/async-http-api-endpoints): Turn long-running HTTP requests into durable workflows. Clients fire-and-forget, then poll for completion.
+- [Async RPC](/get-started/examples/async-rpc): Functions in different processes call each other through Resonate. Each call is durable; chains survive crashes anywhere along the path.
+- [Deep research agent](/get-started/examples/deep-research-agent): An LLM agent that decomposes a topic, spawns parallel subagents, and joins their results — every call durable and recoverable.
+- [Cloud Run workers](/get-started/examples/durable-serverless-cloud-run-workers): A Resonate workflow running on Cloud Functions Gen 2 — every sleep checkpoints, every restart resumes.
+- [Lambda workers](/get-started/examples/durable-serverless-lambda-workers): Lambda receives the request, returns 202, and fires a durable Resonate workflow that can run for hours — past Lambda's timeout ceiling.
+- [Durable sleep](/get-started/examples/durable-sleep): A workflow that sleeps for seconds, days, or months — without holding a process open or rolling your own scheduler.
+- [Fan-out / fan-in](/get-started/examples/fan-out-fan-in): Spawn N tasks in parallel, collect their results — every spawn and every result is a durable promise.
+- [Hello world](/get-started/examples/hello-world): A minimal workflow that orchestrates two leaf functions, registered and invoked through Resonate.
+- [Human-in-the-loop](/get-started/examples/human-in-the-loop): Pause a Resonate workflow until a human responds — and resume it from any process — using durable promises.
+- [Examples](/get-started/examples): Runnable example projects, one per pattern.
+- [Kafka worker](/get-started/examples/kafka-worker): A worker that consumes Kafka, dispatches durable workflows for each message, and resumes cleanly after crashes — Redpanda is a drop-in replacement.
+- [Load balancing](/get-started/examples/load-balancing): Run multiple workers in a group; Resonate dispatches work to whichever is available, recovers it when one dies.
+- [Money transfer](/get-started/examples/money-transfer): A two-step transfer (debit source, credit target) where each step is a durable checkpoint and the same transfer ID deduplicates retries.
+- [Multi-agent orchestration](/get-started/examples/multi-agent-orchestration): An orchestrator chains three specialist agents — researcher, writer, reviewer — with each handoff checkpointed.
+- [Recursive factorial](/get-started/examples/recursive-factorial): A workflow that calls itself with `ctx.rpc` — recursion is automatically distributed and durable.
+- [Schedule](/get-started/examples/schedule): Register a function to run on a cron schedule. Each invocation is a durable workflow with crash recovery built in.
+- [Webhook handler](/get-started/examples/webhook-handler): A Stripe-style webhook handler where the event ID is the workflow ID — duplicate deliveries dedupe, partial failures resume, the customer gets charged once.
+- [Get started with Resonate](/get-started): Quickstart, examples, and migration guides.
+- [Quickstart](/get-started/quickstart): Install the server and SDK and run your first Resonate workflow.
+- [Home](/index): Resonate — agent-native durable execution. Generated, optimized, absurdly cheap.

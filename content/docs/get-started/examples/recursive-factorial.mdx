@@ -1,0 +1,327 @@
+---
+title: Recursive factorial
+pageTitle: Recursive factorial across worker instances
+description: A workflow that calls itself with `ctx.rpc` — recursion is automatically distributed and durable.
+keywords:
+  - recursion
+  - rpc
+  - distributed-workflow
+  - examples
+---
+
+<img src="/images/example-recursive-factorial-dark.png" alt="Recursive Factorial banner" className="hidden dark:block" />
+<img src="/images/example-recursive-factorial-light.png" alt="Recursive Factorial banner" className="block dark:hidden" />
+
+A workflow that computes `n!` by calling itself with `n-1`. Each recursive call dispatches via `ctx.rpc` to whichever worker in the group claims it — recursion ends up distributed across machines without any explicit coordination, and every step is checkpointed so a worker crash mid-recursion resumes cleanly.
+
+<Callout type="info" title="SDK versions">
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
+</Callout>
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="TypeScript SDK"
+    description="Workflow recurses via ctx.rpc, dispatched across the factorial-workers group."
+    link="https://github.com/resonatehq-examples/example-recursive-factorial-ts"
+  />
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="Workflow recurses via ctx.rpc, dispatched across the factorial-worker group."
+    link="https://github.com/resonatehq-examples/example-recursive-factorial-py"
+  />
+  <CloneRepoCard
+    sdk="Rust SDK"
+    description="Workflow recurses via ctx.rpc, dispatched across the factorial-workers group."
+    link="https://github.com/resonatehq-examples/example-recursive-factorial-rs"
+  />
+</CloneRepoGrid>
+
+## The problem
+
+Naive recursion runs in a single process. If the recursion is deep, you blow the stack. If the recursion is heavy (each call does real work), you can't parallelize across machines without writing your own dispatch layer. Add crashes to the picture and you also need to remember which branches finished and which need to retry.
+
+## Resonate's solution
+
+Use `ctx.rpc` instead of a direct function call. The recursive call goes to the Resonate Server, which dispatches it to whichever worker in the target group is available — so a deep recursion fans out across N workers automatically. Each call's result is a durable promise, so a worker crash mid-recursion just hands the unfinished call to a survivor.
+
+## Code walkthrough
+
+The pattern is one self-recursive function plus a client that kicks it off.
+
+### The recursive workflow
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
+    ]}>
+
+<TabItem value="typescript">
+
+```typescript title="factorialWorker.ts"
+import { Resonate, type Context } from "@resonatehq/sdk";
+
+const resonate = new Resonate({
+  url: "http://localhost:8001",
+  group: "factorial-workers",
+});
+
+function* factorial(ctx: Context, n: number): Generator<any, number, any> {
+  if (n <= 1) return 1;
+
+  // ctx.rpc dispatches to any worker in the group — this includes the worker
+  // running this very call, but might also be a different machine.
+  const result = yield* ctx.rpc(
+    "factorial",
+    n - 1,
+    ctx.options({ target: "poll://any@factorial-workers" }),
+  );
+  return n * result;
+}
+
+resonate.register("factorial", factorial);
+```
+
+</TabItem>
+
+<TabItem value="python">
+
+```python title="factorial_worker.py"
+from resonate import Resonate
+from threading import Event
+
+resonate = Resonate.remote(group="factorial-worker")
+
+
+@resonate.register
+def factorial(ctx, n):
+    if n <= 1:
+        return 1
+    # ctx.rpc dispatches to any worker in the group.
+    result = yield ctx.rpc("factorial", n - 1).options(
+        target="poll://any@factorial-worker", id=f"factorial-{n-1}",
+    )
+    return n * result
+
+
+resonate.start()
+print("Factorial worker is running...")
+Event().wait()
+```
+
+</TabItem>
+
+<TabItem value="rust">
+
+```rust title="src/bin/worker.rs"
+use resonate::prelude::*;
+
+#[resonate::function]
+async fn factorial(ctx: &Context, n: u64) -> Result<u64> {
+    if n <= 1 {
+        return Ok(1);
+    }
+    // ctx.rpc dispatches to any worker in the group.
+    let result: u64 = ctx
+        .rpc("factorial", n - 1)
+        .target("poll://any@factorial-workers")
+        .await?;
+    Ok(n * result)
+}
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        group: Some("factorial-workers".into()),
+        ..Default::default()
+    });
+    resonate.register(factorial).unwrap();
+    tokio::signal::ctrl_c().await.unwrap();
+}
+```
+
+</TabItem>
+
+</Tabs>
+
+### Kicking it off
+
+The client looks identical to any other RPC call — Resonate doesn't care that the workflow happens to recurse internally.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
+    ]}>
+
+<TabItem value="typescript">
+
+```typescript title="factorialClient.ts"
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = new Resonate({
+  url: "http://localhost:8001",
+  group: "factorial-client",
+});
+
+const n = Number(process.argv[2] ?? 5);
+const result = await resonate.rpc(
+  `factorial-${n}`,
+  "factorial",
+  n,
+  resonate.options({ target: "poll://any@factorial-workers" }),
+);
+console.log(`Factorial of ${n} is ${result}`);
+resonate.stop();
+```
+
+</TabItem>
+
+<TabItem value="python">
+
+```python title="factorial_client.py"
+from resonate import Resonate
+from argparse import ArgumentParser
+
+resonate = Resonate.remote(group="factorial-client")
+
+parser = ArgumentParser()
+parser.add_argument("n", type=int)
+args = parser.parse_args()
+
+result = resonate.options(target="poll://any@factorial-worker").rpc(
+    f"factorial-{args.n}", "factorial", n=args.n,
+)
+print(f"Result: {result}")
+```
+
+</TabItem>
+
+<TabItem value="rust">
+
+```rust title="src/bin/client.rs"
+use resonate::prelude::*;
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        ..Default::default()
+    });
+    let n: u64 = std::env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(5);
+    let result: u64 = resonate
+        .rpc(&format!("factorial-{n}"), "factorial", n)
+        .target("poll://any@factorial-workers")
+        .await
+        .unwrap();
+    println!("Factorial of {n} is {result}");
+}
+```
+
+</TabItem>
+
+</Tabs>
+
+## Run it locally
+
+Start the server, run a few workers, then dispatch from the client.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
+    ]}>
+
+<TabItem value="typescript">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-recursive-factorial-ts
+cd example-recursive-factorial-ts
+npm install
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminals 2–4 — three workers"
+npx tsx factorialWorker.ts
+```
+
+```shell title="Terminal 5 — client"
+npx tsx factorialClient.ts 10
+```
+
+Watch the three worker terminals — `factorial(10)`, `factorial(9)`, `factorial(8)` … fan out across the workers as recursion descends.
+
+</TabItem>
+
+<TabItem value="python">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-recursive-factorial-py
+cd example-recursive-factorial-py
+uv sync
+```
+
+```shell title="Terminal 1 — Resonate Server (legacy)"
+brew install resonatehq/tap/resonate
+resonate serve
+```
+
+```shell title="Terminals 2–4 — three workers"
+uv run python factorial_worker.py
+```
+
+```shell title="Terminal 5 — client"
+uv run python factorial_client.py 10
+```
+
+Watch the three worker terminals — `factorial(10)`, `factorial(9)`, `factorial(8)` … fan out across the workers as recursion descends.
+
+</TabItem>
+
+<TabItem value="rust">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-recursive-factorial-rs
+cd example-recursive-factorial-rs
+cargo build
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminals 2–4 — three workers"
+cargo run --bin worker
+```
+
+```shell title="Terminal 5 — client"
+cargo run --bin client -- 10
+```
+
+</TabItem>
+
+</Tabs>
+
+## Try the recovery story
+
+While the recursion is in flight (start with `n=20` to give it some depth), kill one of the workers. Resonate reassigns its in-flight `factorial(k)` to a survivor. Already-completed sub-results stay completed; only the unfinished branch resumes. The final answer is unchanged.
+
+## Related
+
+- [Hello world](/get-started/examples/hello-world) — the same primitives without the recursion.
+- [Load balancing](/get-started/examples/load-balancing) — focused on the dispatch layer that makes the fan-out work.

@@ -1,0 +1,368 @@
+---
+title: Logging
+description: Server and SDK logs for observing application behavior.
+keywords:
+  - deploy
+  - logging
+  - observability
+---
+
+Both the Resonate Server and Resonate SDK emit structured logs that can help you observe and diagnose the behavior of your application.
+
+## Server logs
+
+Resonate emits structured logs via the Rust `tracing` ecosystem.
+On startup the server installs a text subscriber that writes key/value records to standard output at the operator-selected minimum log level.
+
+### Configuring the log level
+
+Log levels: `debug`, `info`, `warn`, or `error`. The default is `info`.
+
+Set it in `resonate.toml`:
+
+```toml title="resonate.toml"
+level = "debug"
+```
+
+Or via environment variable:
+
+```shell
+RESONATE_LEVEL=debug
+```
+
+Or via CLI flag (takes precedence over the file and env):
+
+```shell
+resonate serve --level debug
+```
+
+### Log levels and common messages
+
+#### Debug – detailed flow diagnostics
+
+Enabled with `RESONATE_LEVEL=debug` or `--level debug`.
+
+Useful for tracing individual request outcomes, especially around promise lifecycle and task dispatch.
+
+- Promise lifecycle: messages like `Promise not found`, `Promise created already timedout`, `Promise settle: promise not found`, and `Promise settle: TOCTOU race detected, treating as not found` explain why an incoming promise request returned what it did.
+- Task lifecycle: `Task acquire: task not found`, `Task continue: not found`, `Task fulfill rejected: version mismatch or invalid state`, `Task fence rejected: task not found`.
+- Listener / callback registration: `Listener registration: awaited promise not found`, `Callback registration: awaited promise not found`.
+- Schedule lookups: `Schedule not found`, `Schedule delete: not found`.
+
+Every debug line includes structured fields such as `promise_id`, `task_id`, `schedule_id`, `version`, and (where relevant) `fenced_action`.
+
+#### Info – lifecycle and service announcements
+
+Emitted by default (the default `level` is `info`).
+
+- Server startup: `Resonate Server starting` reports the listener port; `Operational config` and `Transport config` follow with the resolved configuration.
+- Storage initialization: `SQLite initialized` or `PostgreSQL initialized` (`PostgreSQL pool configured` lists the pool size).
+- Auth state: `Auth disabled — all requests accepted`, or `Auth enabled` with the public key path (and `Auth issuer configured` / `Auth audience configured` when those claims are enforced).
+- Transport state: `GCP Pub/Sub transport enabled` when `[transports.gcps]` is configured.
+- Task recovery: `Task continued from halted state` indicates a previously halted task resumed.
+
+#### Warn – recoverable or throttling conditions
+
+Warnings surface when Resonate recovers automatically but an operator may want to know.
+
+- Auth in unsigned mode: `Auth enabled — unsigned mode (no signature verification)` when `[auth].publickey = "none"`. Fine for dev, dangerous in prod.
+- Task dispatch quirk: `Task fulfilled but promise not found` — the task completed but its promise record has since disappeared.
+- Shutdown pressure: `Background tasks did not finish within shutdown timeout, forcing exit` when the graceful shutdown window was exceeded.
+
+#### Error – actionable failures
+
+Errors identify conditions that usually require operator action.
+
+- Startup failures: `Fatal: ...` to stderr plus an `ERROR` record describing what aborted `resonate serve` (for example, `storage.type=postgres requires RESONATE_STORAGE__POSTGRES__URL`).
+- Metrics bind failures: `Failed to bind metrics port` with the port that was in use.
+- Background loop failures: `Background timeout processing failed: storage error` indicates the background timeout scanner hit a storage-layer problem.
+- Readiness probe failures: `Readiness check failed: storage database unavailable` is emitted each time `GET /ready` returns 503.
+
+### Log output format
+
+Logs are written to stdout in `tracing`'s default key-value text format:
+
+```
+2026-04-15T10:30:00.123Z  INFO resonate: Resonate Server starting port=8001
+2026-04-15T10:30:00.456Z  INFO resonate: Using SQLite backend path="resonate.db"
+2026-04-15T10:30:00.789Z  INFO resonate: Auth disabled — all requests accepted
+```
+
+**Fields:**
+- ISO 8601 timestamp with millisecond precision
+- Level (`DEBUG`, `INFO`, `WARN`, `ERROR`)
+- Target (e.g. `resonate`)
+- Human-readable message plus structured key=value fields
+
+
+## SDK logs
+
+The Resonate SDKs also emit logs for observing application behavior.
+
+### TypeScript SDK
+
+The TypeScript SDK uses console logging by default:
+
+```typescript
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = new Resonate({
+  url: "http://localhost:8001",
+  logLevel: "debug",  // debug | info | warn | error
+});
+```
+
+**What gets logged:**
+- Function execution (start, completion, errors)
+- Context operations (`ctx.run()`, `ctx.sleep()`, etc.)
+- RPC calls to workers
+- Promise resolution attempts
+- Retry attempts and failures
+
+### Python SDK
+
+The Python SDK uses Python's standard `logging` module:
+
+```python
+import logging
+from resonate import Resonate
+
+# Configure Python logging
+logging.basicConfig(level=logging.INFO)
+
+resonate = Resonate.remote(
+    host="http://localhost",
+    store_port="8001",
+    message_source_port="8001",
+    log_level="DEBUG",  # DEBUG | INFO | WARNING | ERROR | CRITICAL (or a logging.* int)
+)
+```
+
+## Production logging patterns
+
+### Log aggregation
+
+In production, collect logs from all servers and workers into a centralized system:
+
+**Common patterns:**
+- **ELK Stack** (Elasticsearch, Logstash, Kibana)
+- **Datadog** logs
+- **CloudWatch Logs** (AWS)
+- **Google Cloud Logging**
+- **Azure Monitor Logs**
+- **Grafana Loki** (lightweight alternative)
+
+### Docker / Kubernetes
+
+**Docker Compose:**
+
+```yaml
+services:
+  resonate-server:
+    image: resonatehqio/resonate:v0.9.4
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
+
+**Kubernetes:**
+
+Logs are automatically collected from stdout. Use a log aggregation solution like:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: resonate-server
+  annotations:
+    # Datadog log collection
+    ad.datadoghq.com/resonate.logs: '[{"source":"resonate","service":"resonate-server"}]'
+spec:
+  containers:
+  - name: server
+    image: resonatehqio/resonate:v0.9.4
+```
+
+Or use Fluent Bit / Fluentd as a DaemonSet to forward logs to your aggregation system.
+
+### Structured logging for analysis
+
+Parse structured logs into fields for querying:
+
+**Logstash filter example:**
+
+```ruby
+filter {
+  grok {
+    match => { "message" => "time=%{TIMESTAMP_ISO8601:timestamp} level=%{WORD:level} msg=\"%{DATA:message}\"" }
+  }
+}
+```
+
+**Query examples (CloudWatch Insights):**
+
+```sql
+# Find all errors
+fields @timestamp, level, msg
+| filter level = "ERROR"
+| sort @timestamp desc
+
+# Count warnings by type
+fields msg
+| filter level = "WARN"
+| stats count() by msg
+```
+
+## What to log and monitor
+
+### Critical events
+
+Always monitor these log messages:
+
+**Server startup failures:**
+```
+ERROR resonate: Fatal: storage.type=postgres requires RESONATE_STORAGE__POSTGRES__URL
+ERROR resonate: Failed to bind metrics port port=9090
+```
+**Action:** Check configuration and that required ports are free.
+
+**Readiness failures:**
+```
+ERROR resonate: Readiness check failed: storage database unavailable
+```
+**Action:** Investigate database health — `GET /ready` is returning 503 until storage recovers.
+
+**Background loop failures:**
+```
+ERROR resonate: Background timeout processing failed: storage error
+```
+**Action:** Check database health and connection pool; sustained failures block timeout handling.
+
+**Shutdown pressure:**
+```
+WARN resonate: Background tasks did not finish within shutdown timeout, forcing exit
+```
+**Action:** Consider raising `[server].shutdown_timeout` or investigating what's blocking shutdown.
+
+### Normal operational events
+
+These logs indicate healthy operation:
+
+```
+INFO resonate: Resonate Server starting port=8001
+INFO resonate: PostgreSQL initialized
+INFO resonate: Auth disabled — all requests accepted
+```
+
+## Log retention and storage
+
+### Development
+
+- **Retention:** 1-7 days
+- **Level:** `debug` or `info`
+- **Storage:** Local files or stdout
+
+### Staging
+
+- **Retention:** 7-30 days
+- **Level:** `info`
+- **Storage:** Centralized log aggregation
+
+### Production
+
+- **Retention:** 30-90 days (or per compliance requirements)
+- **Level:** `info` (use `debug` temporarily for troubleshooting)
+- **Storage:** Centralized log aggregation with archival to object storage (S3, GCS)
+
+## Performance considerations
+
+### Log volume
+
+**Debug logging produces significant volume.** In production:
+- Use `info` by default
+- Enable `debug` temporarily when troubleshooting
+- Monitor log storage costs
+
+**Estimate:** Debug logging can produce 10-100x more log data than info level.
+
+### Log sampling
+
+For very high-throughput systems, consider sampling:
+
+```yaml
+# Hypothetical config (not currently supported)
+logSampling:
+  enabled: true
+  rate: 0.1  # Log 10% of requests at debug level
+```
+
+**Alternative:** Use tracing (see [Tracing](/deploy/tracing)) for detailed execution visibility without overwhelming logs.
+
+## Correlating logs across components
+
+Use **request IDs** to trace requests across server and workers:
+
+**Server logs:**
+```
+level=INFO msg="api:sqe:enqueue" requestId="req-abc123" method="POST" path="/promises"
+```
+
+**SDK logs:**
+```
+level=INFO msg="promise created" requestId="req-abc123" promiseId="order.123"
+```
+
+Search logs by `requestId` to see the full request lifecycle.
+
+## Common debugging scenarios
+
+### Task not being processed
+
+**Look for:**
+1. Worker registration: `starting poll server` (server) + connection logs (worker)
+2. Task creation: `api:sqe:enqueue` with promise/task IDs
+3. Task routing: Check for `failed to match promise` warnings
+4. Worker heartbeat: Look for heartbeat timeout warnings
+
+### Promise stuck pending
+
+**Look for:**
+1. Promise creation: `api:sqe:enqueue` with promiseId
+2. Task assignment: Check if task was created and routed
+3. Worker processing: Worker should log function execution start
+4. Completion: Look for promise resolution logs
+
+### Slow performance
+
+**Look for:**
+1. `scheduler queue full` - Capacity exhausted
+2. Database query latency - Check database logs
+3. High request volume - Count `api:sqe:enqueue` per second
+
+## Best practices
+
+1. **Start with `info` level** - Debug is too verbose for production
+2. **Use structured logging** - Parse key-value pairs for analysis
+3. **Aggregate centrally** - Don't rely on local log files
+4. **Set up alerts** - Monitor critical error patterns
+5. **Retain logs adequately** - Balance cost vs troubleshooting needs
+6. **Correlate with metrics** - Cross-reference logs with metrics for complete picture
+7. **Test log queries** - Ensure you can find what you need during incidents
+
+## Summary
+
+**For development:**
+- Use `debug` or `info` level
+- Logs to stdout are fine
+- Focus on understanding normal behavior
+
+**For production:**
+- Use `info` level (enable `debug` only when troubleshooting)
+- Centralize logs (ELK, Datadog, CloudWatch, etc.)
+- Alert on critical errors (startup failures, database errors)
+- Retain logs 30-90 days minimum
+- Correlate logs with metrics and traces
+
+Logs are your debugging lifeline. Set them up properly from day one.

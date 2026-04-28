@@ -1,0 +1,377 @@
+---
+title: Async HTTP APIs
+pageTitle: Async HTTP APIs with durable execution
+description: Turn long-running HTTP requests into durable workflows. Clients fire-and-forget, then poll for completion.
+keywords:
+  - async-http
+  - http-api
+  - durable-workflow
+  - polling
+  - examples
+---
+
+<img src="/images/example-async-http-api-dark.png" alt="Async HTTP API banner" className="hidden dark:block" />
+<img src="/images/example-async-http-api-light.png" alt="Async HTTP API banner" className="block dark:hidden" />
+
+A FastAPI gateway converts every inbound request into a durable workflow, returns a promise ID immediately, and exposes a `/wait` endpoint clients poll for completion.
+
+<Callout type="info" title="SDK versions">
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
+</Callout>
+
+<CloneRepoGrid>
+  <CloneRepoCard
+    sdk="TypeScript SDK"
+    description="Express gateway with /begin and /wait endpoints backed by a Resonate worker."
+    link="https://github.com/resonatehq-examples/example-async-http-api-ts"
+  />
+  <CloneRepoCard
+    sdk="Python SDK"
+    description="FastAPI gateway with /begin and /wait endpoints backed by a Resonate worker."
+    link="https://github.com/resonatehq-examples/example-async-http-api-py"
+  />
+  <CloneRepoCard
+    sdk="Rust SDK"
+    description="axum gateway with /begin and /wait endpoints backed by a Resonate worker."
+    link="https://github.com/resonatehq-examples/example-async-http-api-rs"
+  />
+</CloneRepoGrid>
+
+## The problem
+
+Synchronous HTTP either blocks the client until work finishes or punts the polling problem to whoever calls you. Hand-rolled status tracking gets out of sync, server crashes leave clients guessing whether work completed, and retries duplicate work that already ran.
+
+## Resonate's solution
+
+Each inbound request becomes a durable workflow keyed by a client-provided ID. The gateway returns the ID immediately; clients poll a status endpoint that asks Resonate whether the promise has resolved. Crashes don't lose progress — the workflow resumes on a survivor and the same ID still answers the poll.
+
+## Code walkthrough
+
+Two processes: a **gateway** that accepts HTTP requests and a **worker** that runs the durable function.
+
+### The gateway
+
+`POST /begin` enqueues durable work and returns a promise ID. `GET /wait` polls for completion. The same client-provided ID deduplicates retries — sending `/begin` twice with the same ID reconnects to the in-flight execution.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
+    ]}>
+
+<TabItem value="typescript">
+
+```typescript title="gateway.ts"
+import express from "express";
+import { randomUUID } from "node:crypto";
+import { Resonate } from "@resonatehq/sdk";
+
+const app = express();
+app.use(express.json());
+
+const resonate = new Resonate({ url: "http://localhost:8001", group: "gateway" });
+
+app.post("/begin", async (req, res) => {
+  const id = (req.query.id as string) ?? randomUUID();
+  const data = req.body && Object.keys(req.body).length > 0 ? req.body : { foo: "bar" };
+
+  // beginRpc returns immediately. Same id reconnects to the in-flight execution.
+  const handle = await resonate.beginRpc(
+    id,
+    "foo",
+    data,
+    resonate.options({ target: "poll://any@worker" }),
+  );
+
+  res.json({ promise: handle.id, status: "pending", wait: `/wait?id=${handle.id}` });
+});
+
+app.get("/wait", async (req, res) => {
+  const id = req.query.id as string;
+  const handle = await resonate.get(id);
+
+  // done() is non-blocking — asks the server for current state.
+  if (await handle.done()) {
+    const result = await handle.result();
+    return res.json({ status: "resolved", promise_id: id, result });
+  }
+  res.json({ status: "pending", promise_id: id });
+});
+
+app.listen(5001, "127.0.0.1");
+```
+
+</TabItem>
+
+<TabItem value="python">
+
+```python title="main.py"
+from fastapi import FastAPI, HTTPException
+from resonate import Resonate
+import uuid
+
+app = FastAPI()
+resonate = Resonate().remote(group="gateway")
+
+
+@app.post("/begin")
+def begin(data=None, id=None):
+    # Client-provided ID enables deduplication and safe retries.
+    if id is None:
+        id = str(uuid.uuid4())
+    if data is None:
+        data = {"foo": "bar"}
+
+    handle = resonate.options(target="poll://any@worker").begin_rpc(
+        func="foo", id=id, data=data
+    )
+    return {"promise": handle.id, "status": "pending", "wait": f"/wait?id={handle.id}"}
+
+
+@app.get("/wait")
+def wait(id: str):
+    try:
+        handle = resonate.get(id)
+        if handle.done():
+            return {"status": "resolved", "promise_id": id, "result": handle.result()}
+        return {"status": "pending", "promise_id": id, "message": "Processing in progress"}
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"{id} not found")
+```
+
+</TabItem>
+
+<TabItem value="rust">
+
+```rust title="src/bin/gateway.rs"
+use axum::{routing::{get, post}, Json, Router};
+use resonate::prelude::*;
+use uuid::Uuid;
+
+async fn begin(State(r): State<Resonate>, Json(body): Json<Value>) -> impl IntoResponse {
+    let id = body.get("id").and_then(|v| v.as_str()).map(String::from)
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+    // .spawn() returns a handle without blocking on completion.
+    let _: ResonateHandle<Value> = r
+        .rpc(&id, "foo", body.clone())
+        .target("poll://any@worker")
+        .spawn()
+        .await
+        .unwrap();
+
+    Json(json!({ "promise": id, "status": "pending", "wait": format!("/wait?id={id}") }))
+}
+
+async fn wait(State(r): State<Resonate>, Query(q): Query<HashMap<String, String>>) -> impl IntoResponse {
+    let id = q.get("id").cloned().unwrap_or_default();
+    let handle: ResonateHandle<Value> = r.get(&id).await.unwrap();
+    if handle.done().await.unwrap() {
+        let result = handle.result().await.unwrap();
+        return Json(json!({ "status": "resolved", "promise_id": id, "result": result }));
+    }
+    Json(json!({ "status": "pending", "promise_id": id }))
+}
+```
+
+</TabItem>
+
+</Tabs>
+
+### The worker
+
+`@resonate.register` (Python) or `resonate.register("foo", foo)` (TypeScript) exposes `foo` as a durable function. The gateway's `beginRpc` dispatches the call to whichever worker in the `worker` group claims it first; if that worker dies mid-execution, another picks up the workflow.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
+    ]}>
+
+<TabItem value="typescript">
+
+```typescript title="worker.ts"
+import { Resonate, type Context } from "@resonatehq/sdk";
+
+const resonate = new Resonate({ url: "http://localhost:8001", group: "worker" });
+
+// Inputs and return value must be JSON-serializable.
+function* foo(_: Context, data: unknown) {
+  // Real workloads call ctx.run(stepFn, ...) for checkpointed side effects.
+  return { result: `Processed: ${JSON.stringify(data)}`, timestamp: Date.now() };
+}
+
+resonate.register("foo", foo);
+```
+
+</TabItem>
+
+<TabItem value="python">
+
+```python title="worker.py"
+from resonate import Context, Resonate
+from threading import Event
+import time
+
+resonate = Resonate().remote(group="worker")
+
+
+@resonate.register
+def foo(context: Context, data):
+    # Real work goes here — external APIs, DB writes, anything serializable.
+    return {"result": f"Processed: {data}", "timestamp": time.time()}
+
+
+if __name__ == "__main__":
+    resonate.start()
+    Event().wait()
+```
+
+</TabItem>
+
+<TabItem value="rust">
+
+```rust title="src/bin/worker.rs"
+use resonate::prelude::*;
+use serde_json::Value;
+
+#[resonate::function]
+async fn foo(_: &Context, data: Value) -> Result<Value> {
+    // Real workloads call ctx.run(stepFn, ...) for checkpointed side effects.
+    Ok(json!({ "result": format!("Processed: {data}"), "timestamp": now() }))
+}
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        group: Some("worker".into()),
+        ..Default::default()
+    });
+    resonate.register(foo).unwrap();
+    tokio::signal::ctrl_c().await.unwrap();
+}
+```
+
+</TabItem>
+
+</Tabs>
+
+## Run it locally
+
+You need a Resonate Server, the worker, and the gateway running in separate terminals.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
+    ]}>
+
+<TabItem value="typescript">
+
+Clone the repo and install:
+
+```shell
+git clone https://github.com/resonatehq-examples/example-async-http-api-ts
+cd example-async-http-api-ts
+bun install
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — worker"
+bun run worker
+```
+
+```shell title="Terminal 3 — gateway"
+bun run gateway
+```
+
+</TabItem>
+
+<TabItem value="python">
+
+Clone the repo and install dependencies (uses [uv](https://docs.astral.sh/uv/)):
+
+```shell
+git clone https://github.com/resonatehq-examples/example-async-http-api-py
+cd example-async-http-api-py
+uv sync
+```
+
+```shell title="Terminal 1 — Resonate Server (legacy)"
+brew install resonatehq/tap/resonate
+resonate serve
+```
+
+```shell title="Terminal 2 — worker"
+uv run python worker.py
+```
+
+```shell title="Terminal 3 — gateway"
+uv run uvicorn main:app --host 127.0.0.1 --port 5001
+```
+
+</TabItem>
+
+<TabItem value="rust">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-async-http-api-rs
+cd example-async-http-api-rs
+cargo build
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — worker"
+cargo run --bin worker
+```
+
+```shell title="Terminal 3 — gateway"
+cargo run --bin gateway
+```
+
+</TabItem>
+
+</Tabs>
+
+Begin a workflow:
+
+```shell
+curl -X POST "http://localhost:5001/begin?id=job-001" \
+  -H "Content-Type: application/json" \
+  -d '{"foo": "hello"}'
+```
+
+The response includes a `wait` URL. Poll it:
+
+```shell
+curl "http://localhost:5001/wait?id=job-001"
+```
+
+You'll see `pending` until the worker completes, then `resolved` with the result.
+
+## Try the dedup story
+
+Call `/begin` twice with the same `id`. Resonate doesn't run the work twice — the second call reconnects to the in-flight execution and the polling endpoint returns the same eventual result. This is the same idempotency primitive that makes safe retries cheap.
+
+## Related
+
+- [Human-in-the-loop](/get-started/examples/human-in-the-loop) — the same gateway+worker shape, with a workflow that suspends on a durable promise.
+- [Load balancing](/get-started/examples/load-balancing) — what happens when you run multiple workers in the same group.

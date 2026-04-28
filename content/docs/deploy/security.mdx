@@ -1,0 +1,184 @@
+---
+title: Security
+description: Authentication and production security.
+keywords:
+  - deploy
+  - security
+  - authentication
+---
+
+This page covers authentication options for securing your Resonate Server and SDK connections.
+
+## Overview
+
+Resonate uses **JWT token-based authentication** for securing server and SDK connections.
+
+Authentication is **optional by default** but strongly recommended for production deployments.
+
+## SDK Support Matrix
+
+| Authentication Method | Server | TypeScript SDK | Rust SDK | Python SDK |
+|-----------------------|--------|----------------|----------|------------|
+| Token-based (JWT)     | ✅     | ✅             | ✅       | ❌ (planned) |
+
+<Callout type="tip" title="Python SDK users">
+The Python SDK does not yet support token-based authentication. Token auth support is planned for a future release.
+The Python SDK currently works with the legacy Resonate server only.
+</Callout>
+
+## Token-based authentication
+
+Token-based authentication uses JWT bearer tokens signed with Ed25519 keys. The server validates tokens using a public key; clients sign tokens using the corresponding private key.
+
+### Generate keys
+
+Generate an Ed25519 key pair:
+
+```bash title="Generate key pair"
+openssl genpkey -algorithm Ed25519 -out private.pem
+openssl pkey -in private.pem -pubout -out public.pem
+```
+
+### Server configuration
+
+Start the server with the public key:
+
+```bash title="Enable JWT auth"
+resonate serve --auth-publickey public.pem
+```
+
+Or set it in `resonate.toml`:
+
+```toml title="resonate.toml"
+[auth]
+publickey = "/etc/resonate/auth/public.pem"
+# Optional: enforce expected claims
+# iss = "your-issuer"
+# aud = "your-audience"
+```
+
+When auth is enabled, all API requests must include a valid JWT token in the `Authorization: Bearer <token>` header.
+
+### TypeScript SDK
+
+```typescript title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = new Resonate({
+  url: "http://localhost:8001",
+  token: process.env.RESONATE_TOKEN,
+});
+```
+
+The SDK sends the token as a `Bearer` token in the `Authorization` header automatically.
+
+#### Example: Secure production setup
+
+```typescript title="resonate-client.ts"
+import { Resonate } from "@resonatehq/sdk";
+
+const token = process.env.RESONATE_TOKEN;
+
+if (!token) {
+  throw new Error("RESONATE_TOKEN environment variable is required");
+}
+
+const resonate = new Resonate({
+  url: process.env.RESONATE_URL || "http://localhost:8001",
+  token: token,
+});
+
+export default resonate;
+```
+
+### Rust SDK
+
+```rust title="main.rs"
+use resonate::{Resonate, ResonateConfig};
+
+let resonate = Resonate::new(ResonateConfig {
+    token: std::env::var("RESONATE_TOKEN").ok(),
+    url: Some("http://localhost:8001".into()),
+    ..Default::default()
+});
+```
+
+`ResonateConfig::token` is `Option<String>`, so `std::env::var("RESONATE_TOKEN").ok()` is the idiomatic way to populate it from the environment. `Resonate::new` returns `Resonate` directly (not a `Result`).
+
+## Production best practices
+
+### Token management
+
+1. **Generate strong tokens** — Use properly signed JWTs with appropriate claims and expiry
+2. **Store securely** — Use environment variables, AWS Secrets Manager, Google Secret Manager, etc.
+3. **Rotate regularly** — Implement key rotation policies
+4. **Scope appropriately** — Use different keys for different environments (dev, staging, prod)
+
+### Network security
+
+Even with authentication enabled, follow network security best practices:
+
+- **Restrict network access** with firewalls and security groups
+- **Use private networks** when possible (VPC, private subnets)
+- **Enable rate limiting** at the load balancer or API gateway level
+
+### Monitoring
+
+Monitor authentication failures and suspicious activity:
+
+- Enable server logging with `--level debug` to see auth events
+- Set up alerts for repeated auth failures
+- Track token usage patterns
+
+See the [Observability](/deploy/logging) documentation for logging configuration.
+
+## Multi-environment setup
+
+Use different credentials for each environment:
+
+```bash title=".env.development"
+RESONATE_URL=http://localhost:8001
+RESONATE_TOKEN=dev-token-here
+```
+
+```bash title=".env.production"
+RESONATE_URL=https://resonate.yourcompany.com
+RESONATE_TOKEN=prod-token-from-secrets-manager
+```
+
+## Troubleshooting
+
+### "401 Unauthorized" errors
+
+**Symptom**: SDK requests fail with 401 status code
+
+**Common causes**:
+- Token not provided
+- Token signature doesn't match the server's public key
+- Token expired
+- Environment variable not loaded correctly
+
+**Solution**:
+1. Verify the server was started with `--auth-publickey` pointing to the correct public key
+2. Verify the SDK token was signed with the matching private key
+3. Check token expiry claims
+4. Review server logs (`--level debug`) for auth failure details
+
+## Examples and tutorials
+
+For a working example of authenticated applications:
+
+- **TypeScript**: See the [token authentication example](https://github.com/resonatehq-examples/example-token-auth-ts) repository
+
+## Next steps
+
+- [Deploy to production](/deploy/run-server) with authentication enabled
+- [Set up observability](/deploy/logging) to monitor auth events
+- [Configure message transports](/deploy/message-transports) for distributed workers
+- Review [server configuration](/deploy/run-server#configuration) for all server flags
+
+## Related documentation
+
+- [Develop with TypeScript SDK](/develop/typescript) — SDK reference with auth examples
+- [Develop with Rust SDK](/develop/rust) — SDK reference with auth examples
+- [Server configuration](/deploy/run-server#configuration) — Complete server flag reference

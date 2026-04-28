@@ -1,0 +1,144 @@
+---
+title: Develop with Resonate
+description: Build distributed applications without the distributed systems complexity.
+keywords:
+  - develop
+---
+
+<img src="/images/banner-develop-dark.png" alt="Develop with Resonate section" className="hidden dark:block" />
+<img src="/images/banner-develop-light.png" alt="Develop with Resonate section" className="block dark:hidden" />
+
+## Problems you no longer solve
+
+Distributed systems have a whole class of problems that used to require weeks of engineering, careful design, and ongoing maintenance:
+
+- **Retries and backoff** - What happens when an API call fails? Do you retry immediately? Exponentially back off? Track attempt counts?
+- **Idempotency** - How do you prevent duplicate charges, double emails, or repeated side effects when retrying failed operations?
+- **State management** - Where do you store workflow state? How do you ensure it survives crashes? How do you clean it up?
+- **Process coordination** - How do you distribute work across multiple workers? What happens when a worker dies mid-task?
+- **Long-running workflows** - How do you pause a process for hours or days without blocking threads or keeping connections open?
+- **Failure recovery** - When your service crashes mid-workflow, how do you resume from where you left off instead of starting over?
+- **Ordering and consistency** - How do you guarantee operations happen in the right order across distributed processes?
+
+**With Resonate, you don't build these anymore.** You write your business logic as straightforward code, and Resonate handles the hard distributed systems problems underneath.
+
+---
+
+## What Resonate gives you
+
+### Durable execution by default
+
+Every function you run through Resonate survives process crashes and restarts. If your service dies mid-execution, Resonate automatically:
+- Detects the failure
+- Restarts your function on another process
+- Resumes from the last successful checkpoint
+- Returns the same result as if nothing happened
+
+You don't write retry logic. You don't manage state. You just write normal code.
+
+### Automatic idempotency
+
+When Resonate retries your function, it doesn't re-execute operations that already succeeded. It replays your function using recorded results from previous attempts.
+
+This means:
+- External API calls happen once (even across retries)
+- Database writes don't duplicate
+- Payments don't charge twice
+- Emails don't send multiple times
+
+You get automatic idempotency without writing deduplication logic.
+
+### Distributed coordination primitives
+
+Resonate provides simple primitives that solve complex coordination problems:
+
+**`ctx.run()`** - Execute any function durably. The result is recorded and reused on retry.
+
+**`ctx.sleep()`** - Pause your workflow for hours, days, or weeks without blocking your process.
+
+**`ctx.rpc()`** - Call functions on other processes as if they're local. Resonate routes the work and returns the result.
+
+**Durable Promises** - Coordinate between processes, humans, and systems. Wait for external input (like approval) that might take days.
+
+These primitives compose together, letting you build complex workflows from simple pieces.
+
+### Zero dependency development
+
+Start building immediately. Resonate's local mode lets you develop and test without running a server, database, or any infrastructure.
+
+When you're ready for production, connect to a Resonate Server and your local workflows become distributed, fault-tolerant systems - without changing your code.
+
+---
+
+## How it works
+
+Resonate uses a technique called **deterministic replay**. When your process crashes, Resonate replays your function from the beginning, but instead of re-executing expensive operations (API calls, database writes), it uses recorded results from the previous attempt.
+
+This means your function must follow a few simple rules:
+- Use `ctx.run()` for any operation that might return different results (API calls, random numbers, timestamps)
+- Design functions to be safe to retry (idempotent)
+- Use `ctx.sleep()` for long waits instead of blocking
+
+These constraints ensure your functions replay correctly and survive failures. See [Constraints](/develop/constraints) for a detailed explanation.
+
+---
+
+## Getting started
+
+Choose your language and dive in:
+
+
+
+<DocCardList
+  items={[
+    {
+      type: 'link',
+      label: 'TypeScript SDK',
+      href: '/develop/typescript',
+      description: 'Install the SDK, register functions, and build durable workflows with TypeScript.',
+    },
+    {
+      type: 'link',
+      label: 'Python SDK',
+      href: '/develop/python',
+      description: 'Install the SDK, register functions, and build durable workflows with Python.',
+    },
+    {
+      type: 'link',
+      label: 'Rust SDK',
+      href: '/develop/rust',
+      description: 'Install the SDK, register functions, and build durable workflows with Rust.',
+    },
+    {
+      type: 'link',
+      label: 'Constraints',
+      href: '/develop/constraints',
+      description: 'Understand the rules for writing durable functions (determinism, idempotency, process lifetime).',
+    },
+  ]}
+/>
+
+Or jump straight into an [example application](/get-started/examples) to see real patterns in action.
+
+---
+
+## What you'll find in the SDK guides
+
+The SDK-specific pages cover everything you need to build with Resonate:
+
+**Installation** - How to add Resonate to your project
+
+**Initialization** - Setting up local mode vs production mode
+
+**Registering functions** - Making your functions durable and invocable
+
+**Client APIs** - Creating promises, invoking functions, managing workflows
+
+**Context APIs** - Using `ctx.run()`, `ctx.sleep()`, `ctx.rpc()`, and other primitives
+
+**Code examples** - Real patterns for common scenarios
+
+Each SDK page is self-contained with complete examples and API references. Pick your language and start building:
+- [TypeScript SDK guide](/develop/typescript)
+- [Python SDK guide](/develop/python)
+- [Rust SDK guide](/develop/rust)

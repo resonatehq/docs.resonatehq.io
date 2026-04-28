@@ -1,0 +1,792 @@
+---
+title: TypeScript SDK skills
+pageTitle: Skill Guide | TypeScript SDK
+description: APIs that stay simple, even when your use cases aren’t
+keywords:
+  - typescript
+  - skill-guide
+  - resonate-sdk
+---
+
+<Callout type="info" title="SDK version">
+This page reflects `@resonatehq/sdk` v0.10.1 (current on npm). APIs are subject to change in future releases.
+</Callout>
+
+**Requires Node.js 22 or later.**
+
+Whether you are a human or an AI agent, this skill guide will help you develop applications using the Resonate TypeScript SDK.
+Though this _is_ a skill guide, and not a detailed API reference and you will still likely need to refer to the detailed [Resonate TypeScript SDK API reference](https://resonatehq.github.io/resonate-sdk-ts/) for type definitions, defaults, and other technical details.
+
+This skill sheet assumes that you already know Resonate is a good fit for your use case.
+If you are unsure, please refer to [Why Resonate](/evaluate/why-resonate#the-three-pillars).
+
+It's important to think about the potential architecture of your application as it ties to your use case.
+This can determine which APIs and options you will use for function activations.
+If you have a use case in mind, but haven't built with Resonate before, we recommend reviewing some of the common patterns in our [example applications](/get-started/examples).
+
+## Installation
+
+**How to install the Resonate Typescript SDK into your project.**
+
+To install the Resonate Typescript SDK, you can use any of your favorite package managers.
+
+
+
+
+<Tabs
+    groupId="preferred-package-manager-ts"
+    defaultValue="bun"
+    values={[
+        {label: 'Bun', value: 'bun'},
+        {label: 'npm', value: 'npm'},
+        {label: 'Yarn', value: 'yarn'},
+    ]}>
+
+    <TabItem value="bun">
+
+```shell
+bun add @resonatehq/sdk
+```
+
+    </TabItem>
+
+    <TabItem value="npm">
+
+```shell
+npm install @resonatehq/sdk
+```
+
+    </TabItem>
+
+    <TabItem value="yarn">
+
+```shell
+yarn add @resonatehq/sdk
+```
+
+    </TabItem>
+
+</Tabs>
+
+Once installed, you can import the Resonate SDK into your TypeScript files, and start using the Resonate Client.
+
+## Initialization
+
+**How to initialize a Resonate Client.**
+
+Initializing a Resonate Client gives you the APIs needed to register, activate, and await on functions.
+
+```ts title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = new Resonate();
+```
+
+- A Resonate Client can connect to either an in-memory local store and message source (best for development), or a remote store and message sources (best for moving out of development).
+- You can only have one Resonate Client per process.
+- A Resonate Client can only be used in the Ephemeral World to register and activate functions, it cannot be used inside Durable Functions.
+  Use the Context APIs for function activations inside Durable Functions.
+
+Upon initialization, the Resonate Client will look for [environment variables](#environment-variables) and/or use the options passed to it.
+For example, to specify a Resonate Server and process group, pass the url and group in the options.
+
+```ts title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = new Resonate({
+  // ...
+  url: "https://localhost:8001", // Resonate Server URL
+  group: "worker-group-a", // Process group name
+  // ...
+});
+```
+
+For a comprehensive list of Resonate Client defaults, see [https://resonatehq.github.io/resonate-sdk-ts/classes/Resonate.html#constructor](https://resonatehq.github.io/resonate-sdk-ts/classes/Resonate.html#constructor).
+
+### Zero-dependency development
+
+Unlike other Durable Execution offerings, apart from installing the SDK itself, Resonate enables you to get started without any additional dependencies.
+This is because Resonate can run in a local development mode that uses in-memory storage for promises and tasks.
+
+This is ideal for getting started quickly or for integrating Resonate into an existing application without relying on dependencies.
+
+Resonate will automatically operate in "local development mode" when no URL is provided via constructor options or [environment variables](#environment-variables).
+
+```ts title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = new Resonate();
+```
+
+Local development mode can be suitable for awhile.
+However, when you want to run multiple worker processes, persist state across restarts, or share work between machines, you will need to connect to a Resonate Server.
+See the [Quickstart guide](/get-started/quickstart) or [How to run a Resonate Server](/deploy/run-server) for guidance on getting a server up and running.
+
+### Authentication
+
+The TypeScript SDK supports both **token-based** and **basic** authentication when connecting to a secured Resonate Server.
+
+#### Token-based authentication (recommended)
+
+Use JWT bearer tokens for production deployments:
+
+```ts title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = new Resonate({
+  url: "https://localhost:8001",
+  token: process.env.RESONATE_TOKEN, // Load from environment
+});
+```
+
+<Callout type="tip" title="Token-based authentication is recommended for production. See the [Security & Authentication](/deploy/security) guide for detailed configuration, best practices, and server setup.">
+
+</Callout>
+
+### Concurrency
+
+A single TypeScript worker handles multiple tasks concurrently on the Node.js event loop.
+When the server dispatches tasks to a worker, each one starts executing immediately — tasks do not queue behind each other.
+There is no concurrency limit configuration; all tasks run concurrently via `async/await`.
+
+This is efficient for I/O-bound work but means CPU-intensive tasks will block the event loop and starve other in-flight tasks.
+If your worker holds in-process state that cannot be shared across tasks, consider running multiple single-purpose worker processes instead.
+
+See [Scaling — Worker concurrency](/deploy/scaling#worker-concurrency) for concurrency strategies and patterns for stateful workers.
+
+### Message sources
+
+A Resonate Client receives messages by making HTTP Long Polling requests to a Resonate Server.
+The messages tell the client/sdk what to work on next.
+
+You can customize the transport by which the client receives messages using a transport plugin.
+For example, here is how to configure it with a [Kafka message transport plugin](https://github.com/resonatehq/resonate-transport-kafka-ts).
+
+```ts title="index.ts"
+import { type Context, Resonate } from "@resonatehq/sdk";
+import { Kafka } from "@resonatehq/kafka";
+
+const transport = new Kafka({ brokers: ["localhost:9092"] });
+await transport.start();
+
+const resonate = new Resonate({ transport });
+```
+
+The underlying protocols enable a wide range of potential message transports including SQS, Pub/Sub, RabbitMQ, NATS, and more.
+See [Message transports](/deploy/message-transports) for a complete list.
+
+### Environment Variables
+
+The Resonate client constructor automatically inspects a handful of environment variables when instantiating the SDK.
+
+**Resolution order**
+
+When a Resonate Client is instantiated, explicit constructor arguments always win.
+If an argument is not provided, the client looks for related environment variables before falling back to built-in defaults.
+
+The following order is used when determining the remote endpoint:
+
+1. `url` argument supplied to the constructor.
+2. `RESONATE_URL` environment variable.
+3. `RESONATE_SCHEME`, `RESONATE_HOST`, and `RESONATE_PORT` environment variables.
+4. Built-in local development mode (no remote network).
+
+<Callout type="tip" title="No URL means local mode (zero-dependency development)">
+If neither an argument nor environment variable produces a URL, the client falls back to a local in-memory network.
+This is convenient for unit tests or quick experiments that do not require a Resonate server.
+</Callout>
+
+#### `RESONATE_URL`
+
+- Provides the full base URL (scheme, host, and port) for connecting to a remote Resonate server.
+  Takes precedence over the individual scheme/host/port variables.
+- Default is _unset_
+- Example, compose from a single URL:
+
+  ```bash
+  export RESONATE_URL="https://resonate.example.com"
+  ```
+
+  ```ts
+  import { Resonate } from "@resonatehq/sdk";
+
+  const resonate = new Resonate(); // picks up RESONATE_URL automatically
+  ```
+
+- Example, compose a URL from components:
+
+  ```bash
+  export RESONATE_SCHEME=https
+  export RESONATE_HOST=resonate.example
+  export RESONATE_PORT=8443
+  ```
+
+  ```ts
+  const resonate = new Resonate();
+  // resolves to https://resonate.example:8443
+  ```
+
+#### `RESONATE_SCHEME`
+
+- Scheme to use when `RESONATE_URL` is unset and a host is supplied.
+  Combine with `RESONATE_HOST` (required) and `RESONATE_PORT` (optional) to build the full URL.
+- Default is _http_.
+
+#### `RESONATE_HOST`
+
+- Hostname or IP address of the remote Resonate server.
+  Must be present to use the scheme/host/port fallback path.
+- Default is _unset_.
+
+#### `RESONATE_PORT`
+
+- Port number to use when building the URL from scheme/host/port.
+  Ignored if `RESONATE_URL` is provided.
+- Default is `8001`.
+
+**Troubleshooting tips**
+
+- Prefer passing constructor arguments when bootstrapping in application code that owns configuration loading.
+  Environment variables are ideal for CLI usage, tests, or infrastructure-managed settings.
+- Always set `RESONATE_HOST` if you intend to rely on the scheme/host/port combination.
+  Without a host the client will treat the configuration as missing and default to local mode.
+
+## Client APIs
+
+The following client APIs can only be used in the Ephemeral World, they can not be used inside Durable Functions.
+
+### `.register()`
+
+Register a function to expose it to the Resonate system.
+A registered function can then be activated using by the Resonate Client, Resonate CLI, or from inside another Durable Function using the Context APIs.
+
+```ts
+function foo(ctx: Context, ...args: any[]) {
+  // ...
+  return result;
+}
+
+resonate.register(foo);
+
+// or alternatively
+resonate.register("foo", (ctx: Context, ...args: any[]) => {
+  // ...
+  return result;
+});
+```
+
+You can specify a name for the function that is different from the function name by passing it as the first argument.
+
+```ts
+resonate.register("custom-foo", (ctx: Context, ...args: any[]) => {
+  // ...
+  return result;
+});
+```
+
+Registration does provide a stub that can be used to activate the function locally, ranther than using the run or rpc methods on the Resonate Client.
+
+```ts
+const fooStub = resonate.register("foo", (ctx: Context, ...args: any[]) => {
+  // ...
+  return result;
+});
+
+fooStub.run(promiseId, args);
+```
+
+### `.setDependency()`
+
+Resonate's `.setDependency()` method enables you to set a dependency for other functions in the local call graph to use.
+
+```ts
+resonate.setDependency("dependency-name", dependency);
+```
+
+- Setting a dependency can only be done in the Ephemeral World.
+- It is useful for sharing resources like database connections across functions.
+- You can then access the dependency inside a Durable Function using Context's [`.getDependency()`](#getdependency) method.
+
+### `.run()`
+
+Resonate's `.run()` method invokes a function in the same process and returns the result.
+You can think of it as a "run right here" invocation.
+After invocation, the function is considered durable and will recover in another process if required.
+
+```ts
+const result = await resonate.run("invocation-id", foo, ...args);
+```
+
+### `.beginRun()`
+
+Similar to `.run()` but instead of returning the result, returns a handle so the result can be awaited later.
+
+```ts
+const handle = await resonate.beginRun("invocation-id", foo, ...args);
+const result = await handle.result();
+```
+
+### `.rpc()`
+
+Resonate's `.rpc()` method (Remote Procedure Call) invokes a function in a remote process and returns the result.
+You can think of it as a "run somewhere else" invocation (Asynchronous Remote Procedure Call).
+After invocation, the function is considered durable and will recover in another process if required.
+
+```ts
+// worker.ts
+resonate.register("foo", (ctx: Context, ...args: any[]) => {
+  // ...
+  return result;
+});
+```
+
+```ts
+// client.ts
+const result = await resonate.rpc(
+  "invocation-id",
+  "foo",
+  ...args,
+  resonate.options({
+    target: "poll://any@workers",
+  })
+);
+```
+
+### `.beginRpc()`
+
+Similar to `.rpc()` but instead of returning the result, returns a handle so the result can be awaited later.
+
+```ts
+const handle = await resonate.beginRpc(
+  "invocation-id",
+  "foo",
+  ...args,
+  resonate.options({
+    target: "poll://any@workers",
+  })
+);
+const result = await handle.result();
+```
+
+### `.schedule()`
+
+Resonate's `.schedule()` method allows you to schedule a function to be invoked on a specified cron schedule.
+The scheduled function will be invoked until the schedule is deleted.
+
+```ts
+const schedule = await resonate.schedule(
+  "scheduled-foo",
+  "0 * * * *", // every hour
+  foo,
+  ...args
+);
+```
+
+### `.options()`
+
+Options can be used with `.run()`, `.beginRun()`, `.rpc()`, `.beginRpc()`, and `.schedule()` as the final argument.
+
+```ts
+await resonate.run(
+  "invocation-id",
+  foo,
+  ...args,
+  resonate.options({
+    timeout: 60_000, // 1 minute in ms
+    target: "poll://any@workers",
+    tags: { key: "value" },
+  })
+);
+```
+
+### `.get()`
+
+Resonate's `.get()` method allows you to subscribe to a function invocation.
+If the function invocation does not exist, an error will be thrown.
+
+```ts
+const handle = await resonate.get("invocation-id");
+const result = await handle.result();
+```
+
+### `.promises.get()`
+
+Resonate's `.promises.get()` method allows you to get a promise by ID.
+
+```ts
+const p = await resonate.promises.get("promise-id");
+```
+
+### `.promises.create()`
+
+Resonate's `.promises.create()` method allows you to create a promise.
+
+```ts
+await resonate.promises.create(
+  "promise-id",
+  Date.now() + 30000 // 30 seconds in the future
+);
+```
+
+### `.promises.resolve()`
+
+Resonate's `.promises.resolve()` method settles a promise by ID into the `resolved` terminal state.
+
+This is useful for HITL use cases where you want to wait for a human to approve a function execution.
+It works well in conjunction with the [`.promise()`](#promise) method.
+
+```ts
+await resonate.promises.resolve(
+  id: string,
+  options?: { data?: string; headers?: Record<string, string> }
+);
+```
+
+Examples:
+
+```ts
+// Resolve a promise (optionally with data)
+await resonate.promises.resolve("promise-id");
+await resonate.promises.resolve("promise-id", {
+  data: JSON.stringify({ approved: true }),
+});
+```
+
+### `.promises.reject()`
+
+Resonate's `.promises.reject()` method settles a promise by ID into the `rejected` terminal state.
+
+```ts
+await resonate.promises.reject(
+  id: string,
+  options?: { data?: string; headers?: Record<string, string> }
+);
+```
+
+Examples:
+
+```ts
+// Reject a promise (optionally with data describing the failure)
+await resonate.promises.reject("promise-id");
+await resonate.promises.reject("promise-id", {
+  data: JSON.stringify({ reason: "denied" }),
+});
+```
+
+### `.promises.cancel()`
+
+Resonate's `.promises.cancel()` method settles a promise by ID into the `rejected_canceled` terminal state.
+
+```ts
+await resonate.promises.cancel(
+  id: string,
+  options?: { data?: string; headers?: Record<string, string> }
+);
+```
+
+Example:
+
+```ts
+// Cancel a promise
+await resonate.promises.cancel("promise-id");
+```
+
+## Context APIs
+
+**How to use the Resonate Context object in the TypeScript SDK.**
+
+Resonate's Context object enables you to invoke functions from inside a Durable Function.
+This is how you extend the Call Graph and create a world of Durable Functions.
+Inside a Durable Function you use the `yield*` keyword to interact with the Context object.
+
+### `.getDependency()`
+
+Context's `.getDependency()` method allows you to get a dependency that was set in the ephemeral world using the [`.setDependency()`](#setdependency) method and use it the Durable World.
+
+```ts
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const dependency = ctx.getDependency("dependency-name");
+  // do something with the dependency
+  // ...
+});
+```
+
+### `.run()`
+
+Context's `.run()` method invokes a function in the **same process** in a **synchronous manner**.
+That is — the calling function blocks until the invoked function returns.
+
+```ts
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const result = yield* ctx.run(bar, ...args);
+  // do more stuff
+  // ...
+});
+
+function bar(ctx: Context, ...args: any[]) {
+  // ...
+  return;
+}
+```
+
+### `.beginRun()`
+
+Context's `.beginRun()` method invokes a function in the **same process** in an **asynchronous manner**.
+That is — the invocation returns a promise which can be awaited later.
+
+```ts
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const promise = yield* ctx.beginRun(bar, ...args);
+  // do more stuff
+  const result = yield* promise;
+  // ...
+});
+
+function bar(ctx: Context, ...args: any[]) {
+  // ...
+  return;
+}
+```
+
+### `.rpc()`
+
+Context's `.rpc()` method invokes a function in a **remote process** in a **synchronous manner**.
+That is — the calling function blocks until the invoked function returns.
+
+```ts
+// process a
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const result = yield* ctx.rpc(
+    "bar",
+    ...args,
+    ctx.options({ target: "poll://any@workers" })
+  );
+  // do more stuff
+  // ...
+});
+
+// process b
+resonate.register("bar", function (ctx: Context, ...args: any[]) {
+  // ...
+  return;
+});
+```
+
+### `.beginRpc()`
+
+Context's `.beginRpc()` method invokes a function in a **remote process** in an **asynchronous manner**.
+That is — the invocation returns a promise which can be awaited on later.
+
+```ts
+// process a
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const promise = yield* ctx.beginRpc(
+    "bar",
+    ...args,
+    ctx.options({ target: "poll://any@workers" })
+  );
+  // do more stuff
+  const result = yield* promise;
+  // ...
+});
+
+// process b
+resonate.register("bar", function (ctx: Context, ...args: any[]) {
+  // ...
+  return;
+});
+```
+
+### `.detached()`
+
+Context's `.detached()` method invokes a function in a **remote process** in an **asynchronous manner**
+but unlike `.beginRpc()`, the promise is not implictly awaited.
+Use `.detached()` when you want to fire-and-forget a function invocation.
+
+```ts
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  yield* ctx.detached("bar", ...args);
+  // do more stuff
+});
+```
+
+### `.options()`
+
+Options can be used with `.run()`, `.beginRun()`, `.rpc()`, `.beginRpc()`, and `.detached()` as the final argument.
+
+```ts
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  yield* ctx.run(
+    bar,
+    ...args,
+    ctx.options({
+      timeout: 60_000, // 1 minute in ms
+      target: "poll://any@workers",
+      tags: { key: "value" },
+    })
+  );
+});
+```
+
+### `.promise()`
+
+Context's `.promise()` method allows you to get or create a promise that can be awaited on.
+
+A new promise is created and its ID is generated automatically.
+
+This is very useful for HITL (Human-In-The-Loop) use cases where you want to block progress until a human has taken an action or provided data.
+It works well in conjunction with the [`.promises.resolve()`](#promisesresolve), [`.promises.reject()`](#promisesreject), and [`.promises.cancel()`](#promisescancel) methods.
+
+```ts
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const promise = yield* ctx.promise();
+  // do more stuff
+  const result = yield* promise;
+  // ...
+});
+```
+
+You can also pass custom data into the promise.
+
+```ts
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const promise = yield* ctx.promise({ data: { key: "value" } });
+  // do more stuff
+  const result = yield* promise;
+  // ...
+});
+```
+
+### `.sleep()`
+
+There is no limit to how long the function can sleep.
+
+This API accepts either a millisecond duration or an options object.
+The options object can specify a duration with the `for` property or an absolute wake-up time with the `until` property.
+
+```ts
+yield* ctx.sleep(5_000); // wait 5 seconds
+yield* ctx.sleep({ for: 5_000 }); // identical to passing the number
+yield* ctx.sleep({ until: new Date() });
+```
+
+Passing a number or `for` value always measures the delay in milliseconds from "now".
+`until` expects a JavaScript `Date` instance representing the exact time when the workflow should resume.
+
+The options object is useful when you want to build the wake-up time conditionally before calling `sleep`.
+
+**Sleep for a fixed duration.**
+
+```ts
+import { Context, Resonate } from "@resonatehq/sdk";
+
+const resonate = new Resonate();
+
+resonate.register("send-reminder", function* (ctx: Context, userId: string) {
+  // Pause for five seconds without blocking the worker
+  yield* ctx.sleep(5_000);
+
+  yield* ctx.rpc("notify-user", userId);
+});
+```
+
+**Sleep until a calendar time.**
+
+```ts
+import { Context, Resonate } from "@resonatehq/sdk";
+
+const resonate = new Resonate();
+
+resonate.register("schedule-digest", function* (ctx: Context, userId: string) {
+  const nextEightAm = new Date();
+  nextEightAm.setHours(8, 0, 0, 0);
+
+  // If it is already past 8am today, schedule for tomorrow
+  if (nextEightAm.getTime() <= Date.now()) {
+    nextEightAm.setDate(nextEightAm.getDate() + 1);
+  }
+
+  // Resume exactly at 8am
+  yield* ctx.sleep({ until: nextEightAm });
+
+  yield* ctx.rpc("send-digest", userId);
+});
+```
+
+### `.date.now()`
+
+Context's `.date.now()` method allows you to deterministically get the time in milliseconds since the epoch.
+If your function execution is recovered after the time has been retrieved, the same time will be returned.
+This is helpful for ensuring the same code path is taken in the event of a recovery.
+
+```ts
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const time = yield* ctx.date.now();
+  // do something with time
+  // ...
+});
+```
+
+### `.math.random()`
+
+Context's `.math.random()` method allows you to generate a deterministic random number.
+If your function execution is recovered after the random number has been generated, the same number will be returned.
+This is helpful for ensuring the same code path is taken in the event of a recovery.
+
+```ts
+resonate.register("foo", function* (ctx: Context, ...args: any[]) {
+  // ...
+  const rand = yield* ctx.math.random();
+  // do something with rand
+  // ...
+});
+```
+
+### `.panic()` and `.assert()`
+
+Context's `.panic()` and `.assert()` aborts the top level durable execution based on a condition.
+`.panic()` will abort if the condition is true. `.assert()` will abort if the condition is false.
+These methods are intended to be used for invariant violations, for normal operation errors it is recommended
+to throw an Exception.
+
+```ts
+resonate.register("foo", function* (ctx: Context) {
+  // ...
+  yield* ctx.panic(true, "Invariant violation");
+  // Code after this call will not be executed
+});
+```
+
+```ts
+resonate.register("foo", function* (ctx: Context) {
+  // ...
+  yield* ctx.panic(false, "Invariant violation");
+  // Code after this call will be executed as normal
+});
+```
+
+```ts
+resonate.register("foo", function* (ctx: Context) {
+  // ...
+  yield* ctx.assert(false, "Invariant violation");
+  // Code after this call will not be executed
+});
+```
+
+```ts
+resonate.register("foo", function* (ctx: Context) {
+  // ...
+  yield* ctx.assert(true, "Invariant violation");
+  // Code after this call will be executed as normal
+});
+```
