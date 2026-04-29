@@ -114,7 +114,7 @@ from resonate import Resonate
 import uuid
 
 app = FastAPI()
-resonate = Resonate().remote(group="gateway")
+resonate = Resonate.remote(group="gateway")
 
 
 @app.post("/begin")
@@ -126,7 +126,7 @@ def begin(data=None, id=None):
         data = {"foo": "bar"}
 
     handle = resonate.options(target="poll://any@worker").begin_rpc(
-        func="foo", id=id, data=data
+        id, "foo", data,
     )
     return {"promise": handle.id, "status": "pending", "wait": f"/wait?id={handle.id}"}
 
@@ -219,7 +219,7 @@ from resonate import Context, Resonate
 from threading import Event
 import time
 
-resonate = Resonate().remote(group="worker")
+resonate = Resonate.remote(group="worker")
 
 
 @resonate.register

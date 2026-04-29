@@ -16,7 +16,7 @@ Troubleshooting steps are categorized by error code ranges:
 
 - [Server request errors (40000-49999)](#server-request-errors)
 - [Server errors (50000-59999)](#server-errors)
-- [Python SDK errors (1000-1099)](#python-sdk-errors)
+- [Python SDK errors (100.x, 200, 201, 300)](#python-sdk-errors)
 - [TypeScript SDK errors (1100-1199)](#typescript-sdk-errors)
 
 ## Server request errors
@@ -177,13 +177,29 @@ The scheduler queue is full. Please try again later.
 
 ## Python SDK errors
 
-**Range: 1000 - 1099**
+These are the exception classes raised by the Python SDK (`resonate-sdk` v0.6.7).
+Each exception has a numeric `code` attribute. Codes are not contiguous integers — they fall into a few ranges keyed off the underlying failure domain.
 
-These are known errors you may encounter when using the Python SDK.
+If the problem persists, open a [GitHub issue](https://github.com/resonatehq/resonate-sdk-py/issues/new) with details, including the error code and steps to reproduce.
+Or reach out via [Discord](https://resonatehq.io/discord) for support.
 
-<Callout type="tip" title="SDK update required">
-And update is required to the Python SDK to support these error codes.
-</Callout>
+### `ResonateStoreError` (codes `100.x`)
+
+Raised when a store operation against the Resonate Server (or the in-process local store) fails. The fractional part embeds the server's request error code — e.g. `100.40400` corresponds to a server `40400` (promise/schedule not found), `100.40303` to `40303` (promise already timed out), `100.40305` to `40305` (task already claimed), `100.40403` to `40403` (task not found), `100.40399` to a state-machine transition error, and `100.0` to a transport-level failure (request timed out, failed to connect, or unknown exception).
+
+For the meaning of the embedded server code, see [Server request errors](#server-request-errors).
+
+### `ResonateCanceledError` (code `200`)
+
+Raised when a promise is canceled. The `promise_id` attribute identifies the canceled promise.
+
+### `ResonateTimedoutError` (code `201`)
+
+Raised when a promise times out before it is resolved or rejected. Carries `promise_id` and `timeout` attributes.
+
+### `ResonateShutdownError` (code `300`)
+
+Raised when the Resonate client is shutting down and an in-flight operation cannot proceed.
 
 ## TypeScript SDK errors
 
