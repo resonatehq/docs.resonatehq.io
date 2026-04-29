@@ -203,22 +203,21 @@ When one worker calls another, spans are linked across workers:
 
 ```typescript
 // Worker A
-resonate.register("orderWorkflow", async (ctx, order) => {
+resonate.register("orderWorkflow", function* (ctx, order) {
   // Span: "orderWorkflow" on Worker A
-  
-  const result = await resonate.rpc(
-    `inventory-${order.id}`,
+
+  const result = yield* ctx.rpc(
     "checkInventory",
     order.items,
-    resonate.options({ target: "poll://any@inventory-workers" })
+    ctx.options({ target: "poll://any@inventory-workers" })
   );
   // Creates linked span on Worker B
-  
+
   return result;
 });
 
 // Worker B (inventory-workers group)
-resonate.register("checkInventory", async (ctx, items) => {
+resonate.register("checkInventory", (ctx, items) => {
   // Span: "checkInventory" on Worker B
   // Parent: "orderWorkflow" on Worker A
 });

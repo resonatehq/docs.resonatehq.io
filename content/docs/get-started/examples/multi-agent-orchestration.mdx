@@ -132,8 +132,10 @@ To extend the pipeline with human approval, replace the inline `approved` calcul
 
 ```typescript
 // Suspend until an external system (HTTP handler, CLI, button click)
-// resolves the promise.
-const approved = yield* ctx.promise<boolean>({ id: `approval/${topic}` });
+// resolves the promise. ctx.promise() creates a child promise whose ID
+// is `${ctx.id}.<seq>` — deterministic from the orchestrator's execution ID.
+const approvalPromise = yield* ctx.promise<boolean>();
+const approved = yield* approvalPromise;
 ```
 
 </TabItem>
