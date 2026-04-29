@@ -159,7 +159,7 @@ In production, collect logs from all servers and workers into a centralized syst
 ```yaml
 services:
   resonate-server:
-    image: resonatehqio/resonate:v0.9.4
+    image: resonatehqio/resonate:v0.9.5
     logging:
       driver: "json-file"
       options:
@@ -182,7 +182,7 @@ metadata:
 spec:
   containers:
   - name: server
-    image: resonatehqio/resonate:v0.9.4
+    image: resonatehqio/resonate:v0.9.5
 ```
 
 Or use Fluent Bit / Fluentd as a DaemonSet to forward logs to your aggregation system.
