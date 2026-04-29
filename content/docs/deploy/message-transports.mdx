@@ -8,41 +8,126 @@ keywords:
   - configuration
 ---
 
-Resonate supports transport plugins for message communication between Clients and Servers. In v0.9.5, the supported non-HTTP message transports are GCP Pub/Sub and bash exec. Kafka and SQS transports are not yet available in the current server release.
+The Resonate Server delivers task messages to workers over a configurable set of transports. As of v0.9.5, four transports ship in the server binary:
 
-### GCP Pub/Sub server plugin
+| Transport | Address scheme | Enable flag | Default |
+|---|---|---|---|
+| HTTP push | `http://` / `https://` | `--transports-http-push-enabled` | `true` |
+| HTTP poll (SSE) | (used by SDK clients that long-poll the server) | `--transports-http-poll-enabled` | `true` |
+| GCP Pub/Sub | `gcps://` | `--transports-gcps-enabled` | `false` |
+| Bash exec | `bash:///` | `--transports-bash-exec-enabled` | `false` |
 
-What does it do?
+Each transport can be turned on or off independently. The full CLI flag list is on the [Run a server](/deploy/run-server#cli-flags) page; the equivalent `resonate.toml` keys live under `[transports.<name>]`.
 
-This plugin enables the server to put messages (containing task information) onto GCP Pub/Sub topics for consumption by SDK Clients using the SDK's Pub/Sub transport plugin.
+## HTTP push
 
-Where to find it?
+The HTTP push transport delivers task messages by `POST`ing to a worker URL embedded in the task address (for example `https://workers.example.com/tasks`). It's enabled by default and needs no further configuration for unauthenticated targets.
 
-The GCP Pub/Sub transport is built into the v0.9.5 server binary — no rebuild required.
+For deployments where the target service requires authentication, the server can sign outbound requests with a static bearer token or a GCP OIDC ID token. See [Outbound HTTP push authentication](/deploy/security#outbound-http-push-authentication) on the Security page.
 
-Enable the plugin at runtime with the `--transports-gcps-project` flag:
+## HTTP poll (SSE)
+
+The HTTP poll transport lets SDK clients receive tasks over a long-lived Server-Sent Events stream instead of an inbound HTTP push. It's enabled by default and requires no per-deployment configuration; concurrency limits are tunable via `--transports-http-poll-max-connections` and `--transports-http-poll-buffer-size`.
+
+## GCP Pub/Sub
+
+The GCP Pub/Sub transport puts task messages onto Pub/Sub topics for consumption by SDK clients using the matching client-side plugin.
+
+Enable it at runtime with the GCP project ID:
 
 ```shell
-resonate serve --transports-gcps-project my-gcp-project-id
+resonate serve \
+  --transports-gcps-enabled true \
+  --transports-gcps-project my-gcp-project-id
 ```
 
 Or in `resonate.toml`:
 
 ```toml
 [transports.gcps]
+enabled = true
 project = "my-gcp-project-id"
 ```
 
-Or via env var: `RESONATE_TRANSPORTS__GCPS__PROJECT=my-gcp-project-id`.
+Or via env var: `RESONATE_TRANSPORTS__GCPS__ENABLED=true` and `RESONATE_TRANSPORTS__GCPS__PROJECT=my-gcp-project-id`.
 
-### Bash exec server plugin
+Authentication uses Application Default Credentials (ADC) — make sure the server process has access to credentials with publish rights on the target project.
 
-**New in v0.9.5.** The server can dispatch tasks by executing a configured shell command per message, useful for local-process workers and lightweight exec-driven workflows. Full docs forthcoming; for now, see the v0.9.5 release notes ([resonatehq/resonate#47](https://github.com/resonatehq/resonate/pull/47)) for the flag surface.
+## Bash exec
 
-### Kafka server plugin
+The bash exec transport runs a shell command on the server host for each delivered task. It's intended for local-process workers, lightweight wrappers around CLI tools, and self-hosted single-host deployments where running a separate worker process is overkill.
+
+The transport is **disabled by default**. Enable it explicitly:
+
+```shell
+resonate serve --transports-bash-exec-enabled true
+```
+
+Or in `resonate.toml`:
+
+```toml
+[transports.bash_exec]
+enabled = true
+# Required for named scripts; not required for inline scripts.
+root_dir = "/etc/resonate/scripts"
+# Working directory for named-script execution. One of:
+#   "<root>"   — CWD is set to root_dir (default)
+#   "<script>" — CWD is set to the script's parent directory
+#   any path   — CWD is set to that literal path
+working_dir = "<root>"
+```
+
+<Callout type="caution" title="Security">
+The bash exec transport runs arbitrary shell commands as the user running the server. Only enable it on hosts where every promise creator is trusted, and prefer named scripts (with `root_dir` set to a non-writable directory) over inline scripts in production.
+</Callout>
+
+### Address forms
+
+A task address controls how bash exec runs the command:
+
+| Address | Mode | What runs |
+|---|---|---|
+| `bash:///` | Inline | The script body is `param.data` on the promise (base64-encoded) |
+| `bash:///relative/path.sh` | Named script | The file at `<root_dir>/relative/path.sh` is invoked with arguments from `param.data` |
+
+In both modes the server sets `RESONATE_PROMISE_ID` in the script's environment so the script can correlate logs, metrics, or follow-on calls back to the originating promise.
+
+### Inline scripts
+
+For inline scripts, set the promise's `param.data` to the base64-encoded script body:
+
+```bash
+echo -n 'echo "hello from $RESONATE_PROMISE_ID"' | base64
+# ZWNobyAiaGVsbG8gZnJvbSAkUkVTT05BVEVfUFJPTUlTRV9JRCI=
+```
+
+Then create a task targeting `bash:///` with that base64 as `param.data`. The server invokes `bash -c "<decoded script>"`.
+
+### Named scripts
+
+Set `bash_exec.root_dir` in config, place an executable script at e.g. `<root_dir>/build/release.sh`, and target `bash:///build/release.sh`. Pass arguments by setting `param.data` to a JSON array of strings:
+
+```json
+["v1.2.3", "production"]
+```
+
+The server invokes `bash <root_dir>/build/release.sh v1.2.3 production` with `RESONATE_PROMISE_ID` in the environment.
+
+### Settle behavior
+
+The promise is settled from the script's exit status:
+
+- **Exit `0`** — the promise resolves with the script's `stdout` (trimmed of trailing whitespace) as the resolved value.
+- **Exit non-zero** — the promise rejects. The rejection reason is the script's `stderr` if non-empty, otherwise the literal string `exit code N`.
+
+A failure to spawn `bash`, a missing named script, or malformed `param.data` (e.g. non-array JSON for a named script) all cause the promise to reject with a descriptive reason.
+
+While the script runs, the server refreshes the task lease at one third of `tasks.lease_timeout` so long-running scripts don't lose their lease.
+
+## Kafka
 
 **Not available in v0.9.5.** Kafka transport support is planned for a future release. The Kafka SDK plugin ([resonatehq/resonate-transport-kafka-ts](https://github.com/resonatehq/resonate-transport-kafka-ts)) exists for use with future server versions once server-side support is added.
 
-### SQS server plugin
+## SQS
 
 **Not available in v0.9.5.** AWS SQS transport support is planned for a future release.
