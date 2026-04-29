@@ -106,6 +106,17 @@ url = "postgres://user:pass@host:5432/resonate"
 pool_size = 20
 ```
 
+For MySQL, the equivalent block is:
+
+```toml title="resonate.toml — MySQL"
+[storage]
+type = "mysql"
+
+[storage.mysql]
+url = "mysql://user:pass@host:3306/resonate"
+pool_size = 20
+```
+
 To enable JWT auth, add an `[auth]` section:
 
 ```toml title="resonate.toml — auth enabled"
@@ -147,9 +158,11 @@ Run `resonate serve --help` for the full list. Common flags:
 | `--server-bind` | `0.0.0.0` | Bind address |
 | `--server-url` | `http://{host}:{port}` | Externally-reachable URL (required for distributed deployments where workers call back to the server) |
 | `--level` | `info` | Log level: `debug`, `info`, `warn`, `error` |
-| `--storage-type` | `sqlite` | Storage backend: `sqlite` or `postgres` |
+| `--storage-type` | `sqlite` | Storage backend: `sqlite`, `postgres`, or `mysql` |
 | `--storage-postgres-url` | — | Postgres connection string |
 | `--storage-postgres-pool-size` | `10` | Postgres connection pool size |
+| `--storage-mysql-url` | — | MySQL connection string |
+| `--storage-mysql-pool-size` | `10` | MySQL connection pool size |
 | `--auth-publickey` | — | Path to JWT public key (PEM format) for authentication |
 | `--server-cors-allow-origin` | — | Allowed CORS origin (repeatable; use `*` for permissive). See [Security › CORS](/deploy/security#cors-cross-origin-resource-sharing) |
 | `--tasks-lease-timeout` | `15000` (ms) | Task lease timeout |
@@ -211,6 +224,79 @@ resonate serve \
 Migrations are applied automatically on first startup.
 
 See the [Availability](/deploy/availability) guide for high-availability PostgreSQL configuration.
+
+## Run with MySQL
+
+MySQL is a third storage option alongside SQLite and PostgreSQL. Use it when your operational tooling already centers on MySQL.
+
+With a `resonate.toml` (recommended):
+
+```toml title="resonate.toml"
+[storage]
+type = "mysql"
+
+[storage.mysql]
+url = "mysql://user:pass@localhost:3306/resonate"
+pool_size = 20
+```
+
+Or with CLI flags:
+
+```shell
+resonate serve \
+  --storage-type mysql \
+  --storage-mysql-url "mysql://user:pass@localhost:3306/resonate" \
+  --storage-mysql-pool-size 20
+```
+
+Or with environment variables:
+
+```shell
+RESONATE_STORAGE__TYPE=mysql
+RESONATE_STORAGE__MYSQL__URL=mysql://user:pass@localhost:3306/resonate
+RESONATE_STORAGE__MYSQL__POOL_SIZE=20
+```
+
+Migrations are applied automatically on first startup. MySQL 8.0 or later is required (the schema relies on generated columns and JSON path expressions).
+
+A minimal Docker Compose stack that boots the server against a MySQL service:
+
+```yaml title="docker-compose.yml — MySQL"
+services:
+  resonate-server:
+    image: resonatehqio/resonate:v0.9.5
+    ports:
+      - "8001:8001"
+      - "9090:9090"
+    environment:
+      RESONATE_SERVER__BIND: "0.0.0.0"
+      RESONATE_STORAGE__TYPE: mysql
+      RESONATE_STORAGE__MYSQL__URL: mysql://resonate:resonate@mysql:3306/resonate
+      RESONATE_STORAGE__MYSQL__POOL_SIZE: 20
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: resonate
+      MYSQL_USER: resonate
+      MYSQL_PASSWORD: resonate
+      MYSQL_DATABASE: resonate
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "resonate", "-presonate"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+```
+
+<Callout type="caution" title="VARCHAR(255) limit on identifiers">
+The MySQL schema stores promise IDs, task IDs, listener addresses, and a few derived tag values (`resonate:target`, `resonate:origin`, `resonate:branch`) as `VARCHAR(255)`.
+Inputs that exceed 255 characters fail with a `400 InvalidInput` response. SQLite and Postgres do not enforce this bound, so applications written against those backends should verify ID lengths before switching to MySQL.
+</Callout>
 
 ## Deploy to GCP Cloud Run
 
