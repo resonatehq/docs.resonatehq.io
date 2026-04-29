@@ -15,7 +15,7 @@ keywords:
 A workflow that computes `n!` by calling itself with `n-1`. Each recursive call dispatches via `ctx.rpc` to whichever worker in the group claims it — recursion ends up distributed across machines without any explicit coordination, and every step is checkpointed so a worker crash mid-recursion resumes cleanly.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
 </Callout>
 
 <CloneRepoGrid>
