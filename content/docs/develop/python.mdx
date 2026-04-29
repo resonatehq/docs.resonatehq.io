@@ -124,9 +124,9 @@ To connect to a specific host and port, pass them explicitly:
 from resonate import Resonate
 
 resonate = Resonate.remote(
-    host="localhost",
-    store_port=8001,
-    message_source_port=8001,
+    host="http://localhost",
+    store_port="8001",
+    message_source_port="8001",
 )
 ```
 
@@ -454,6 +454,8 @@ def foo(ctx, arg):
 
 Options can be used following `.run()`, `.begin_run()`, `.rpc()`, `.begin_rpc()`, and `.detached()`.
 
+Local calls (`.run()` / `.begin_run()`) accept `durable`, `encoder`, `id`, `idempotency_key`, `non_retryable_exceptions`, `retry_policy`, `tags`, and `timeout`.
+
 ```py
 from resonate.retry_policies import Exponential, Constant, Linear, Never
 
@@ -465,6 +467,20 @@ def foo(ctx, arg):
         idempotency_key="custom-ikey",
         durable=True,
         retry_policy=Exponential(), # or Constant(), Linear(), Never()
+        tags={"key": "value"},
+        timeout=30.0,
+    )
+```
+
+Remote calls (`.rpc()` / `.begin_rpc()` / `.detached()`) accept `encoder`, `id`, `idempotency_key`, `tags`, `target`, `timeout`, and `version`.
+
+```py
+@resonate.register
+def foo(ctx, arg):
+    # ...
+    yield ctx.rpc("bar", arg).options(
+        id="custom-id",
+        idempotency_key="custom-ikey",
         target="poll://any@workers",
         tags={"key": "value"},
         timeout=30.0,
