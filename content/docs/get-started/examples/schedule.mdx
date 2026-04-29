@@ -83,11 +83,15 @@ resonate.stop();
 
 <TabItem value="python">
 
+<Callout type="warn" title="Python schedule API status">
+The high-level `resonate.schedule(...)` shown below is **not yet available in `resonate-sdk` v0.6.7** (current PyPI release). For v0.6.7, use the lower-level `resonate.schedules.create(id, cron, promise_id, promise_timeout, ...)` API, which fires a fresh durable promise on each cron tick and lets a registered worker handle it. The high-level shape is on the Python SDK roadmap.
+</Callout>
+
 ```python title="schedule.py"
 from resonate import Resonate
 from report import generate_report
 
-resonate = Resonate(url="http://localhost:8001")
+resonate = Resonate.remote(host="http://localhost", port="8001")
 resonate.register(generate_report)
 
 resonate.schedule(
