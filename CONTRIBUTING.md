@@ -4,7 +4,7 @@ Open a GitHub issue before submitting a pull request for non-trivial changes. Jo
 
 ## Stack
 
-This site is built with **[Next.js 15](https://nextjs.org/)** + **[fumadocs](https://fumadocs.dev/)**. Content lives as MDX under [`content/docs/`](./content/docs/) and is root-routed — `content/docs/get-started/quickstart.mdx` resolves to `https://docs.resonatehq.io/get-started/quickstart`. Deployed to Vercel on push to `main`; PRs get preview URLs.
+This site is built with **[Next.js 15](https://nextjs.org/)** + **[fumadocs](https://fumadocs.dev/)**. Content lives as MDX under [`content/docs/`](./content/docs/) and is root-routed — `content/docs/get-started/quickstart.mdx` resolves to `https://docs.resonatehq.io/get-started/quickstart`. Deployed to Vercel on push to `main`.
 
 The package manager is **npm**. The canonical lockfile is `package-lock.json`. Don't reintroduce `yarn.lock` — mixing managers will drift the dep tree.
 
@@ -32,7 +32,7 @@ npm run build
 
 ## Authoring rules
 
-- **Open a PR — don't push to `main`.** Vercel previews make review trivial.
+- **Open a PR — don't push to `main`.**
 - **Voice is Echo:** technical, precise, friendly but not casual. Match the tone of existing pages.
 - **Code samples must run against the current SDK.** Stale snippets are the #1 doc bug. When you change a snippet, run it against the SDK or note the version it targets.
 - **Don't ship docs for unreleased APIs** unless they're clearly marked experimental/preview.
