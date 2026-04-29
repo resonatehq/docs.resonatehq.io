@@ -154,12 +154,34 @@ Run `resonate serve --help` for the full list. Common flags:
 | `--tasks-lease-timeout` | `15000` (ms) | Task lease timeout |
 | `--tasks-retry-timeout` | `30000` (ms) | Suspend/wake retry interval. Lower values (e.g. `500`) significantly reduce latency for chained or recursive workflows |
 | `--observability-metrics-port` | `9090` | Prometheus metrics port (`0` to disable) |
-| `--transports-gcps-project` | — | GCP Pub/Sub project ID for message transport |
 
 <Callout type="tip" title="tasks-retry-timeout">
 The default `--tasks-retry-timeout` of 30 seconds adds significant latency to chained workflows (sagas, recursive fan-out).
 For most deployments, set this to `500` (milliseconds) to keep suspend/wake cycles fast.
 </Callout>
+
+#### Transport flags
+
+v0.9.5 added explicit enable/disable flags for every transport so operators can shape which delivery paths are live per deployment. See [Message transports](/deploy/message-transports) for the per-transport behaviour.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--transports-http-push-enabled` | `true` | Enable the `http://` / `https://` push transport |
+| `--transports-http-poll-enabled` | `true` | Enable the SSE poll transport used by long-polling SDK clients |
+| `--transports-gcps-enabled` | `false` | Enable the `gcps://` GCP Pub/Sub transport |
+| `--transports-gcps-project` | — | Default GCP project ID for the Pub/Sub transport |
+| `--transports-bash-exec-enabled` | `false` | Enable the `bash:///` local-script transport (see [Bash exec](/deploy/message-transports#bash-exec)) |
+
+#### Outbound HTTP push authentication flags
+
+v0.9.5 added outbound authentication for HTTP push deliveries so workers behind authenticated endpoints (for example GCP Cloud Run with `--no-allow-unauthenticated`) can verify the server's identity. See [Outbound HTTP push authentication](/deploy/security#outbound-http-push-authentication) for the full configuration guide.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--transports-http-push-auth-mode` | `none` | Outbound auth mode: `none`, `bearer`, or `gcp` |
+| `--transports-http-push-auth-token` | — | Static bearer token (used only when `mode = bearer`) |
+| `--transports-http-push-auth-aud` | delivery target URL | Fixed OIDC audience (used only when `mode = gcp`; defaults to the per-delivery target URL) |
+| `--transports-http-push-auth-header` | `Authorization` | Name of the request header that carries the token |
 
 ## Run with PostgreSQL
 
