@@ -43,7 +43,7 @@ When an error occurs, the response body will contain the following information.
         "message": "attempt to write a readonly database",
         "domain": "server",
         "metadata": {
-          "url": "https://docs.resonatehq.io/reference/error-codes#5002"
+          "url": "https://docs.resonatehq.io/debug/errors#5002"
         }
       }
     ]
@@ -235,6 +235,30 @@ Dependency 'x' is not registered. Will drop.
 **ENCODING_ARGS_UNENCODEABLE**
 
 Function arguments cannot be encoded.
+
+### 1107
+
+**ENCODING_ARGS_UNDECODEABLE**
+
+Function arguments cannot be decoded.
+
+### 1108
+
+**ENCODING_RETV_UNENCODEABLE**
+
+The return value from a function cannot be encoded.
+
+### 1109
+
+**ENCODING_RETV_UNDECODEABLE**
+
+The return value from a function cannot be decoded.
+
+### 1198
+
+**PANIC**
+
+An unrecoverable internal error occurred in the SDK.
 
 ### 1199
 
