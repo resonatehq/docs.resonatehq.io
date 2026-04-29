@@ -399,6 +399,22 @@ await resonate.run(
 );
 ```
 
+Local calls (`.run()` / `.beginRun()`) also accept `nonRetryableErrors`, an array of error class constructors that should not be retried by Resonate's retry policy.
+When the invoked function throws an instance of any listed class (or a subclass), Resonate skips the retry policy and rejects the call with the thrown error.
+
+```ts
+class ValidationError extends Error {}
+
+await resonate.run(
+  "invocation-id",
+  foo,
+  ...args,
+  resonate.options({
+    nonRetryableErrors: [ValidationError],
+  })
+);
+```
+
 ### `.get()`
 
 Resonate's `.get()` method allows you to subscribe to a function invocation.
@@ -633,6 +649,30 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
     })
   );
 });
+```
+
+Local calls (`.run()` / `.beginRun()`) also accept `nonRetryableErrors`, an array of error class constructors that should not be retried by Resonate's retry policy.
+When the invoked function throws an instance of any listed class (or a subclass), Resonate skips the retry policy and rejects the call with the thrown error.
+This pairs well with `retryPolicy`: errors that match `nonRetryableErrors` short-circuit retries, while all other errors still follow the configured policy.
+
+```ts
+class ValidationError extends Error {}
+
+resonate.register("foo", function* (ctx: Context, input: unknown) {
+  yield* ctx.run(
+    validate,
+    input,
+    ctx.options({
+      nonRetryableErrors: [ValidationError],
+    })
+  );
+});
+
+function validate(ctx: Context, input: unknown) {
+  if (!isValid(input)) {
+    throw new ValidationError("input failed validation");
+  }
+}
 ```
 
 ### `.promise()`
