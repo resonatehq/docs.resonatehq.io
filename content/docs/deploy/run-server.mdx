@@ -151,6 +151,7 @@ Run `resonate serve --help` for the full list. Common flags:
 | `--storage-postgres-url` | — | Postgres connection string |
 | `--storage-postgres-pool-size` | `10` | Postgres connection pool size |
 | `--auth-publickey` | — | Path to JWT public key (PEM format) for authentication |
+| `--server-cors-allow-origin` | — | Allowed CORS origin (repeatable; use `*` for permissive). See [Security › CORS](/deploy/security#cors-cross-origin-resource-sharing) |
 | `--tasks-lease-timeout` | `15000` (ms) | Task lease timeout |
 | `--tasks-retry-timeout` | `30000` (ms) | Suspend/wake retry interval. Lower values (e.g. `500`) significantly reduce latency for chained or recursive workflows |
 | `--observability-metrics-port` | `9090` | Prometheus metrics port (`0` to disable) |

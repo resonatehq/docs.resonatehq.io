@@ -105,6 +105,73 @@ let resonate = Resonate::new(ResonateConfig {
 
 `ResonateConfig::token` is `Option<String>`, so `std::env::var("RESONATE_TOKEN").ok()` is the idiomatic way to populate it from the environment. `Resonate::new` returns `Resonate` directly (not a `Result`).
 
+## CORS (Cross-Origin Resource Sharing)
+
+Browser-based clients — SDK applications running in a tab, internal dashboards, agent UIs — need CORS headers to call the Resonate Server from a different origin. CORS is **disabled by default**; the server only emits CORS headers when you configure one or more allowed origins.
+
+### Why CORS matters
+
+If your server is at `https://resonate.yourcompany.com` and your client runs at `https://app.example.com`, the browser will block the request unless the server returns the appropriate `Access-Control-Allow-Origin` headers. CORS configuration covers the HTTP API and the long-poll/SSE delivery endpoint together — both are served from the same router.
+
+Server-to-server traffic (workers calling the API from a backend process) is not affected by CORS. Configure it only if a browser is in the request path.
+
+### Server configuration
+
+Configure allowed origins in `resonate.toml`:
+
+```toml title="resonate.toml — CORS"
+[server.cors]
+allow_origins = ["https://app.example.com"]
+```
+
+Or via environment variable:
+
+```bash title="Environment variable"
+RESONATE_SERVER__CORS__ALLOW_ORIGINS=https://app.example.com
+```
+
+Or via repeatable CLI flag:
+
+```bash title="CLI flags"
+resonate serve \
+  --server-cors-allow-origin https://app.example.com \
+  --server-cors-allow-origin https://admin.example.com
+```
+
+### Behavior
+
+| Configuration | Result |
+|---|---|
+| `allow_origins` empty (default) | No CORS headers emitted; browser cross-origin requests are blocked. |
+| `allow_origins = ["https://app.example.com", ...]` | Server reflects the request `Origin` header only when it matches an entry in the list. |
+| `allow_origins = ["*"]` | Permissive mode: any origin is accepted, and `Access-Control-Allow-Credentials: true` is also set. |
+
+Allowed methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`.
+Allowed request headers: `Origin`, `Content-Length`, `Content-Type`, `Authorization`.
+
+Preflight `OPTIONS` requests are handled by the server automatically — no additional configuration required.
+
+<Callout type="caution" title="Wildcard origins and credentials">
+Setting `allow_origins = ["*"]` enables permissive mode, which also sends `Access-Control-Allow-Credentials: true`. This combination is broadly accepting and should generally be reserved for development. For production, list each trusted origin explicitly.
+</Callout>
+
+### Example: production with explicit origins
+
+```toml title="resonate.toml — production"
+[auth]
+publickey = "/etc/resonate/auth/public.pem"
+
+[server.cors]
+allow_origins = [
+  "https://app.example.com",
+  "https://admin.example.com",
+]
+```
+
+Combined with JWT authentication, this restricts the server to a known set of browser origins while still requiring a valid token on every request.
+
+CORS support was introduced in Resonate Server v0.9.4.
+
 ## Outbound HTTP push authentication
 
 Inbound JWT auth (above) protects the server from unauthenticated SDK clients. The matching server-side concern is **outbound** authentication: when the server pushes a task to a worker URL via HTTP push, the worker may itself sit behind an authenticated endpoint (for example a GCP Cloud Run service deployed with `--no-allow-unauthenticated`, or any internal service that validates a bearer token).
