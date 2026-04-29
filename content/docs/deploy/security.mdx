@@ -94,7 +94,7 @@ export default resonate;
 ### Rust SDK
 
 ```rust title="main.rs"
-use resonate::{Resonate, ResonateConfig};
+use resonate::prelude::*;
 
 let resonate = Resonate::new(ResonateConfig {
     token: std::env::var("RESONATE_TOKEN").ok(),
