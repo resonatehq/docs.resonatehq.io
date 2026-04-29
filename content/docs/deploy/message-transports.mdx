@@ -8,7 +8,7 @@ keywords:
   - configuration
 ---
 
-Resonate supports transport plugins for message communication between Clients and Servers. In v0.9.4, the only supported non-HTTP message transport is GCP Pub/Sub. Kafka and SQS transports are not yet available in the current server release.
+Resonate supports transport plugins for message communication between Clients and Servers. In v0.9.5, the supported non-HTTP message transports are GCP Pub/Sub and bash exec. Kafka and SQS transports are not yet available in the current server release.
 
 ### GCP Pub/Sub server plugin
 
@@ -18,7 +18,7 @@ This plugin enables the server to put messages (containing task information) ont
 
 Where to find it?
 
-The GCP Pub/Sub transport is built into the v0.9.4 server binary — no rebuild required.
+The GCP Pub/Sub transport is built into the v0.9.5 server binary — no rebuild required.
 
 Enable the plugin at runtime with the `--transports-gcps-project` flag:
 
@@ -35,10 +35,14 @@ project = "my-gcp-project-id"
 
 Or via env var: `RESONATE_TRANSPORTS__GCPS__PROJECT=my-gcp-project-id`.
 
+### Bash exec server plugin
+
+**New in v0.9.5.** The server can dispatch tasks by executing a configured shell command per message, useful for local-process workers and lightweight exec-driven workflows. Full docs forthcoming; for now, see the v0.9.5 release notes ([resonatehq/resonate#47](https://github.com/resonatehq/resonate/pull/47)) for the flag surface.
+
 ### Kafka server plugin
 
-**Not available in v0.9.4.** Kafka transport support is planned for a future release. The Kafka SDK plugin ([resonatehq/resonate-transport-kafka-ts](https://github.com/resonatehq/resonate-transport-kafka-ts)) exists for use with future server versions once server-side support is added.
+**Not available in v0.9.5.** Kafka transport support is planned for a future release. The Kafka SDK plugin ([resonatehq/resonate-transport-kafka-ts](https://github.com/resonatehq/resonate-transport-kafka-ts)) exists for use with future server versions once server-side support is added.
 
 ### SQS server plugin
 
-**Not available in v0.9.4.** AWS SQS transport support is planned for a future release.
+**Not available in v0.9.5.** AWS SQS transport support is planned for a future release.
