@@ -147,6 +147,26 @@
       "permanent": true
     },
     {
+      "source": "/docs/category/:path*",
+      "destination": "/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/docs/category",
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/category/:path*",
+      "destination": "/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/category",
+      "destination": "/",
+      "permanent": true
+    },
+    {
       "source": "/docs",
       "destination": "/",
       "permanent": true
