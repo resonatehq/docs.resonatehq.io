@@ -105,6 +105,152 @@ let resonate = Resonate::new(ResonateConfig {
 
 `ResonateConfig::token` is `Option<String>`, so `std::env::var("RESONATE_TOKEN").ok()` is the idiomatic way to populate it from the environment. `Resonate::new` returns `Resonate` directly (not a `Result`).
 
+## CORS (Cross-Origin Resource Sharing)
+
+Browser-based clients — SDK applications running in a tab, internal dashboards, agent UIs — need CORS headers to call the Resonate Server from a different origin. CORS is **disabled by default**; the server only emits CORS headers when you configure one or more allowed origins.
+
+### Why CORS matters
+
+If your server is at `https://resonate.yourcompany.com` and your client runs at `https://app.example.com`, the browser will block the request unless the server returns the appropriate `Access-Control-Allow-Origin` headers. CORS configuration covers the HTTP API and the long-poll/SSE delivery endpoint together — both are served from the same router.
+
+Server-to-server traffic (workers calling the API from a backend process) is not affected by CORS. Configure it only if a browser is in the request path.
+
+### Server configuration
+
+Configure allowed origins in `resonate.toml`:
+
+```toml title="resonate.toml — CORS"
+[server.cors]
+allow_origins = ["https://app.example.com"]
+```
+
+Or via environment variable:
+
+```bash title="Environment variable"
+RESONATE_SERVER__CORS__ALLOW_ORIGINS=https://app.example.com
+```
+
+Or via repeatable CLI flag:
+
+```bash title="CLI flags"
+resonate serve \
+  --server-cors-allow-origin https://app.example.com \
+  --server-cors-allow-origin https://admin.example.com
+```
+
+### Behavior
+
+| Configuration | Result |
+|---|---|
+| `allow_origins` empty (default) | No CORS headers emitted; browser cross-origin requests are blocked. |
+| `allow_origins = ["https://app.example.com", ...]` | Server reflects the request `Origin` header only when it matches an entry in the list. |
+| `allow_origins = ["*"]` | Permissive mode: any origin is accepted, and `Access-Control-Allow-Credentials: true` is also set. |
+
+Allowed methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`.
+Allowed request headers: `Origin`, `Content-Length`, `Content-Type`, `Authorization`.
+
+Preflight `OPTIONS` requests are handled by the server automatically — no additional configuration required.
+
+<Callout type="caution" title="Wildcard origins and credentials">
+Setting `allow_origins = ["*"]` enables permissive mode, which also sends `Access-Control-Allow-Credentials: true`. This combination is broadly accepting and should generally be reserved for development. For production, list each trusted origin explicitly.
+</Callout>
+
+### Example: production with explicit origins
+
+```toml title="resonate.toml — production"
+[auth]
+publickey = "/etc/resonate/auth/public.pem"
+
+[server.cors]
+allow_origins = [
+  "https://app.example.com",
+  "https://admin.example.com",
+]
+```
+
+Combined with JWT authentication, this restricts the server to a known set of browser origins while still requiring a valid token on every request.
+
+CORS support was introduced in Resonate Server v0.9.4.
+
+## Outbound HTTP push authentication
+
+Inbound JWT auth (above) protects the server from unauthenticated SDK clients. The matching server-side concern is **outbound** authentication: when the server pushes a task to a worker URL via HTTP push, the worker may itself sit behind an authenticated endpoint (for example a GCP Cloud Run service deployed with `--no-allow-unauthenticated`, or any internal service that validates a bearer token).
+
+v0.9.5 introduced three outbound auth modes for the HTTP push transport. All three apply only to the `http://` / `https://` push transport — they do not affect Pub/Sub or bash exec deliveries.
+
+| Mode | What the server sends |
+|---|---|
+| `none` (default) | No `Authorization` header. Suitable for unauthenticated workers or networks with trust enforced at another layer. |
+| `bearer` | A static `Authorization: Bearer <token>` header on every delivery. The token is configured once and never refreshed. |
+| `gcp` | A GCP-issued OIDC ID token, minted per-audience using Application Default Credentials. Suitable for Cloud Run, Cloud Functions, and other GCP services that natively validate Google-signed ID tokens. |
+
+The mode is set with `--transports-http-push-auth-mode`, the matching `[transports.http_push.auth].mode` TOML key, or `RESONATE_TRANSPORTS__HTTP_PUSH__AUTH__MODE`.
+
+### Static bearer token
+
+Use this mode when every worker shares a single secret you control end-to-end (an internal service mesh, a self-hosted deployment with a shared HMAC).
+
+```toml title="resonate.toml"
+[transports.http_push.auth]
+mode = "bearer"
+# Token is typically supplied by env var rather than checked-in config:
+#   RESONATE_TRANSPORTS__HTTP_PUSH__AUTH__TOKEN=<token>
+```
+
+```shell title="CLI form"
+resonate serve \
+  --transports-http-push-auth-mode bearer \
+  --transports-http-push-auth-token "$RESONATE_PUSH_TOKEN"
+```
+
+The token is sent verbatim as `Authorization: Bearer <token>` on every push. It is never rotated by the server — rotation is your responsibility.
+
+### GCP OIDC ID token
+
+Use this mode when workers run on GCP and validate Google-signed ID tokens (Cloud Run, Cloud Functions, IAP-protected services, etc.). The server mints an ID token per audience using the GCP credentials available to the server process (Application Default Credentials).
+
+```toml title="resonate.toml"
+[transports.http_push.auth]
+mode = "gcp"
+# Optional: override the audience used when minting tokens. When absent,
+# each delivery target URL is used as its own audience.
+# audience = "https://workers.example.com"
+```
+
+```shell title="CLI form"
+resonate serve --transports-http-push-auth-mode gcp
+```
+
+Two notes on audience handling:
+
+- **Default** — if you do not set `audience`, the server uses each delivery target URL verbatim as the audience. This is the right setting for Cloud Run services where each worker validates tokens against its own URL.
+- **Override** — set `audience` (or `--transports-http-push-auth-aud`) when every worker validates against a single shared audience (for example an API gateway in front of multiple workers).
+
+Tokens are cached per audience inside the server process, so audience reuse across deliveries does not re-mint on every call.
+
+<Callout type="caution" title="Token-mint failures">
+If the GCP credentials provider fails to mint a token (missing ADC, network failure, IAM misconfiguration), the server logs a warning and **delivers the request without an `Authorization` header**. The delivery is not retried at the auth layer; the worker will reject the unauthenticated request and the standard task-retry path applies. Watch server logs for `OIDC ID token mint failed` to detect this state.
+</Callout>
+
+### Custom header name
+
+By default the token is sent in the `Authorization` header. Override with `--transports-http-push-auth-header` (or the matching TOML / env key) when the worker expects a different header — for example `X-Goog-IAP-JWT-Assertion` for some IAP setups:
+
+```shell
+resonate serve \
+  --transports-http-push-auth-mode gcp \
+  --transports-http-push-auth-header X-Goog-IAP-JWT-Assertion
+```
+
+### Quick reference
+
+| TOML key | CLI flag | Env var |
+|---|---|---|
+| `[transports.http_push.auth].mode` | `--transports-http-push-auth-mode` | `RESONATE_TRANSPORTS__HTTP_PUSH__AUTH__MODE` |
+| `[transports.http_push.auth].token` | `--transports-http-push-auth-token` | `RESONATE_TRANSPORTS__HTTP_PUSH__AUTH__TOKEN` |
+| `[transports.http_push.auth].audience` | `--transports-http-push-auth-aud` | `RESONATE_TRANSPORTS__HTTP_PUSH__AUTH__AUDIENCE` |
+| `[transports.http_push.auth].header` | `--transports-http-push-auth-header` | `RESONATE_TRANSPORTS__HTTP_PUSH__AUTH__HEADER` |
+
 ## Production best practices
 
 ### Token management
