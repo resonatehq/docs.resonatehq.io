@@ -51,7 +51,7 @@ The version is the optimistic concurrency control (OCC) token: every mutating ta
 
 ## The settlement chain
 
-Every promise settlement — whether triggered by `promise.settle`, `task.fulfill`, `task.fence`, or a server-driven timeout — follows the same path. Settlement is a **chain**: a linear sequence of causality where each link is a different kind of effect.
+Every promise settlement — whether triggered by `promise.settle`, `task.fulfill`, `task.fence`, or a server-driven timeout — proceeds through the same three stages, each producing a distinct kind of effect. We call this the **settlement chain** because the stages form a linear causal order:
 
 ```text
 settle → resume → execute
