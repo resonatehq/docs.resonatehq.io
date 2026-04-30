@@ -1,0 +1,44 @@
+---
+title: Durable Function Specification
+description: Formal definition of interruption tolerance — the property that lets durable functions recover.
+keywords:
+  - durable-function
+  - interruption-tolerance
+  - specification
+---
+
+<Callout type="info" title="Recoverable function executions">
+Durability is a property of a function execution that allows it to be resumed after an interruption.
+</Callout>
+
+## Durable executions
+
+A durable execution is a programming abstraction with an interruption-agnostic *definition* resulting in an interruption-transparent *execution*. The defining characteristic of durable executions is that they are both interruption-agnostic and interruption-transparent — being only one is not sufficient.
+
+### Interruption
+
+The term _interruption_ refers to a voluntary (system-triggered) or involuntary (environment-triggered) termination mid execution. A voluntary termination is also referred to as an _interrupt_; an involuntary termination is also referred to as a _failure_.
+
+### Interruption-agnostic definition
+
+The term _interruption-agnostic definition_ refers to a definition (program, code) that does not acknowledge the possibility of interruptions. The definition does not contain interruption detection or interruption mitigation.
+
+### Interruption-transparent execution
+
+The term _interruption-tolerant execution_ refers to an execution that does not externalize (make observable) the presence of interruptions. An execution that experiences an interruption and subsequently recovers is equivalent to some execution that does not experience an interruption.
+
+<Callout type="info" title="Interruption tolerance, defined">
+Interruption tolerance can be defined formally as:
+
+```
+(⟨p⟩, →(+interruption)) ≃ (⟨p⟩, →(-interruption))
+```
+
+**In words.** A program `p` is interruption-tolerant if, starting from an initial configuration `⟨p⟩`, an execution in the presence of interruptions `(⟨p⟩, →(+interruption))` is equivalent to some execution in the absence of interruptions `(⟨p⟩, →(-interruption))`.
+</Callout>
+
+<Callout type="caution" title="Specification in progress">
+The formal interruption-tolerance definition above is stable. The remainder of this document — formal treatment of step composition, durable side-effect semantics, and the relationship between durable function state and durable promise state — is in progress.
+
+For the operational shape of durable functions in working systems, see the [Durable Promise Specification](/spec/programming-model/durable-promise-specification) (the state on which durable functions execute) and the [TypeScript](/develop/typescript), [Python](/develop/python), and [Rust](/develop/rust) SDKs for how each language realizes durable functions.
+</Callout>

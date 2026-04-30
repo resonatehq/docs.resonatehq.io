@@ -1,0 +1,9 @@
+{
+  "title": "Execution model",
+  "pages": [
+    "index",
+    "coordination-protocol",
+    "recovery-protocol",
+    "message-passing"
+  ]
+}

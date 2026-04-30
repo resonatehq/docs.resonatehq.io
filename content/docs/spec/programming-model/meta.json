@@ -1,0 +1,8 @@
+{
+  "title": "Programming model",
+  "pages": [
+    "index",
+    "durable-promise-specification",
+    "durable-function-specification"
+  ]
+}

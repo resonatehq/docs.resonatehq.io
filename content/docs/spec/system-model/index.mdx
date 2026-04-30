@@ -1,0 +1,41 @@
+---
+title: System model
+description: A first-principles model of distributed systems — processes, executions, and messages — that grounds the rest of the specification.
+keywords:
+  - system-model
+  - distributed-systems
+  - processes
+  - executions
+---
+
+<Callout type="info" title="A way of thinking">
+The system model introduces a **way of thinking** about distributed systems that is foundational to the Distributed Async Await specification. It defines the rules that govern the behavior of distributed software systems.
+</Callout>
+
+A distributed system is a collection of concurrent components — *processes* — that communicate by exchanging messages over the network. Each component has exclusive access to its local state as well as its local channel to the network. Components do not share state and cannot directly observe each other.
+
+![Distributed System diagram](/images/spec/distributed-system.svg)
+
+The behavior of a distributed system emerges from the behavior of its processes.
+
+The system model is structured into two parts:
+
+- **[Processes](/spec/system-model/processes)** — the fundamental unit of locality, with a well-defined lifecycle and a fail-stop failure model.
+- **[Function Executions](/spec/system-model/executions)** — the fundamental unit of computation, bound to a process, with a logical layer that can survive physical-process crashes.
+
+<DocCardList
+  items={[
+    {
+      type: "link",
+      label: "Processes",
+      href: "/spec/system-model/processes",
+      description: "The fundamental unit of locality. Lifecycle, fail-stop failure, and the logical/physical distinction.",
+    },
+    {
+      type: "link",
+      label: "Function Executions",
+      href: "/spec/system-model/executions",
+      description: "The fundamental unit of computation. Lifecycle, long-running semantics, and logical vs physical executions.",
+    },
+  ]}
+/>

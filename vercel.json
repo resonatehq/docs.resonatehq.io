@@ -23,7 +23,7 @@
     },
     {
       "source": "/concepts/durable-promise",
-      "destination": "https://www.distributed-async-await.io/specification/programming-model/durable-promise-specification",
+      "destination": "/spec/programming-model/durable-promise-specification",
       "permanent": true
     },
     {

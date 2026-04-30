@@ -1,0 +1,67 @@
+---
+title: Message Passing Protocol
+description: Communication between components in Distributed Async Await — events, addressing, transport-agnostic semantics.
+keywords:
+  - message-passing
+  - protocol
+  - unicast
+  - anycast
+  - send
+  - receive
+---
+
+<Callout type="info" title="Communication between components">
+The **Message Passing Protocol** defines the communication between components in Distributed Async Await.
+</Callout>
+
+The Message-Passing Protocol MUST support a wide array of transport mechanisms — push or poll over HTTP, message queues, or others. The specification therefore defines the behavior of sending and receiving messages between processes with minimal requirements and minimal guarantees.
+
+## Message events
+
+Messages are sent between processes; consequently, messages are addressed to processes. One (successful) message exchange consists of a *send event* at the sending process and a *receive event* at the receiving process.
+
+![Send and Receive event diagram](/images/spec/send-receive-event.svg)
+
+The most fine-grained model of message exchange between two processes consists of **four events**: a send event at the sending process, a receive event at the network, followed by a send event at the network and a receive event at the receiving process. At this level of abstraction, message exchange between processes and the network is reliable; however, the network may reorder, drop, or duplicate messages.
+
+The more common model of message exchange between two processes consists of **two events**: a send event at the sending process and a receive event at the receiving process. At this level of abstraction, message exchange between processes is unreliable — messages may be reordered, dropped, or duplicated.
+
+The only guarantee is that if a process experiences a receive event, there is a corresponding send event at a sending process (which may be the same process).
+
+## Messaging
+
+Every component may issue a Send(address, message) command that will result in emitting a Send(address, message) event.
+
+```text
+command Send<T>(address : Address, message : T)
+```
+
+The Send command is the foundation of Distributed Async Await's failover mechanics: Send's AnyCast semantics enables both routing as well as transparent rerouting in case of failure. This ensures that distributed executions can adapt dynamically to changes in the process topology automatically.
+
+### Invoke-Resume example: the canonical interaction
+
+The canonical interaction in Distributed Async Await involves invoking and awaiting an asynchronous function remotely (see the [Distributed Coordination Protocol](/spec/execution-model/coordination-protocol)). This interaction involves two messages:
+
+**Invoke** — the request to invoke an execution.
+
+**Resume** — the request to resume an awaiting execution.
+
+## Addressing
+
+Processes communicate via addresses. Distributed Async Await supports two types of addresses: **UniCast** addresses and **AnyCast** addresses.
+
+- **UniCast** — denotes an individual process.
+- **AnyCast** — denotes a group of processes.
+
+```text
+data Address =
+  | UniCast PSpecifier
+  | AnyCast GSpecifier x optional<PSpecifier>
+```
+
+- `PSpecifier` denotes a transport-specific specifier specifying a single process.
+- `GSpecifier` denotes a transport-specific specifier specifying a group of processes.
+
+### Address resolution
+
+This specification does not determine how and when addresses are resolved. Specifically, this specification does not determine whether addresses are resolved on send (early binding) or on recv (late binding).

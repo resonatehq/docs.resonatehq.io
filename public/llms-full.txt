@@ -13,176 +13,124 @@ Known errors will likely have an error code associated with them and a short err
 
 Troubleshooting steps are categorized by error code ranges:
 
-- [Server request errors (40000-49999)](#server-request-errors)
-- [Server errors (50000-59999)](#server-errors)
-- [Python SDK errors (1000-1099)](#python-sdk-errors)
+- [Server request errors (HTTP 4XX)](#server-request-errors)
+- [Server errors (HTTP 5XX)](#server-errors)
+- [Python SDK errors (100.x, 200, 201, 300)](#python-sdk-errors)
 - [TypeScript SDK errors (1100-1199)](#typescript-sdk-errors)
 
 ## Server request errors
 
-These are known errors you may encounter when making requests to the Resonate Server API.
+These are the errors you may encounter when making requests to Resonate Server v0.9.5.
+Request errors signify problems with the request itself — retrying the same request will not resolve the issue.
 
-**Range: 40000-49999**
+**Range: HTTP 4XX**
 
-Request errors signify problems with the request.
-Generally, retrying the request will not resolve the issue.
+**Error response shape**
 
-**Error Schema**
-
-When an error occurs, the response body will contain the following information.
+Every response from the server (success or error) carries this envelope. On error, `head.status` is the HTTP status code and `data` is the human-readable message.
 
 ```json
 {
-  "error": {
-    "code": 5002,
-    "message": "failed to update promise",
-    "details": [
-      {
-        "@type": "ServerError",
-        "message": "attempt to write a readonly database",
-        "domain": "server",
-        "metadata": {
-          "url": "https://docs.resonatehq.io/reference/error-codes#5002"
-        }
-      }
-    ]
-  }
+  "kind": "promises.get",
+  "head": {
+    "corrId": "<correlation id from the request>",
+    "status": 404,
+    "version": "2026-04-01"
+  },
+  "data": "Promise not found"
 }
 ```
 
-The `code` field can be used to programmatically identify the error.
-The message and details provide a human readable description of what went wrong.
-
-The `details` provide structured diagnostic data such as the originating subsystem and links to documentation which can assist in debugging and troubleshooting.
-
-If the problem persists, open a [GitHub issue](https://github.com/resonatehq/resonate/issues/new) with details, including the error code and steps to reproduce.
+If the problem persists, open a [GitHub issue](https://github.com/resonatehq/resonate/issues/new) with details, including the response envelope and steps to reproduce.
 Or reach out via [Discord](https://resonatehq.io/discord) for support.
 
-### 40000
+### 400 — Bad Request
 
-There was a validation error affecting one or more fields.
+The request is malformed. Common causes:
 
-### 40300
+- Invalid JSON body or missing required fields
+- Validation failure (`data` carries the failed field and reason)
+- Unrecognized operation kind
+- Invalid `resonate:target` address
+- Invalid listener address
+- `limit` outside the allowed range (1–1000)
 
-The promise has already been resolved. Once a promise is resolved it can no longer be modified.
+### 401 — Unauthorized
 
-### 40301
+The request did not carry a valid bearer token, or the token failed JWT verification.
 
-The promise has already been rejected. Once a promise is rejected it can no longer be modified.
+### 403 — Forbidden
 
-### 40302
+The request carried a valid token, but the principal is not permitted to perform the requested action.
 
-The promise has already been canceled. Once a promise is canceled it can no longer be modified.
+### 404 — Not Found
 
-### 40303
+The requested resource does not exist. Common cases: promise not found, schedule not found, task not found, awaited promise not found.
 
-The promise has already timed out. Once a promise is timed out it can no longer be modified.
+### 409 — Conflict
 
-### 40304
+The request would violate an existing resource's lifecycle invariants. Common cases:
 
-The lock has already been acquired. Once a lock is acquired it can no longer be acquired.
+- Promise already resolved, rejected, canceled, or timed out (cannot be modified again)
+- Schedule with the requested id already exists
+- Promise with the requested id already exists
+- Lock already acquired
+- Task already claimed or completed
+- Task claimed with the wrong counter
 
-### 40305
+### 422 — Unprocessable Entity
 
-The task has already been claimed. Once a task has been claimed it can no longer be claimed.
+The request was syntactically valid but semantically unprocessable. Common cases:
 
-### 40306
-
-The task has already been completed. Once a task has been completed it can no longer be claimed.
-
-### 40307
-
-A task was attempted to be claimed with the wrong counter.
-
-### 40308
-
-A task was attempted to be claimed or completed, but the task is in an invalid state.
-
-### 40400
-
-A promise with the provided id could not be found.
-
-### 40401
-
-A schedule with the provided id could not be found.
-
-### 40402
-
-A lock with the provided id could not be found.
-
-### 40403
-
-A task with the provided id could not be found.
-
-### 40404
-
-A promise with the provided id does not specify a required recv.
-
-### 40900
-
-A promise with the provided id already exists.
-
-### 40901
-
-A schedule with the provided id already exists. |
+- Awaiter promise not found or has no `resonate:target` tag
+- Task in invalid state for the requested transition
 
 ## Server errors
 
-These are
-
-**Range: 50000-59999**
+**Range: HTTP 5XX**
 
 Server errors represent transient or systemic problems that prevent the request from being processed.
 Retrying the request may resolve the issue.
 
-If the problem persists, open a [GitHub issue](https://github.com/resonatehq/resonate/issues/new) with details, including the error code and steps to reproduce.
+If the problem persists, open a [GitHub issue](https://github.com/resonatehq/resonate/issues/new) with details, including the response envelope and steps to reproduce.
 Or reach out via [Discord](https://resonatehq.io/discord) for support.
 
-### 50000
+### 500 — Internal Server Error
 
-An unknown internal server error occurred. Please open an issue.
-
-### 50001
-
-There was a failure related to the echo subsystem.
-
-### 50002
-
-There was a failure related to the match subsystem.
-
-### 50003
-
-There was a failure related to the queue subsystem.
-
-### 50004
-
-There was a failure related to the store subsystem.
-
-### 50300
-
-The system is shutting down.
-
-### 50301
-
-The API submission queue is full. Please try again later.
-
-### 50302
-
-The AIO submission queue is full. Please try again later.
-
-### 50303
-
-The scheduler queue is full. Please try again later.
+An unexpected server-side failure. Includes failures in the persistence layer (e.g. unrecoverable database lock contention), the scheduler, or any unhandled internal error path. The `data` field carries the failure description; the server logs carry the underlying cause.
 
 ## Python SDK errors
 
-**Range: 1000 - 1099**
+These are the exception classes raised by the Python SDK (`resonate-sdk` v0.6.7).
+Each exception has a numeric `code` attribute. Codes are not contiguous integers — they fall into a few ranges keyed off the underlying failure domain.
 
-These are known errors you may encounter when using the Python SDK.
+If the problem persists, open a [GitHub issue](https://github.com/resonatehq/resonate-sdk-py/issues/new) with details, including the error code and steps to reproduce.
+Or reach out via [Discord](https://resonatehq.io/discord) for support.
 
+### `ResonateStoreError` (codes `100.x`)
 
-And update is required to the Python SDK to support these error codes.
+Raised when a store operation against the Resonate Server (or the in-process local store) fails. The fractional part embeds a structured sub-code from the **legacy Resonate Server** (which Python SDK v0.6.7 targets — see the legacy-server callout on the [Python SDK guide](/develop/python)). Common sub-codes:
 
+- `100.40400` — promise/schedule not found
+- `100.40303` — promise already timed out
+- `100.40305` — task already claimed
+- `100.40403` — task not found
+- `100.40399` — state-machine transition error
+- `100.0` — transport-level failure (request timed out, failed to connect, unknown exception)
+
+The current Rust server (v0.9.5) does not emit these structured sub-codes — it returns standard HTTP status codes (see [Server request errors](#server-request-errors) above). When the Python SDK adds Rust-server compatibility, this section will be updated.
+
+### `ResonateCanceledError` (code `200`)
+
+Raised when a promise is canceled. The `promise_id` attribute identifies the canceled promise.
+
+### `ResonateTimedoutError` (code `201`)
+
+Raised when a promise times out before it is resolved or rejected. Carries `promise_id` and `timeout` attributes.
+
+### `ResonateShutdownError` (code `300`)
+
+Raised when the Resonate client is shutting down and an in-flight operation cannot proceed.
 
 ## TypeScript SDK errors
 
@@ -234,6 +182,30 @@ Dependency 'x' is not registered. Will drop.
 **ENCODING_ARGS_UNENCODEABLE**
 
 Function arguments cannot be encoded.
+
+### 1107
+
+**ENCODING_ARGS_UNDECODEABLE**
+
+Function arguments cannot be decoded.
+
+### 1108
+
+**ENCODING_RETV_UNENCODEABLE**
+
+The return value from a function cannot be encoded.
+
+### 1109
+
+**ENCODING_RETV_UNDECODEABLE**
+
+The return value from a function cannot be decoded.
+
+### 1198
+
+**PANIC**
+
+An unrecoverable internal error occurred in the SDK.
 
 ### 1199
 
@@ -1125,7 +1097,7 @@ services:
       retries: 5
 
   resonate-server:
-    image: resonatehqio/resonate:v0.9.3
+    image: resonatehqio/resonate:v0.9.5
     ports:
       - "8001:8001"
       - "9090:9090"
@@ -1195,7 +1167,7 @@ spec:
     spec:
       containers:
         - name: server
-          image: resonatehqio/resonate:v0.9.3
+          image: resonatehqio/resonate:v0.9.5
           ports:
             - containerPort: 8001
               name: http
@@ -1951,7 +1923,7 @@ In production, collect logs from all servers and workers into a centralized syst
 ```yaml
 services:
   resonate-server:
-    image: resonatehqio/resonate:v0.9.3
+    image: resonatehqio/resonate:v0.9.5
     logging:
       driver: "json-file"
       options:
@@ -1974,7 +1946,7 @@ metadata:
 spec:
   containers:
   - name: server
-    image: resonatehqio/resonate:v0.9.3
+    image: resonatehqio/resonate:v0.9.5
 ```
 
 Or use Fluent Bit / Fluentd as a DaemonSet to forward logs to your aggregation system.
@@ -2166,40 +2138,129 @@ url: /deploy/message-transports
 title: Message transports
 ---
 
-Resonate supports transport plugins for message communication between Clients and Servers. In v0.9.3, the only supported non-HTTP message transport is GCP Pub/Sub. Kafka and SQS transports are not yet available in the current server release.
+The Resonate Server delivers task messages to workers over a configurable set of transports. As of v0.9.5, four transports ship in the server binary:
 
-### GCP Pub/Sub server plugin
+| Transport | Address scheme | Enable flag | Default |
+|---|---|---|---|
+| HTTP push | `http://` / `https://` | `--transports-http-push-enabled` | `true` |
+| HTTP poll (SSE) | (used by SDK clients that long-poll the server) | `--transports-http-poll-enabled` | `true` |
+| GCP Pub/Sub | `gcps://` | `--transports-gcps-enabled` | `false` |
+| Bash exec | `bash:///` | `--transports-bash-exec-enabled` | `false` |
 
-What does it do?
+Each transport can be turned on or off independently. The full CLI flag list is on the [Run a server](/deploy/run-server#cli-flags) page; the equivalent `resonate.toml` keys live under `[transports.<name>]`.
 
-This plugin enables the server to put messages (containing task information) onto GCP Pub/Sub topics for consumption by SDK Clients using the SDK's Pub/Sub transport plugin.
+## HTTP push
 
-Where to find it?
+The HTTP push transport delivers task messages by `POST`ing to a worker URL embedded in the task address (for example `https://workers.example.com/tasks`). It's enabled by default and needs no further configuration for unauthenticated targets.
 
-The GCP Pub/Sub transport is built into the v0.9.3 server binary — no rebuild required.
+For deployments where the target service requires authentication, the server can sign outbound requests with a static bearer token or a GCP OIDC ID token. See [Outbound HTTP push authentication](/deploy/security#outbound-http-push-authentication) on the Security page.
 
-Enable the plugin at runtime with the `--transports-gcps-project` flag:
+## HTTP poll (SSE)
+
+The HTTP poll transport lets SDK clients receive tasks over a long-lived Server-Sent Events stream instead of an inbound HTTP push. It's enabled by default and requires no per-deployment configuration; concurrency limits are tunable via `--transports-http-poll-max-connections` and `--transports-http-poll-buffer-size`.
+
+## GCP Pub/Sub
+
+The GCP Pub/Sub transport puts task messages onto Pub/Sub topics for consumption by SDK clients using the matching client-side plugin.
+
+Enable it at runtime with the GCP project ID:
 
 ```shell
-resonate serve --transports-gcps-project my-gcp-project-id
+resonate serve \
+  --transports-gcps-enabled true \
+  --transports-gcps-project my-gcp-project-id
 ```
 
 Or in `resonate.toml`:
 
 ```toml
 [transports.gcps]
+enabled = true
 project = "my-gcp-project-id"
 ```
 
-Or via env var: `RESONATE_TRANSPORTS__GCPS__PROJECT=my-gcp-project-id`.
+Or via env var: `RESONATE_TRANSPORTS__GCPS__ENABLED=true` and `RESONATE_TRANSPORTS__GCPS__PROJECT=my-gcp-project-id`.
 
-### Kafka server plugin
+Authentication uses Application Default Credentials (ADC) — make sure the server process has access to credentials with publish rights on the target project.
 
-**Not available in v0.9.3.** Kafka transport support is planned for a future release. The Kafka SDK plugin ([resonatehq/resonate-transport-kafka-ts](https://github.com/resonatehq/resonate-transport-kafka-ts)) exists for use with future server versions once server-side support is added.
+## Bash exec
 
-### SQS server plugin
+The bash exec transport runs a shell command on the server host for each delivered task. It's intended for local-process workers, lightweight wrappers around CLI tools, and self-hosted single-host deployments where running a separate worker process is overkill.
 
-**Not available in v0.9.3.** AWS SQS transport support is planned for a future release.
+The transport is **disabled by default**. Enable it explicitly:
+
+```shell
+resonate serve --transports-bash-exec-enabled true
+```
+
+Or in `resonate.toml`:
+
+```toml
+[transports.bash_exec]
+enabled = true
+# Required for named scripts; not required for inline scripts.
+root_dir = "/etc/resonate/scripts"
+# Working directory for named-script execution. One of:
+#   "<root>"   — CWD is set to root_dir (default)
+#   "<script>" — CWD is set to the script's parent directory
+#   any path   — CWD is set to that literal path
+working_dir = "<root>"
+```
+
+
+The bash exec transport runs arbitrary shell commands as the user running the server. Only enable it on hosts where every promise creator is trusted, and prefer named scripts (with `root_dir` set to a non-writable directory) over inline scripts in production.
+
+
+### Address forms
+
+A task address controls how bash exec runs the command:
+
+| Address | Mode | What runs |
+|---|---|---|
+| `bash:///` | Inline | The script body is `param.data` on the promise (base64-encoded) |
+| `bash:///relative/path.sh` | Named script | The file at `<root_dir>/relative/path.sh` is invoked with arguments from `param.data` |
+
+In both modes the server sets `RESONATE_PROMISE_ID` in the script's environment so the script can correlate logs, metrics, or follow-on calls back to the originating promise.
+
+### Inline scripts
+
+For inline scripts, set the promise's `param.data` to the base64-encoded script body:
+
+```bash
+echo -n 'echo "hello from $RESONATE_PROMISE_ID"' | base64
+# ZWNobyAiaGVsbG8gZnJvbSAkUkVTT05BVEVfUFJPTUlTRV9JRCI=
+```
+
+Then create a task targeting `bash:///` with that base64 as `param.data`. The server invokes `bash -c "<decoded script>"`.
+
+### Named scripts
+
+Set `bash_exec.root_dir` in config, place an executable script at e.g. `<root_dir>/build/release.sh`, and target `bash:///build/release.sh`. Pass arguments by setting `param.data` to a JSON array of strings:
+
+```json
+["v1.2.3", "production"]
+```
+
+The server invokes `bash <root_dir>/build/release.sh v1.2.3 production` with `RESONATE_PROMISE_ID` in the environment.
+
+### Settle behavior
+
+The promise is settled from the script's exit status:
+
+- **Exit `0`** — the promise resolves with the script's `stdout` (trimmed of trailing whitespace) as the resolved value.
+- **Exit non-zero** — the promise rejects. The rejection reason is the script's `stderr` if non-empty, otherwise the literal string `exit code N`.
+
+A failure to spawn `bash`, a missing named script, or malformed `param.data` (e.g. non-array JSON for a named script) all cause the promise to reject with a descriptive reason.
+
+While the script runs, the server refreshes the task lease at one third of `tasks.lease_timeout` so long-running scripts don't lose their lease.
+
+## Kafka
+
+**Not available in v0.9.5.** Kafka transport support is planned for a future release. The Kafka SDK plugin ([resonatehq/resonate-transport-kafka-ts](https://github.com/resonatehq/resonate-transport-kafka-ts)) exists for use with future server versions once server-side support is added.
+
+## SQS
+
+**Not available in v0.9.5.** AWS SQS transport support is planned for a future release.
 
 ---
 
@@ -2319,7 +2380,7 @@ Open http://localhost:9091 to query metrics and build dashboards.
 version: '3.8'
 services:
   resonate-server:
-    image: resonatehqio/resonate:v0.9.3
+    image: resonatehqio/resonate:v0.9.5
     ports:
       - "8001:8001"
       - "9090:9090"  # Metrics endpoint
@@ -2766,10 +2827,10 @@ Both default ports can be changed.
 ## Run with Docker
 
 The Resonate Server is published as an official image on Docker Hub at [`resonatehqio/resonate`](https://hub.docker.com/r/resonatehqio/resonate).
-Tags track the server release versions (e.g. `v0.9.3`) plus a rolling `latest`.
+Tags track the server release versions (e.g. `v0.9.5`) plus a rolling `latest`.
 
 ```shell title="Run the Resonate Server in Docker"
-docker run --rm -p 8001:8001 -p 9090:9090 resonatehqio/resonate:v0.9.3
+docker run --rm -p 8001:8001 -p 9090:9090 resonatehqio/resonate:v0.9.5
 ```
 
 `resonate serve` is the default command. Override only when you need to change behavior:
@@ -2778,7 +2839,7 @@ docker run --rm -p 8001:8001 -p 9090:9090 resonatehqio/resonate:v0.9.3
 docker run --rm -p 8001:8001 -p 9090:9090 \
   -e RESONATE_STORAGE__TYPE=postgres \
   -e RESONATE_STORAGE__POSTGRES__URL="postgres://user:pass@host:5432/resonate" \
-  resonatehqio/resonate:v0.9.3
+  resonatehqio/resonate:v0.9.5
 ```
 
 The image exposes both `8001` (HTTP API) and `9090` (Prometheus metrics).
@@ -2825,6 +2886,17 @@ url = "postgres://user:pass@host:5432/resonate"
 pool_size = 20
 ```
 
+For MySQL, the equivalent block is:
+
+```toml title="resonate.toml — MySQL"
+[storage]
+type = "mysql"
+
+[storage.mysql]
+url = "mysql://user:pass@host:3306/resonate"
+pool_size = 20
+```
+
 To enable JWT auth, add an `[auth]` section:
 
 ```toml title="resonate.toml — auth enabled"
@@ -2866,19 +2938,44 @@ Run `resonate serve --help` for the full list. Common flags:
 | `--server-bind` | `0.0.0.0` | Bind address |
 | `--server-url` | `http://{host}:{port}` | Externally-reachable URL (required for distributed deployments where workers call back to the server) |
 | `--level` | `info` | Log level: `debug`, `info`, `warn`, `error` |
-| `--storage-type` | `sqlite` | Storage backend: `sqlite` or `postgres` |
+| `--storage-type` | `sqlite` | Storage backend: `sqlite`, `postgres`, or `mysql` |
 | `--storage-postgres-url` | — | Postgres connection string |
 | `--storage-postgres-pool-size` | `10` | Postgres connection pool size |
+| `--storage-mysql-url` | — | MySQL connection string |
+| `--storage-mysql-pool-size` | `10` | MySQL connection pool size |
 | `--auth-publickey` | — | Path to JWT public key (PEM format) for authentication |
+| `--server-cors-allow-origin` | — | Allowed CORS origin (repeatable; use `*` for permissive). See [Security › CORS](/deploy/security#cors-cross-origin-resource-sharing) |
 | `--tasks-lease-timeout` | `15000` (ms) | Task lease timeout |
 | `--tasks-retry-timeout` | `30000` (ms) | Suspend/wake retry interval. Lower values (e.g. `500`) significantly reduce latency for chained or recursive workflows |
 | `--observability-metrics-port` | `9090` | Prometheus metrics port (`0` to disable) |
-| `--transports-gcps-project` | — | GCP Pub/Sub project ID for message transport |
 
 
 The default `--tasks-retry-timeout` of 30 seconds adds significant latency to chained workflows (sagas, recursive fan-out).
 For most deployments, set this to `500` (milliseconds) to keep suspend/wake cycles fast.
 
+
+#### Transport flags
+
+v0.9.5 added explicit enable/disable flags for every transport so operators can shape which delivery paths are live per deployment. See [Message transports](/deploy/message-transports) for the per-transport behaviour.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--transports-http-push-enabled` | `true` | Enable the `http://` / `https://` push transport |
+| `--transports-http-poll-enabled` | `true` | Enable the SSE poll transport used by long-polling SDK clients |
+| `--transports-gcps-enabled` | `false` | Enable the `gcps://` GCP Pub/Sub transport |
+| `--transports-gcps-project` | — | Default GCP project ID for the Pub/Sub transport |
+| `--transports-bash-exec-enabled` | `false` | Enable the `bash:///` local-script transport (see [Bash exec](/deploy/message-transports#bash-exec)) |
+
+#### Outbound HTTP push authentication flags
+
+v0.9.5 added outbound authentication for HTTP push deliveries so workers behind authenticated endpoints (for example GCP Cloud Run with `--no-allow-unauthenticated`) can verify the server's identity. See [Outbound HTTP push authentication](/deploy/security#outbound-http-push-authentication) for the full configuration guide.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--transports-http-push-auth-mode` | `none` | Outbound auth mode: `none`, `bearer`, or `gcp` |
+| `--transports-http-push-auth-token` | — | Static bearer token (used only when `mode = bearer`) |
+| `--transports-http-push-auth-aud` | delivery target URL | Fixed OIDC audience (used only when `mode = gcp`; defaults to the per-delivery target URL) |
+| `--transports-http-push-auth-header` | `Authorization` | Name of the request header that carries the token |
 
 ## Run with PostgreSQL
 
@@ -2908,13 +3005,86 @@ Migrations are applied automatically on first startup.
 
 See the [Availability](/deploy/availability) guide for high-availability PostgreSQL configuration.
 
+## Run with MySQL
+
+MySQL is a third storage option alongside SQLite and PostgreSQL. Use it when your operational tooling already centers on MySQL.
+
+With a `resonate.toml` (recommended):
+
+```toml title="resonate.toml"
+[storage]
+type = "mysql"
+
+[storage.mysql]
+url = "mysql://user:pass@localhost:3306/resonate"
+pool_size = 20
+```
+
+Or with CLI flags:
+
+```shell
+resonate serve \
+  --storage-type mysql \
+  --storage-mysql-url "mysql://user:pass@localhost:3306/resonate" \
+  --storage-mysql-pool-size 20
+```
+
+Or with environment variables:
+
+```shell
+RESONATE_STORAGE__TYPE=mysql
+RESONATE_STORAGE__MYSQL__URL=mysql://user:pass@localhost:3306/resonate
+RESONATE_STORAGE__MYSQL__POOL_SIZE=20
+```
+
+Migrations are applied automatically on first startup. MySQL 8.0 or later is required (the schema relies on generated columns and JSON path expressions).
+
+A minimal Docker Compose stack that boots the server against a MySQL service:
+
+```yaml title="docker-compose.yml — MySQL"
+services:
+  resonate-server:
+    image: resonatehqio/resonate:v0.9.5
+    ports:
+      - "8001:8001"
+      - "9090:9090"
+    environment:
+      RESONATE_SERVER__BIND: "0.0.0.0"
+      RESONATE_STORAGE__TYPE: mysql
+      RESONATE_STORAGE__MYSQL__URL: mysql://resonate:resonate@mysql:3306/resonate
+      RESONATE_STORAGE__MYSQL__POOL_SIZE: 20
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: resonate
+      MYSQL_USER: resonate
+      MYSQL_PASSWORD: resonate
+      MYSQL_DATABASE: resonate
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "resonate", "-presonate"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+```
+
+
+The MySQL schema stores promise IDs, task IDs, listener addresses, and a few derived tag values (`resonate:target`, `resonate:origin`, `resonate:branch`) as `VARCHAR(255)`.
+Inputs that exceed 255 characters fail with a `400 InvalidInput` response. SQLite and Postgres do not enforce this bound, so applications written against those backends should verify ID lengths before switching to MySQL.
+
+
 ## Deploy to GCP Cloud Run
 
 Cloud Run can pull the official image directly:
 
 ```shell
 gcloud run deploy resonate-server \
-  --image=resonatehqio/resonate:v0.9.3 \
+  --image=resonatehqio/resonate:v0.9.5 \
   --region=<your-region> \
   --port=8001 \
   --allow-unauthenticated \
@@ -2960,7 +3130,7 @@ spec:
     spec:
       containers:
         - name: resonate
-          image: resonatehqio/resonate:v0.9.3
+          image: resonatehqio/resonate:v0.9.5
           env:
             - name: RESONATE_SERVER__BIND
               value: "0.0.0.0"
@@ -3477,7 +3647,7 @@ export default resonate;
 ### Rust SDK
 
 ```rust title="main.rs"
-use resonate::{Resonate, ResonateConfig};
+use resonate::prelude::*;
 
 let resonate = Resonate::new(ResonateConfig {
     token: std::env::var("RESONATE_TOKEN").ok(),
@@ -3487,6 +3657,152 @@ let resonate = Resonate::new(ResonateConfig {
 ```
 
 `ResonateConfig::token` is `Option`, so `std::env::var("RESONATE_TOKEN").ok()` is the idiomatic way to populate it from the environment. `Resonate::new` returns `Resonate` directly (not a `Result`).
+
+## CORS (Cross-Origin Resource Sharing)
+
+Browser-based clients — SDK applications running in a tab, internal dashboards, agent UIs — need CORS headers to call the Resonate Server from a different origin. CORS is **disabled by default**; the server only emits CORS headers when you configure one or more allowed origins.
+
+### Why CORS matters
+
+If your server is at `https://resonate.yourcompany.com` and your client runs at `https://app.example.com`, the browser will block the request unless the server returns the appropriate `Access-Control-Allow-Origin` headers. CORS configuration covers the HTTP API and the long-poll/SSE delivery endpoint together — both are served from the same router.
+
+Server-to-server traffic (workers calling the API from a backend process) is not affected by CORS. Configure it only if a browser is in the request path.
+
+### Server configuration
+
+Configure allowed origins in `resonate.toml`:
+
+```toml title="resonate.toml — CORS"
+[server.cors]
+allow_origins = ["https://app.example.com"]
+```
+
+Or via environment variable:
+
+```bash title="Environment variable"
+RESONATE_SERVER__CORS__ALLOW_ORIGINS=https://app.example.com
+```
+
+Or via repeatable CLI flag:
+
+```bash title="CLI flags"
+resonate serve \
+  --server-cors-allow-origin https://app.example.com \
+  --server-cors-allow-origin https://admin.example.com
+```
+
+### Behavior
+
+| Configuration | Result |
+|---|---|
+| `allow_origins` empty (default) | No CORS headers emitted; browser cross-origin requests are blocked. |
+| `allow_origins = ["https://app.example.com", ...]` | Server reflects the request `Origin` header only when it matches an entry in the list. |
+| `allow_origins = ["*"]` | Permissive mode: any origin is accepted, and `Access-Control-Allow-Credentials: true` is also set. |
+
+Allowed methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`.
+Allowed request headers: `Origin`, `Content-Length`, `Content-Type`, `Authorization`.
+
+Preflight `OPTIONS` requests are handled by the server automatically — no additional configuration required.
+
+
+Setting `allow_origins = ["*"]` enables permissive mode, which also sends `Access-Control-Allow-Credentials: true`. This combination is broadly accepting and should generally be reserved for development. For production, list each trusted origin explicitly.
+
+
+### Example: production with explicit origins
+
+```toml title="resonate.toml — production"
+[auth]
+publickey = "/etc/resonate/auth/public.pem"
+
+[server.cors]
+allow_origins = [
+  "https://app.example.com",
+  "https://admin.example.com",
+]
+```
+
+Combined with JWT authentication, this restricts the server to a known set of browser origins while still requiring a valid token on every request.
+
+CORS support was introduced in Resonate Server v0.9.4.
+
+## Outbound HTTP push authentication
+
+Inbound JWT auth (above) protects the server from unauthenticated SDK clients. The matching server-side concern is **outbound** authentication: when the server pushes a task to a worker URL via HTTP push, the worker may itself sit behind an authenticated endpoint (for example a GCP Cloud Run service deployed with `--no-allow-unauthenticated`, or any internal service that validates a bearer token).
+
+v0.9.5 introduced three outbound auth modes for the HTTP push transport. All three apply only to the `http://` / `https://` push transport — they do not affect Pub/Sub or bash exec deliveries.
+
+| Mode | What the server sends |
+|---|---|
+| `none` (default) | No `Authorization` header. Suitable for unauthenticated workers or networks with trust enforced at another layer. |
+| `bearer` | A static `Authorization: Bearer <token>` header on every delivery. The token is configured once and never refreshed. |
+| `gcp` | A GCP-issued OIDC ID token, minted per-audience using Application Default Credentials. Suitable for Cloud Run, Cloud Functions, and other GCP services that natively validate Google-signed ID tokens. |
+
+The mode is set with `--transports-http-push-auth-mode`, the matching `[transports.http_push.auth].mode` TOML key, or `RESONATE_TRANSPORTS__HTTP_PUSH__AUTH__MODE`.
+
+### Static bearer token
+
+Use this mode when every worker shares a single secret you control end-to-end (an internal service mesh, a self-hosted deployment with a shared HMAC).
+
+```toml title="resonate.toml"
+[transports.http_push.auth]
+mode = "bearer"
+# Token is typically supplied by env var rather than checked-in config:
+#   RESONATE_TRANSPORTS__HTTP_PUSH__AUTH__TOKEN=<token>
+```
+
+```shell title="CLI form"
+resonate serve \
+  --transports-http-push-auth-mode bearer \
+  --transports-http-push-auth-token "$RESONATE_PUSH_TOKEN"
+```
+
+The token is sent verbatim as `Authorization: Bearer <token>` on every push. It is never rotated by the server — rotation is your responsibility.
+
+### GCP OIDC ID token
+
+Use this mode when workers run on GCP and validate Google-signed ID tokens (Cloud Run, Cloud Functions, IAP-protected services, etc.). The server mints an ID token per audience using the GCP credentials available to the server process (Application Default Credentials).
+
+```toml title="resonate.toml"
+[transports.http_push.auth]
+mode = "gcp"
+# Optional: override the audience used when minting tokens. When absent,
+# each delivery target URL is used as its own audience.
+# audience = "https://workers.example.com"
+```
+
+```shell title="CLI form"
+resonate serve --transports-http-push-auth-mode gcp
+```
+
+Two notes on audience handling:
+
+- **Default** — if you do not set `audience`, the server uses each delivery target URL verbatim as the audience. This is the right setting for Cloud Run services where each worker validates tokens against its own URL.
+- **Override** — set `audience` (or `--transports-http-push-auth-aud`) when every worker validates against a single shared audience (for example an API gateway in front of multiple workers).
+
+Tokens are cached per audience inside the server process, so audience reuse across deliveries does not re-mint on every call.
+
+
+If the GCP credentials provider fails to mint a token (missing ADC, network failure, IAM misconfiguration), the server logs a warning and **delivers the request without an `Authorization` header**. The delivery is not retried at the auth layer; the worker will reject the unauthenticated request and the standard task-retry path applies. Watch server logs for `OIDC ID token mint failed` to detect this state.
+
+
+### Custom header name
+
+By default the token is sent in the `Authorization` header. Override with `--transports-http-push-auth-header` (or the matching TOML / env key) when the worker expects a different header — for example `X-Goog-IAP-JWT-Assertion` for some IAP setups:
+
+```shell
+resonate serve \
+  --transports-http-push-auth-mode gcp \
+  --transports-http-push-auth-header X-Goog-IAP-JWT-Assertion
+```
+
+### Quick reference
+
+| TOML key | CLI flag | Env var |
+|---|---|---|
+| `[transports.http_push.auth].mode` | `--transports-http-push-auth-mode` | `RESONATE_TRANSPORTS__HTTP_PUSH__AUTH__MODE` |
+| `[transports.http_push.auth].token` | `--transports-http-push-auth-token` | `RESONATE_TRANSPORTS__HTTP_PUSH__AUTH__TOKEN` |
+| `[transports.http_push.auth].audience` | `--transports-http-push-auth-aud` | `RESONATE_TRANSPORTS__HTTP_PUSH__AUTH__AUDIENCE` |
+| `[transports.http_push.auth].header` | `--transports-http-push-auth-header` | `RESONATE_TRANSPORTS__HTTP_PUSH__AUTH__HEADER` |
 
 ## Production best practices
 
@@ -3870,22 +4186,21 @@ When one worker calls another, spans are linked across workers:
 
 ```typescript
 // Worker A
-resonate.register("orderWorkflow", async (ctx, order) => {
+resonate.register("orderWorkflow", function* (ctx, order) {
   // Span: "orderWorkflow" on Worker A
-  
-  const result = await resonate.rpc(
-    `inventory-${order.id}`,
+
+  const result = yield* ctx.rpc(
     "checkInventory",
     order.items,
-    resonate.options({ target: "poll://any@inventory-workers" })
+    ctx.options({ target: "poll://any@inventory-workers" })
   );
   // Creates linked span on Worker B
-  
+
   return result;
 });
 
 // Worker B (inventory-workers group)
-resonate.register("checkInventory", async (ctx, items) => {
+resonate.register("checkInventory", (ctx, items) => {
   // Span: "checkInventory" on Worker B
   // Parent: "orderWorkflow" on Worker A
 });
@@ -4750,9 +5065,9 @@ To connect to a specific host and port, pass them explicitly:
 from resonate import Resonate
 
 resonate = Resonate.remote(
-    host="localhost",
-    store_port=8001,
-    message_source_port=8001,
+    host="http://localhost",
+    store_port="8001",
+    message_source_port="8001",
 )
 ```
 
@@ -5080,6 +5395,8 @@ def foo(ctx, arg):
 
 Options can be used following `.run()`, `.begin_run()`, `.rpc()`, `.begin_rpc()`, and `.detached()`.
 
+Local calls (`.run()` / `.begin_run()`) accept `durable`, `encoder`, `id`, `idempotency_key`, `non_retryable_exceptions`, `retry_policy`, `tags`, and `timeout`.
+
 ```py
 from resonate.retry_policies import Exponential, Constant, Linear, Never
 
@@ -5091,6 +5408,20 @@ def foo(ctx, arg):
         idempotency_key="custom-ikey",
         durable=True,
         retry_policy=Exponential(), # or Constant(), Linear(), Never()
+        tags={"key": "value"},
+        timeout=30.0,
+    )
+```
+
+Remote calls (`.rpc()` / `.begin_rpc()` / `.detached()`) accept `encoder`, `id`, `idempotency_key`, `tags`, `target`, `timeout`, and `version`.
+
+```py
+@resonate.register
+def foo(ctx, arg):
+    # ...
+    yield ctx.rpc("bar", arg).options(
+        id="custom-id",
+        idempotency_key="custom-ikey",
         target="poll://any@workers",
         tags={"key": "value"},
         timeout=30.0,
@@ -5186,7 +5517,7 @@ url: /develop/rust
 title: Rust SDK skills
 ---
 
-The Rust SDK is v0.1.0 and in active development. APIs may change between releases. It is not yet published on crates.io.
+The Rust SDK is at 0.4.0 and in active development. APIs may change between releases. It is not yet published on crates.io.
 
 
 Whether you are a human or an AI agent, this skill guide will help you develop applications using the Resonate Rust SDK.
@@ -5207,7 +5538,7 @@ Add it as a git dependency in your `Cargo.toml`:
 
 ```toml title="Cargo.toml"
 [dependencies]
-resonate = { git = "https://github.com/resonatehq/resonate-sdk-rs", branch = "master" }
+resonate = { package = "resonate-sdk", git = "https://github.com/resonatehq/resonate-sdk-rs", branch = "main" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 ```
@@ -5623,7 +5954,7 @@ url: /develop/typescript
 title: TypeScript SDK skills
 ---
 
-This page reflects `@resonatehq/sdk` v0.10.0 (current on npm). APIs are subject to change in future releases.
+This page reflects `@resonatehq/sdk` v0.10.1 (current on npm). APIs are subject to change in future releases.
 
 
 **Requires Node.js 22 or later.**
@@ -5993,6 +6324,22 @@ await resonate.run(
 );
 ```
 
+Local calls (`.run()` / `.beginRun()`) also accept `nonRetryableErrors`, an array of error class constructors that should not be retried by Resonate's retry policy.
+When the invoked function throws an instance of any listed class (or a subclass), Resonate skips the retry policy and rejects the call with the thrown error.
+
+```ts
+class ValidationError extends Error {}
+
+await resonate.run(
+  "invocation-id",
+  foo,
+  ...args,
+  resonate.options({
+    nonRetryableErrors: [ValidationError],
+  })
+);
+```
+
 ### `.get()`
 
 Resonate's `.get()` method allows you to subscribe to a function invocation.
@@ -6022,43 +6369,68 @@ await resonate.promises.create(
 );
 ```
 
-### `.promises.settle()`
+### `.promises.resolve()`
 
-Resonate's `.promises.settle()` method settles a promise by ID into a terminal state.
-The `state` argument is a discriminator that determines whether the promise is resolved, rejected, or canceled.
+Resonate's `.promises.resolve()` method settles a promise by ID into the `resolved` terminal state.
 
 This is useful for HITL use cases where you want to wait for a human to approve a function execution.
 It works well in conjunction with the [`.promise()`](#promise) method.
 
 ```ts
-await resonate.promises.settle(
+await resonate.promises.resolve(
   id: string,
-  state: "resolved" | "rejected" | "rejected_canceled",
   options?: { data?: string; headers?: Record<string, string> }
 );
 ```
 
-Examples for each state:
+Examples:
 
 ```ts
 // Resolve a promise (optionally with data)
-await resonate.promises.settle("promise-id", "resolved");
-await resonate.promises.settle("promise-id", "resolved", {
+await resonate.promises.resolve("promise-id");
+await resonate.promises.resolve("promise-id", {
   data: JSON.stringify({ approved: true }),
 });
-
-// Reject a promise (optionally with data describing the failure)
-await resonate.promises.settle("promise-id", "rejected");
-await resonate.promises.settle("promise-id", "rejected", {
-  data: JSON.stringify({ reason: "denied" }),
-});
-
-// Cancel a promise
-await resonate.promises.settle("promise-id", "rejected_canceled");
 ```
 
-The three `state` values correspond directly to the promise terminal states — `resolved`, `rejected`, and `rejected_canceled`.
-Canceling a promise is just a `rejected_canceled` settle; there is no separate `cancel` method.
+### `.promises.reject()`
+
+Resonate's `.promises.reject()` method settles a promise by ID into the `rejected` terminal state.
+
+```ts
+await resonate.promises.reject(
+  id: string,
+  options?: { data?: string; headers?: Record<string, string> }
+);
+```
+
+Examples:
+
+```ts
+// Reject a promise (optionally with data describing the failure)
+await resonate.promises.reject("promise-id");
+await resonate.promises.reject("promise-id", {
+  data: JSON.stringify({ reason: "denied" }),
+});
+```
+
+### `.promises.cancel()`
+
+Resonate's `.promises.cancel()` method settles a promise by ID into the `rejected_canceled` terminal state.
+
+```ts
+await resonate.promises.cancel(
+  id: string,
+  options?: { data?: string; headers?: Record<string, string> }
+);
+```
+
+Example:
+
+```ts
+// Cancel a promise
+await resonate.promises.cancel("promise-id");
+```
 
 ## Context APIs
 
@@ -6204,6 +6576,30 @@ resonate.register("foo", function* (ctx: Context, ...args: any[]) {
 });
 ```
 
+Local calls (`.run()` / `.beginRun()`) also accept `nonRetryableErrors`, an array of error class constructors that should not be retried by Resonate's retry policy.
+When the invoked function throws an instance of any listed class (or a subclass), Resonate skips the retry policy and rejects the call with the thrown error.
+This pairs well with `retryPolicy`: errors that match `nonRetryableErrors` short-circuit retries, while all other errors still follow the configured policy.
+
+```ts
+class ValidationError extends Error {}
+
+resonate.register("foo", function* (ctx: Context, input: unknown) {
+  yield* ctx.run(
+    validate,
+    input,
+    ctx.options({
+      nonRetryableErrors: [ValidationError],
+    })
+  );
+});
+
+function validate(ctx: Context, input: unknown) {
+  if (!isValid(input)) {
+    throw new ValidationError("input failed validation");
+  }
+}
+```
+
 ### `.promise()`
 
 Context's `.promise()` method allows you to get or create a promise that can be awaited on.
@@ -6211,7 +6607,7 @@ Context's `.promise()` method allows you to get or create a promise that can be 
 A new promise is created and its ID is generated automatically.
 
 This is very useful for HITL (Human-In-The-Loop) use cases where you want to block progress until a human has taken an action or provided data.
-It works well in conjunction with the [`.promises.settle()`](#promisessettle) method.
+It works well in conjunction with the [`.promises.resolve()`](#promisesresolve), [`.promises.reject()`](#promisesreject), and [`.promises.cancel()`](#promisescancel) methods.
 
 ```ts
 resonate.register("foo", function* (ctx: Context, ...args: any[]) {
@@ -6710,7 +7106,7 @@ url: /evaluate/coming-from/dbos
 title: Coming from DBOS
 ---
 
-This page reflects `@resonatehq/sdk` v0.10.0 (current on npm) and `resonate-sdk` v0.6.7 for Python.
+This page reflects `@resonatehq/sdk` v0.10.1 (current on npm) and `resonate-sdk` v0.6.7 for Python.
 
 
 **Are you coming from DBOS?**
@@ -6873,7 +7269,7 @@ function* foo(context: Context) {
 
 ```typescript
 // client.ts
-await resonate.promises.settle(promiseId, "resolved", { data: JSON.stringify(data) });
+await resonate.promises.resolve(promiseId, { data: JSON.stringify(data) });
 ```
 
     
@@ -6973,7 +7369,7 @@ url: /evaluate/coming-from/restate
 title: Coming from Restate
 ---
 
-This page reflects `@resonatehq/sdk` v0.10.0 (current on npm) and `resonate-sdk` v0.6.7 for Python.
+This page reflects `@resonatehq/sdk` v0.10.1 (current on npm) and `resonate-sdk` v0.6.7 for Python.
 
 
 **Are you coming from experience with Restate?**
@@ -7159,7 +7555,7 @@ function* orderWorkflow(ctx: Context, orderId: string, order: Order) {
 
 // Approve from anywhere — the caller reconstructs the ID from orderId.
 async function approveOrder(orderId: string) {
-  await resonate.promises.settle(`${orderId}.0`, "resolved", { data: JSON.stringify(true) });
+  await resonate.promises.resolve(`${orderId}.0`, { data: JSON.stringify(true) });
 }
 ```
 
@@ -7226,7 +7622,7 @@ const decision = yield* approvalPromise;
 
 // From anywhere — use the caller's known execution ID (e.g. `order-123`)
 // to reconstruct the approval promise ID as `${orderId}.<seq>`.
-await resonate.promises.settle(`${orderId}.0`, "resolved", { data: JSON.stringify("approved") });
+await resonate.promises.resolve(`${orderId}.0`, { data: JSON.stringify("approved") });
 ```
 
 Same concept, similar API. Resonate's version works with any function, not just Workflows.
@@ -7339,7 +7735,7 @@ url: /evaluate/coming-from/temporal
 title: Coming from Temporal
 ---
 
-This page reflects `@resonatehq/sdk` v0.10.0 (current on npm) and `resonate-sdk` v0.6.7 for Python.
+This page reflects `@resonatehq/sdk` v0.10.1 (current on npm) and `resonate-sdk` v0.6.7 for Python.
 
 
 **Are you coming from Temporal?**
@@ -7502,7 +7898,7 @@ function* foo(context: Context) {
 
 ```typescript
 // client.ts
-await resonate.promises.settle(promiseId, "resolved", { data: JSON.stringify(data) });
+await resonate.promises.resolve(promiseId, { data: JSON.stringify(data) });
 ```
 
     
@@ -7704,7 +8100,7 @@ title: Why Resonate
 
 **Resonate is the durable execution engine that agents build with, deploy on, and operate &mdash; at a fraction of the cost of anything else.**
 
-It is the implementation of a [distributed async/await](https://distributed-async-await.io) programming model: a formal, language- and transport-agnostic protocol for writing functions that survive process restarts, run for hours or months, and coordinate across many machines.
+It is the implementation of a [distributed async/await](/spec) programming model: a formal, language- and transport-agnostic protocol for writing functions that survive process restarts, run for hours or months, and coordinate across many machines.
 
 This page explains the three pillars that make Resonate different, the business model that ships those pillars, and what this means for agents and the humans who work with them.
 
@@ -7728,7 +8124,7 @@ Most durable execution platforms ship a single general-purpose server: hand-writ
 
 Resonate takes a different path. The ecosystem is built on **open-source, pluggable components** — transports, storage backends, wire formats — that you can assemble to match your stack. On top of that, we generate **stack-specific components** for customers who need a server tailored to their exact infrastructure. Kafka or HTTP for transport, Postgres or DynamoDB for state, gRPC or REST for the wire — we generate a complete Resonate server that includes only what your stack requires. Minimal state transitions, minimal network chatter, nothing wasted.
 
-This is not AI-generated slop. The underlying [Async RPC protocol](https://asynchronous-rpc.io) is a fully formal JSON Schema specification — a machine-verifiable contract that constrains what "correct" means. AI is used throughout our development and testing processes, guided by these specs and protocols, to produce highly optimized software. The protocol is the contract; the implementation is generated against it, verified by [Deterministic Simulation Testing](#quality-is-not-optional), and delivered as production-grade source code.
+This is not AI-generated slop. The underlying [Async RPC protocol](https://www.async-rpc.io) is a fully formal JSON Schema specification — a machine-verifiable contract that constrains what "correct" means. AI is used throughout our development and testing processes, guided by these specs and protocols, to produce highly optimized software. The protocol is the contract; the implementation is generated against it, verified by [Deterministic Simulation Testing](#quality-is-not-optional), and delivered as production-grade source code.
 
 ### 3. Absurdly cheap
 
@@ -7744,7 +8140,7 @@ Cost is the ultimate forcing function. When an agent evaluates options, Resonate
 
 Two things should give you confidence in Resonate&apos;s correctness:
 
-**Formal modeling.** The [Distributed Async Await specification](https://distributed-async-await.io) and the [Async RPC protocol](https://asynchronous-rpc.io) underlying Resonate are formally modeled and continuously probed for correctness. The protocol is a contract, not a vibe.
+**Formal modeling.** The [Distributed Async Await specification](/spec) and the [Async RPC protocol](https://www.async-rpc.io) underlying Resonate are formally modeled and continuously probed for correctness. The protocol is a contract, not a vibe.
 
 **Deterministic Simulation Testing.** Every major component &mdash; the Resonate Server and each SDK &mdash; is subjected to DST. This finds complex edge cases long before they reach production, on top of conventional unit and integration tests.
 
@@ -8003,7 +8399,7 @@ title: Async agent tools
 A FastMCP server exposes three tools — start, probe, await — backed by a durable Resonate workflow. The LLM kicks off long jobs, polls them, and collects results without blocking on the work.
 
 
-Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development. TypeScript SDK example repo is forthcoming.
+Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development. TypeScript SDK example repo is forthcoming.
 
 
 
@@ -8238,7 +8634,7 @@ title: Async HTTP APIs
 A FastAPI gateway converts every inbound request into a durable workflow, returns a promise ID immediately, and exposes a `/wait` endpoint clients poll for completion.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
 
 
 
@@ -8313,7 +8709,7 @@ from resonate import Resonate
 import uuid
 
 app = FastAPI()
-resonate = Resonate().remote(group="gateway")
+resonate = Resonate.remote(group="gateway")
 
 
 @app.post("/begin")
@@ -8325,7 +8721,7 @@ def begin(data=None, id=None):
         data = {"foo": "bar"}
 
     handle = resonate.options(target="poll://any@worker").begin_rpc(
-        func="foo", id=id, data=data
+        id, "foo", data,
     )
     return {"promise": handle.id, "status": "pending", "wait": f"/wait?id={handle.id}"}
 
@@ -8409,7 +8805,7 @@ from resonate import Context, Resonate
 from threading import Event
 import time
 
-resonate = Resonate().remote(group="worker")
+resonate = Resonate.remote(group="worker")
 
 
 @resonate.register
@@ -8572,7 +8968,7 @@ title: Async RPC
 A gateway calls service A, which calls service B, which calls service C. Each step uses Resonate's remote function invocation APIs, so the entire chain is durable — a crash on any service resumes the call without re-running prior steps.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server.
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server.
 
 
 
@@ -8808,7 +9204,7 @@ title: Deep research agent
 A research agent receives a broad topic, asks an LLM to break it into 2–3 subtopics, and recursively dispatches each subtopic to itself. Every LLM call and every recursive subagent is a durable promise — kill the worker mid-research, the tree resumes from the last unanswered branch.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
 
 
 
@@ -9048,7 +9444,7 @@ title: Cloud Run workers
 A countdown workflow running as a single Google Cloud Function. The function sleeps between notifications via `ctx.sleep`, terminating the container while suspended. Resonate fires the function back up at the right time and the workflow continues from the next iteration — long-running logic on short-lived compute.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 + `@resonatehq/gcp` for the Cloud Functions adapter. Python and Rust adapters are forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.1 + `@resonatehq/gcp` for the Cloud Functions adapter. Python and Rust adapters are forthcoming.
 
 
 
@@ -9153,7 +9549,7 @@ title: Lambda workers
 A Lambda function behind API Gateway acts as a stateless trigger. `POST /process-document` fires a durable Resonate workflow and returns `202` immediately. The workflow itself — download, OCR, LLM analysis, storage, notification — runs on a Resonate worker that doesn't share Lambda's 15-minute ceiling.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
 
 
 
@@ -9387,7 +9783,7 @@ title: Durable sleep
 A workflow yields `ctx.sleep` and the runtime suspends it. Hours, days, or weeks later the worker wakes the workflow up exactly where it stopped — no cron, no scheduler, no external state.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
 
 
 
@@ -9652,7 +10048,7 @@ title: Fan-out / fan-in
 A workflow spawns four notification channels (email, SMS, Slack, push) in parallel and joins their results. Total wall time approaches the slowest channel, not the sum. If one channel fails and retries, the others stay checkpointed — they don't re-send.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
 
 
 
@@ -9883,7 +10279,7 @@ title: Hello world
 The smallest example that exercises the durable execution loop. A registered workflow function calls two leaf functions through `ctx.run`, and Resonate checkpoints each return value.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x. Rust: v0.1.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x. Rust: 0.4.0, in active development.
 
 
 
@@ -10101,7 +10497,7 @@ title: Human-in-the-loop
 A workflow blocks on a durable promise, prints a callback URL, and resumes the moment a human resolves it — from any process, any machine, any time.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development — pulled as a git dependency from `resonate-sdk-rs` until it ships on crates.io.
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development — pulled as a git dependency from `resonate-sdk-rs` until it ships on crates.io.
 
 
 
@@ -10220,7 +10616,7 @@ app.post("/start-workflow", async (req, res) => {
 app.get("/unblock-workflow", async (req, res) => {
   const promiseId = req.query.promise_id as string;
   const data = Buffer.from(JSON.stringify("human_approval"), "utf8").toString("base64");
-  await resonate.promises.settle(promiseId, "resolved", { data });
+  await resonate.promises.resolve(promiseId, { data });
   res.status(200).json({ message: "workflow unblocked" });
 });
 ```
@@ -10445,7 +10841,7 @@ title: Kafka worker
 A consumer pulls messages from a Kafka topic and dispatches each one through a durable Resonate workflow. Per-message state lives in durable promises, so a worker that dies mid-batch resumes cleanly without redoing completed steps.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
 
 
 
@@ -10749,7 +11145,7 @@ title: Load balancing
 Run several workers in the same group. Calls to `target: "poll://any@<group>"` get dispatched to whichever worker claims them first. When a worker dies mid-execution, Resonate reassigns the work to a survivor — no service registry, no leader election, no glue.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
 
 
 
@@ -11032,7 +11428,7 @@ title: Money transfer
 A workflow debits the source account, credits the target account, and returns confirmations. Each account update is a durable checkpoint, the transfer ID is the idempotency key, and the same ID retried in seconds, hours, or days returns the cached result instead of double-spending.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x. Rust: v0.1.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x. Rust: 0.4.0, in active development.
 
 
 
@@ -11269,7 +11665,7 @@ title: Multi-agent orchestration
 Three specialist agents — researcher, writer, reviewer — chained through an orchestrator. Each agent's output is a durable checkpoint, so a flaky LLM call mid-pipeline retries only the failing agent and the prior outputs stay cached.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
 
 
 
@@ -11362,8 +11758,10 @@ To extend the pipeline with human approval, replace the inline `approved` calcul
 
 ```typescript
 // Suspend until an external system (HTTP handler, CLI, button click)
-// resolves the promise.
-const approved = yield* ctx.promise<boolean>({ id: `approval/${topic}` });
+// resolves the promise. ctx.promise() creates a child promise whose ID
+// is `${ctx.id}.<seq>` — deterministic from the orchestrator's execution ID.
+const approvalPromise = yield* ctx.promise<boolean>();
+const approved = yield* approvalPromise;
 ```
 
 
@@ -11465,7 +11863,7 @@ title: Recursive factorial
 A workflow that computes `n!` by calling itself with `n-1`. Each recursive call dispatches via `ctx.rpc` to whichever worker in the group claims it — recursion ends up distributed across machines without any explicit coordination, and every step is checkpointed so a worker crash mid-recursion resumes cleanly.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
 
 
 
@@ -11752,7 +12150,7 @@ title: Schedule
 Register a function to run on a cron expression and Resonate handles the rest. Every fired execution is a durable workflow — a worker that crashes mid-run hands off to a survivor, and a missed run because all workers were down still gets dispatched when one comes back.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: v0.1.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
 
 
 
@@ -11797,11 +12195,15 @@ resonate.stop();
 
 
 
+
+The high-level `resonate.schedule(...)` shown below is **not yet available in `resonate-sdk` v0.6.7** (current PyPI release). For v0.6.7, use the lower-level `resonate.schedules.create(id, cron, promise_id, promise_timeout, ...)` API, which fires a fresh durable promise on each cron tick and lets a registered worker handle it. The high-level shape is on the Python SDK roadmap.
+
+
 ```python title="schedule.py"
 from resonate import Resonate
 from report import generate_report
 
-resonate = Resonate(url="http://localhost:8001")
+resonate = Resonate.remote(host="http://localhost", port="8001")
 resonate.register(generate_report)
 
 resonate.schedule(
@@ -11997,7 +12399,7 @@ title: Webhook handler
 A webhook receives a payment event, kicks off a durable workflow keyed by the provider's event ID, and acknowledges immediately. Duplicate deliveries (network retries, slow ACKs) reconnect to the in-flight execution rather than re-charging the card. A crash mid-processing resumes from the next unfinished step.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.0 (current). Python: `resonate-sdk` v0.6.x. Rust example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x. Rust example repo is forthcoming.
 
 
 
@@ -12245,7 +12647,7 @@ npm install @resonatehq/sdk
 
 
 
-The Python SDK (v0.6.7) currently requires the legacy Resonate server. It is not yet compatible with `resonate dev` (server v0.9.x). See the [Python SDK guide](/develop/python) for legacy server setup.
+The Python SDK (v0.6.7) currently requires the legacy Resonate server (Go-based). It is not yet compatible with the current-generation Rust server that `resonate dev` starts. See the [Python SDK guide](/develop/python) for legacy server setup.
 
 
 
@@ -12519,3 +12921,1206 @@ function* agent(context: Context, prompt: string) {
   }
 }
 ```
+
+---
+
+---
+url: /spec/execution-model/coordination-protocol
+title: Distributed Coordination Protocol
+---
+
+The **Distributed Coordination Protocol** is responsible for the coordination of distributed function executions.
+
+
+## Eventual resumption
+
+Eventual resumption occurs when the calling execution E<sub>1</sub> awaits a promise P<sub>2</sub> that is not yet resolved. The calling execution E<sub>1</sub> is suspended until the promise P<sub>2</sub> is resolved or rejected.
+
+![Distributed Coordination Protocol — eventual resumption sequence](/images/spec/distributed-coordination-protocol-eventual-resumption-sequence.svg)
+
+1. When the calling execution E<sub>1</sub>, identified by Durable Promise P<sub>1</sub> and hosted on worker W<sub>1</sub>, invokes a function remotely, W<sub>1</sub> sends a request to create a Durable Promise (P<sub>2</sub>) to the server S.
+2. Upon receiving the request, the server S creates the durable promise P<sub>2</sub>.
+3. The Server S sends a response to W<sub>1</sub> which forwards P<sub>2</sub> to E<sub>1</sub>.
+4. The server S sends an Invoke(P<sub>2</sub>) message to process group G<sub>B</sub>, here delivered to worker W<sub>2</sub>.
+5. Worker W<sub>2</sub> spawns execution E<sub>2</sub>.
+6. When the calling execution E<sub>1</sub> awaits promise P<sub>2</sub>, W<sub>1</sub> sends a request to register a callback Resume(P<sub>1</sub>, P<sub>2</sub>) deliverable to G<sub>A</sub> with preference W<sub>1</sub> on P<sub>2</sub> to server S.
+7. Upon receiving the request, since P<sub>2</sub> is still pending, server S registers the callback C<sub>1</sub> with promise P<sub>2</sub>.
+8. Server S sends a response indicating success to worker W<sub>1</sub>, which suspends E<sub>1</sub>.
+9. When the called execution E<sub>2</sub> returns, the worker W<sub>2</sub> sends a request to resolve or reject durable promise P<sub>2</sub> to the server S.
+10. Upon receiving the request, the server S resolves or rejects the durable promise P<sub>2</sub>.
+11. Server S sends a response containing P<sub>2</sub> to W<sub>2</sub>.
+12. The server S sends a Resume(P<sub>1</sub>, P<sub>2</sub>) message to process group G<sub>A</sub> with the preference of W<sub>1</sub>, here delivered to worker W<sub>1</sub>, which resumes E<sub>1</sub>.
+
+## Immediate resumption
+
+Immediate resumption occurs when the calling execution E<sub>1</sub> awaits a promise P<sub>2</sub> that is already resolved.
+
+![Distributed Coordination Protocol — immediate resumption sequence](/images/spec/distributed-coordination-protocol-immediate-resumption-sequence.svg)
+
+1. When the calling execution E<sub>1</sub>, identified by durable promise P<sub>1</sub> and hosted on worker W<sub>1</sub>, invokes a function remotely, W<sub>1</sub> sends a request to create a durable promise P<sub>2</sub> to the server S.
+2. Upon receiving the request, the server S creates the durable promise P<sub>2</sub>.
+3. Server S sends a response to W<sub>1</sub>, which forwards P<sub>2</sub> to E<sub>1</sub>.
+4. The server S sends an Invoke(P<sub>2</sub>) message to process group G<sub>B</sub>, here delivered to worker W<sub>2</sub>.
+5. Worker W<sub>2</sub> spawns execution E<sub>2</sub>.
+6. When the called execution E<sub>2</sub> returns, the worker W<sub>2</sub> sends a request to resolve or reject durable promise P<sub>2</sub> to the server S.
+7. Upon receiving the request, the server S resolves or rejects the durable promise P<sub>2</sub>.
+8. Server S sends a response containing P<sub>2</sub> to W<sub>2</sub>.
+9. When the calling execution E<sub>1</sub> awaits promise P<sub>2</sub>, W<sub>1</sub> sends a request to register a callback Resume(P<sub>1</sub>, P<sub>2</sub>) deliverable to G<sub>A</sub> with preference W<sub>1</sub> on P<sub>2</sub> to server S.
+10. Upon receiving the request, since P<sub>2</sub> is already completed, server S **does not** register a callback.
+11. Server S sends a response indicating the callback was not registered because the promise is already completed to worker W<sub>1</sub>, which resumes E<sub>1</sub>.
+
+---
+
+---
+url: /spec/execution-model
+title: Execution model
+---
+
+The execution model lays out the algorithms, protocols, and object specifications that make Distributed Async Await work at a platform level.
+
+
+The execution model is structured into three protocols:
+
+- **[Coordination Protocol](/spec/execution-model/coordination-protocol)** — coordination of distributed function executions across partial order.
+- **[Recovery Protocol](/spec/execution-model/recovery-protocol)** — detection and recovery of crash failures across partial failure.
+- **[Message Passing Protocol](/spec/execution-model/message-passing)** — the underlying transport-layer contract for sending and receiving between processes.
+
+---
+
+---
+url: /spec/execution-model/message-passing
+title: Message Passing Protocol
+---
+
+The **Message Passing Protocol** defines the communication between components in Distributed Async Await.
+
+
+The Message-Passing Protocol MUST support a wide array of transport mechanisms — push or poll over HTTP, message queues, or others. The specification therefore defines the behavior of sending and receiving messages between processes with minimal requirements and minimal guarantees.
+
+## Message events
+
+Messages are sent between processes; consequently, messages are addressed to processes. One (successful) message exchange consists of a *send event* at the sending process and a *receive event* at the receiving process.
+
+![Send and Receive event diagram](/images/spec/send-receive-event.svg)
+
+The most fine-grained model of message exchange between two processes consists of **four events**: a send event at the sending process, a receive event at the network, followed by a send event at the network and a receive event at the receiving process. At this level of abstraction, message exchange between processes and the network is reliable; however, the network may reorder, drop, or duplicate messages.
+
+The more common model of message exchange between two processes consists of **two events**: a send event at the sending process and a receive event at the receiving process. At this level of abstraction, message exchange between processes is unreliable — messages may be reordered, dropped, or duplicated.
+
+The only guarantee is that if a process experiences a receive event, there is a corresponding send event at a sending process (which may be the same process).
+
+## Messaging
+
+Every component may issue a Send(address, message) command that will result in emitting a Send(address, message) event.
+
+```text
+command Send(address : Address, message : T)
+```
+
+The Send command is the foundation of Distributed Async Await's failover mechanics: Send's AnyCast semantics enables both routing as well as transparent rerouting in case of failure. This ensures that distributed executions can adapt dynamically to changes in the process topology automatically.
+
+### Invoke-Resume example: the canonical interaction
+
+The canonical interaction in Distributed Async Await involves invoking and awaiting an asynchronous function remotely (see the [Distributed Coordination Protocol](/spec/execution-model/coordination-protocol)). This interaction involves two messages:
+
+**Invoke** — the request to invoke an execution.
+
+**Resume** — the request to resume an awaiting execution.
+
+## Addressing
+
+Processes communicate via addresses. Distributed Async Await supports two types of addresses: **UniCast** addresses and **AnyCast** addresses.
+
+- **UniCast** — denotes an individual process.
+- **AnyCast** — denotes a group of processes.
+
+```text
+data Address =
+  | UniCast PSpecifier
+  | AnyCast GSpecifier x optional
+```
+
+- `PSpecifier` denotes a transport-specific specifier specifying a single process.
+- `GSpecifier` denotes a transport-specific specifier specifying a group of processes.
+
+### Address resolution
+
+This specification does not determine how and when addresses are resolved. Specifically, this specification does not determine whether addresses are resolved on send (early binding) or on recv (late binding).
+
+---
+
+---
+url: /spec/execution-model/recovery-protocol
+title: Recovery Protocol
+---
+
+The **Distributed Recovery Protocol** is responsible for the detection and recovery of crash failures.
+
+
+
+A formal sequence-diagram treatment of the Recovery Protocol — analogous to the [Coordination Protocol](/spec/execution-model/coordination-protocol) — is in progress. This page captures the principles the protocol operationalizes; the formal protocol description will land in a future revision.
+
+
+## What recovery means
+
+Recovery is the mechanism by which a [logical execution](/spec/system-model/executions) survives the [failure](/spec/system-model/processes#failure) of a physical process. Distributed Async Await assumes a fail-stop process failure model: a process may non-deterministically terminate without warning. When that happens, the logical execution suspends and a successor physical execution can resume the work.
+
+Recovery is the second of the two foundational protocols in Distributed Async Await:
+
+- The [Coordination Protocol](/spec/execution-model/coordination-protocol) ensures coordination across **partial order** — the non-deterministic interleaving inherent to concurrent systems.
+- The Recovery Protocol ensures recovery across **partial failure** — the non-deterministic termination inherent to distributed systems.
+
+## Where the load-bearing pieces live
+
+The recovery semantics described informally elsewhere in this specification rest on three load-bearing pieces:
+
+1. **Durable Promises persist execution state.** The state required to recreate a function execution is stored externally to any single process. See the [Durable Promise Specification](/spec/programming-model/durable-promise-specification) for the API + state-transition table.
+2. **Function executions are interruption-tolerant.** Re-running a durable function from the beginning, with deduplication via durable promises, converges to the same result as an uninterrupted execution. See the [Durable Function Specification](/spec/programming-model/durable-function-specification) for the formal definition of interruption tolerance.
+3. **Tasks claim work and report liveness.** Workers claim tasks from the durable system, heartbeat to indicate progress, and surrender claims on crash. The server uses heartbeat absence to detect failure and re-deliver invocations to a successor worker.
+
+## Properties the protocol must guarantee
+
+A Recovery Protocol implementation must satisfy:
+
+- **Liveness under failure.** A logical execution's progress is bounded by the availability of *some* worker, not any specific worker. If a worker crashes, a successor worker must be able to resume.
+- **Safety under recovery.** A re-invoked durable function must not externalize observable side effects twice. Side-effect deduplication is provided by the durable promises representing each step.
+- **Bounded re-execution.** A worker that has lost the ability to make progress (lost network, paused VM) must yield its task claim within a bounded time so a successor worker can take over without indefinite waiting.
+
+## Reference implementation pointers
+
+For implementation-level recovery semantics, see:
+
+- [The concepts that power Resonate](/evaluate/why-resonate) — recovery in the context of a working durable execution engine.
+- [TypeScript](/develop/typescript), [Python](/develop/python), and [Rust](/develop/rust) SDKs — how each language realizes recovery on top of this specification.
+
+## See also
+
+- [Coordination Protocol](/spec/execution-model/coordination-protocol) — the sibling protocol covering partial order.
+- [Message Passing Protocol](/spec/execution-model/message-passing) — the underlying transport layer.
+- [Processes](/spec/system-model/processes) — the failure model assumed by recovery.
+
+---
+
+---
+url: /spec/glossary
+title: Glossary
+---
+
+### Agent
+
+A program that generates and executes code on behalf of a user — including, increasingly, code that calls Distributed Async Await APIs. From the perspective of the protocol, an agent is just another process. See [Process](#process).
+
+### Async Await
+
+Async Await is a programming model based on functions and promises that allows for concurrent execution of code within a single process.
+
+### Async Call Graph
+
+A [Call Graph](#call-graph) in which the edges represent asynchronous invocations — that is, the caller continues executing concurrently with the callee, and the caller awaits a promise to receive the callee's result.
+
+### Call Graph
+
+A Call Graph is a directed graph where the nodes are functions and the edges are calls between functions.
+
+See also:
+
+- [Async Call Graph](#async-call-graph)
+
+### Concurrency
+
+The property of a system in which multiple executions may take a step at the same point in time. Concurrency introduces *partial order* — non-deterministic interleaving of steps across executions. See also [Coordination](#coordination).
+
+### Coordination
+
+The mechanism by which concurrent executions agree on a partial order of operations. In Distributed Async Await, coordination is provided by [Promises](#promise) — a caller and callee execute concurrently, and the caller awaits a promise to receive the callee's result. See also [Concurrency](#concurrency).
+
+### Definition
+
+The static description of a computation — the program text. A definition becomes an [Execution](#execution) when it is invoked. See also [Execution](#execution).
+
+### Distribution
+
+The property of a system in which executions span multiple [Processes](#process), each with its own state and its own potential for [Failure](#interruption). Distribution introduces *partial failure* — non-deterministic termination of a subset of processes. See also [Recovery](#recovery).
+
+### Durable Executions
+
+A Durable Execution is a programming abstraction with an interruption-agnostic definition resulting in an interruption-transparent execution.
+
+### Execution
+
+The dynamic instance of a [Definition](#definition) — the running program, with all its in-flight state. An execution has a well-defined lifecycle: *invoke* (entry) and *return* (exit). See also [Definition](#definition).
+
+### Function
+
+A unit of computation defined by its inputs, its outputs, and its body. In Distributed Async Await, functions compose recursively — a function may call other functions, spanning a [Call Graph](#call-graph). Together with [Promises](#promise), functions are one of two universal abstractions on which the programming model is built.
+
+### Interruption
+
+The term _interruption_ refers to a voluntary (system-triggered) or involuntary (environment-triggered) termination mid execution.
+
+### Interruption-agnostic
+
+A property of a [Definition](#definition): the definition (program, code) does not contain interruption detection or interruption mitigation logic. The author writes ordinary, synchronous-looking code; the protocol takes responsibility for handling interruptions transparently.
+
+### Interruption-tolerant
+
+A property of an [Execution](#execution): an execution that experiences an interruption and subsequently recovers is equivalent to some execution that does not experience an interruption. Formally, `(⟨p⟩, →(+interruption)) ≃ (⟨p⟩, →(-interruption))`. See the [Durable Function Specification](/spec/programming-model/durable-function-specification) for the formal treatment.
+
+### Logical Process
+
+A [Process](#process) identified by its logical identity — what the system reasons *about*. One logical process is realized by one or more [Physical Processes](#physical-process) over time; when a physical process crashes, the logical process suspends, and a successor physical process resumes it.
+
+### Messages
+
+Messages are the means by which processes communicate with each other.
+
+### Physical Process
+
+A concrete OS-level process that runs on a specific machine for a finite lifetime. A physical process realizes a [Logical Process](#logical-process); a single logical process may be realized by a sequence of physical processes across crashes and restarts.
+
+### Process
+
+Processes are the **fundamental unit of locality** in a system, each with a unique identity and a well-defined lifecycle.
+
+See also:
+
+- [Logical Process](#logical-process)
+- [Physical Process](#physical-process)
+
+### Programming Model
+
+The developer-facing surface of a system: the abstractions that authors compose to express computation. Distributed Async Await's programming model is built on [Functions](#function) and [Promises](#promise) — the same primitives as ordinary async/await, lifted to span [Distribution](#distribution).
+
+### Promise
+
+A representation of a future value. A promise is either *pending* or *completed*; a completed promise is either *resolved* (success) or *rejected* (failure). Promises are the universal abstraction for [Coordination](#coordination) — a caller awaits a promise to receive a callee's result. In Distributed Async Await, promises are *durable*: they persist independently of the processes that reference them. See the [Durable Promise Specification](/spec/programming-model/durable-promise-specification) for the formal API and state-transition table.
+
+### Recovery
+
+The mechanism by which a [Logical Process](#logical-process) survives the [Failure](#interruption) of a [Physical Process](#physical-process). Recovery is the response to *partial failure*, just as [Coordination](#coordination) is the response to *partial order*. See the [Recovery Protocol](/spec/execution-model/recovery-protocol) for details.
+
+---
+
+---
+url: /spec
+title: Specification
+---
+
+Distributed Async Await is a collection of protocols, sub-specifications (definitions), and models. This section is the canonical home for the formal specification — for working code that implements it, see the [TypeScript](/develop/typescript), [Python](/develop/python), and [Rust](/develop/rust) SDKs.
+
+
+The specification is structured into three parts:
+
+- **[Programming model](/spec/programming-model)** — the intended structure of distributed programs and the developer interface.
+- **[Execution model](/spec/execution-model)** — how distributed programs reliably make progress.
+- **[System model](/spec/system-model)** — the environment in which distributed programs exist, and a way of thinking about them.
+
+A [glossary](/spec/glossary) defines the load-bearing terms.
+
+---
+
+---
+url: /spec/programming-model/durable-function-specification
+title: Durable Function Specification
+---
+
+Durability is a property of a function execution that allows it to be resumed after an interruption.
+
+
+## Durable executions
+
+A durable execution is a programming abstraction with an interruption-agnostic *definition* resulting in an interruption-transparent *execution*. The defining characteristic of durable executions is that they are both interruption-agnostic and interruption-transparent — being only one is not sufficient.
+
+### Interruption
+
+The term _interruption_ refers to a voluntary (system-triggered) or involuntary (environment-triggered) termination mid execution. A voluntary termination is also referred to as an _interrupt_; an involuntary termination is also referred to as a _failure_.
+
+### Interruption-agnostic definition
+
+The term _interruption-agnostic definition_ refers to a definition (program, code) that does not acknowledge the possibility of interruptions. The definition does not contain interruption detection or interruption mitigation.
+
+### Interruption-transparent execution
+
+The term _interruption-tolerant execution_ refers to an execution that does not externalize (make observable) the presence of interruptions. An execution that experiences an interruption and subsequently recovers is equivalent to some execution that does not experience an interruption.
+
+
+Interruption tolerance can be defined formally as:
+
+```
+(⟨p⟩, →(+interruption)) ≃ (⟨p⟩, →(-interruption))
+```
+
+**In words.** A program `p` is interruption-tolerant if, starting from an initial configuration `⟨p⟩`, an execution in the presence of interruptions `(⟨p⟩, →(+interruption))` is equivalent to some execution in the absence of interruptions `(⟨p⟩, →(-interruption))`.
+
+
+
+The formal interruption-tolerance definition above is stable. The remainder of this document — formal treatment of step composition, durable side-effect semantics, and the relationship between durable function state and durable promise state — is in progress.
+
+For the operational shape of durable functions in working systems, see the [Durable Promise Specification](/spec/programming-model/durable-promise-specification) (the state on which durable functions execute) and the [TypeScript](/develop/typescript), [Python](/develop/python), and [Rust](/develop/rust) SDKs for how each language realizes durable functions.
+
+---
+
+---
+url: /spec/programming-model/durable-promise-specification
+title: Durable Promise Specification
+---
+
+Promises are **fundamental units of coordination**. Distributed Async Await proposes Durable Promises — promises that persist in storage and enable coordination across process boundaries.
+
+
+Within the Distributed Async Await specification, each execution — whether a function execution or an action taking place in the physical world — pairs to a promise.
+
+Distributed Async Await requires that promise data objects are stored to disk, thus making the promises durable, giving them the name **Durable Promises**.
+
+A promise (also called future, awaitable, or deferred) is a representation of a future value. A promise is either pending or completed — that is, resolved or rejected. A promise is pending while the value is not yet available; once completed, it signals success (resolved) or failure (rejected).
+
+![Promise lifecycle diagram](/images/spec/promise-lifecycle.svg)
+
+A promise is a coordination primitive. In a typical scenario, a downstream function execution creates a promise and awaits its completion. An upstream function execution either resolves or rejects the promise. On completion, the downstream execution resumes with the value of the promise.
+
+## API
+
+**Durable Promise Application Programming Interface**
+
+Logically, the Application Programming Interface (API) is divided into two parts: the Downstream API and the Upstream API.
+
+![Promise API illustration](/images/spec/promise-api-illustration.svg)
+
+### Downstream API
+
+- **Create**
+
+  A downstream component may create a promise.
+
+  ```
+  Create(promise-id, idempotency-key, param, header, timeout, strict)
+  ```
+
+- **Cancel**
+
+  A downstream component can cancel an existing promise.
+
+  ```
+  Cancel(promise-id, idempotency-key, value, header, strict)
+  ```
+
+- **Callback**
+
+  A downstream component can register a callback on an existing promise.
+
+  ```
+  Callback(id, promise-id, root-promise-id, timeout, recv)
+  ```
+
+  A `recv` specifies the transport on which the callback will occur. Below is a non-exhaustive list of supported receivers.
+
+  | Type   | Data                                                 | Shorthand            |
+  | ------ | ---------------------------------------------------- | -------------------- |
+  | `poll` | `{"group": "string", "id": "string"}`                | `poll://group:id`    |
+  | `http` | `{"headers": {"string": "string"}, "url": "string"}` | `http://example.com` |
+
+### Upstream API
+
+- **Resolve**
+
+  An upstream component can resolve an existing promise, signaling success.
+
+  ```
+  Resolve(promise-id, idempotency-key, value, header, strict)
+  ```
+
+- **Reject**
+
+  An upstream component can reject a promise, signalling failure.
+
+  ```
+  Reject(promise-id, idempotency-key, value, header, strict)
+  ```
+
+### OpenAPI spec example
+
+```yaml
+openapi: 3.0.0
+info:
+  title: Durable Promise API
+  version: x.x.x
+  license:
+    name: Apache 2.0
+    url: https://opensource.org/license/apache-2-0
+
+servers:
+  - url: https://your_public_api_url
+    description: <your_public_server_description>
+  - url: http://localhost:<port>
+    description: <your_local_server_description>
+
+paths:
+  /promises:
+    get:
+      tags: [Promises]
+      summary: Search promises
+      operationId: searchPromises
+      parameters:
+        - in: header
+          name: request-id
+          schema: { type: string }
+        - name: id
+          in: query
+          schema: { type: string }
+        - name: state
+          in: query
+          schema: { type: string, enum: [pending, resolved, rejected] }
+        - name: tags
+          in: query
+          style: deepObject
+          explode: true
+          schema:
+            type: object
+            additionalProperties: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  promises:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Promise"
+                  cursor:
+                    type: string
+    post:
+      tags: [Promises]
+      summary: Create promise
+      operationId: createPromise
+      parameters:
+        - in: header
+          name: request-id
+          schema: { type: string }
+        - in: header
+          name: idempotency-key
+          schema: { type: string }
+        - in: header
+          name: strict
+          schema: { type: boolean }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, timeout]
+              properties:
+                id: { type: string }
+                timeout: { type: integer, format: int64 }
+                param: { $ref: "#/components/schemas/Value" }
+                tags:
+                  type: object
+                  additionalProperties: { type: string }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Promise" }
+        201:
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Promise" }
+        400: { description: Invalid request }
+        403: { description: Forbidden }
+        409: { description: Promise already exists }
+
+  /promises/{id}:
+    get:
+      tags: [Promises]
+      summary: Read promise
+      operationId: readPromise
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: request-id
+          schema: { type: string }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Promise" }
+        400: { description: Invalid request }
+        404: { description: Promise not found }
+
+    patch:
+      tags: [Promises]
+      summary: Complete promise
+      operationId: completePromise
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: request-id
+          schema: { type: string }
+        - in: header
+          name: idempotency-key
+          schema: { type: string }
+        - in: header
+          name: strict
+          schema: { type: boolean }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state:
+                  type: string
+                  enum: [RESOLVED, REJECTED, REJECTED_CANCELED]
+                value: { $ref: "#/components/schemas/Value" }
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Promise" }
+        400: { description: Invalid request }
+        403: { description: Forbidden }
+        404: { description: Promise not found }
+
+components:
+  schemas:
+    Promise:
+      type: object
+      required: [id, state, timeout, param, value, tags]
+      properties:
+        id: { type: string }
+        state:
+          type: string
+          enum:
+            [PENDING, RESOLVED, REJECTED, REJECTED_CANCELED, REJECTED_TIMEDOUT]
+        timeout: { type: integer, format: int64 }
+        param: { $ref: "#/components/schemas/Value" }
+        value: { $ref: "#/components/schemas/Value" }
+        tags:
+          type: object
+          additionalProperties: { type: string }
+        idempotencyKeyForCreate: { type: string, readOnly: true }
+        idempotencyKeyForComplete: { type: string, readOnly: true }
+        createdOn: { type: integer, format: int64 }
+        completedOn: { type: integer, format: int64 }
+
+    Value:
+      type: object
+      properties:
+        headers:
+          type: object
+          additionalProperties: { type: string }
+        data: { type: string }
+
+    Task:
+      type: object
+      required: [id, counter, timeout]
+      properties:
+        id: { type: string }
+        counter: { type: integer }
+        timeout: { type: integer, format: int64 }
+        processId: { type: string }
+        createdOn: { type: integer, format: int64 }
+        completedOn: { type: integer, format: int64 }
+```
+
+## State transitions
+
+|     | Current State          | Action                | Next State             | Output               |
+| --- | ---------------------- | --------------------- | ---------------------- | -------------------- |
+| 1   | Init                   | Create(id, -, T)      | Pending(id, -, -)      | OK                   |
+| 2   | Init                   | Create(id, -, F)      | Pending(id, -, -)      | OK                   |
+| 3   | Init                   | Create(id, ikc, T)    | Pending(id, ikc, -)    | OK                   |
+| 4   | Init                   | Create(id, ikc, F)    | Pending(id, ikc, -)    | OK                   |
+| 5   | Init                   | Resolve(id, -, T)     | Init                   | KO, Already Init     |
+| 6   | Init                   | Resolve(id, -, F)     | Init                   | KO, Already Init     |
+| 7   | Init                   | Resolve(id, iku, T)   | Init                   | KO, Already Init     |
+| 8   | Init                   | Resolve(id, iku, F)   | Init                   | KO, Already Init     |
+| 9   | Init                   | Reject(id, -, T)      | Init                   | KO, Already Init     |
+| 10  | Init                   | Reject(id, -, F)      | Init                   | KO, Already Init     |
+| 11  | Init                   | Reject(id, iku, T)    | Init                   | KO, Already Init     |
+| 12  | Init                   | Reject(id, iku, F)    | Init                   | KO, Already Init     |
+| 13  | Init                   | Cancel(id, -, T)      | Init                   | KO, Already Init     |
+| 14  | Init                   | Cancel(id, -, F)      | Init                   | KO, Already Init     |
+| 15  | Init                   | Cancel(id, iku, T)    | Init                   | KO, Already Init     |
+| 16  | Init                   | Cancel(id, iku, F)    | Init                   | KO, Already Init     |
+| 17  | Pending(id, -, -)      | Create(id, -, T)      | Pending(id, -, -)      | KO, Already Pending  |
+| 18  | Pending(id, -, -)      | Create(id, -, F)      | Pending(id, -, -)      | KO, Already Pending  |
+| 19  | Pending(id, -, -)      | Create(id, ikc, T)    | Pending(id, -, -)      | KO, Already Pending  |
+| 20  | Pending(id, -, -)      | Create(id, ikc, F)    | Pending(id, -, -)      | KO, Already Pending  |
+| 21  | Pending(id, -, -)      | Resolve(id, -, T)     | Resolved(id, -, -)     | OK                   |
+| 22  | Pending(id, -, -)      | Resolve(id, -, F)     | Resolved(id, -, -)     | OK                   |
+| 23  | Pending(id, -, -)      | Resolve(id, iku, T)   | Resolved(id, -, iku)   | OK                   |
+| 24  | Pending(id, -, -)      | Resolve(id, iku, F)   | Resolved(id, -, iku)   | OK                   |
+| 25  | Pending(id, -, -)      | Reject(id, -, T)      | Rejected(id, -, -)     | OK                   |
+| 26  | Pending(id, -, -)      | Reject(id, -, F)      | Rejected(id, -, -)     | OK                   |
+| 27  | Pending(id, -, -)      | Reject(id, iku, T)    | Rejected(id, -, iku)   | OK                   |
+| 28  | Pending(id, -, -)      | Reject(id, iku, F)    | Rejected(id, -, iku)   | OK                   |
+| 29  | Pending(id, -, -)      | Cancel(id, -, T)      | Canceled(id, -, -)     | OK                   |
+| 30  | Pending(id, -, -)      | Cancel(id, -, F)      | Canceled(id, -, -)     | OK                   |
+| 31  | Pending(id, -, -)      | Cancel(id, iku, T)    | Canceled(id, -, iku)   | OK                   |
+| 32  | Pending(id, -, -)      | Cancel(id, iku, F)    | Canceled(id, -, iku)   | OK                   |
+| 33  | Pending(id, ikc, -)    | Create(id, -, T)      | Pending(id, ikc, -)    | KO, Already Pending  |
+| 34  | Pending(id, ikc, -)    | Create(id, -, F)      | Pending(id, ikc, -)    | KO, Already Pending  |
+| 35  | Pending(id, ikc, -)    | Create(id, ikc, T)    | Pending(id, ikc, -)    | OK, Deduplicated     |
+| 36  | Pending(id, ikc, -)    | Create(id, ikc, F)    | Pending(id, ikc, -)    | OK, Deduplicated     |
+| 37  | Pending(id, ikc, -)    | Create(id, ikc\*, T)  | Pending(id, ikc, -)    | KO, Already Pending  |
+| 38  | Pending(id, ikc, -)    | Create(id, ikc\*, F)  | Pending(id, ikc, -)    | KO, Already Pending  |
+| 39  | Pending(id, ikc, -)    | Resolve(id, -, T)     | Resolved(id, ikc, -)   | OK                   |
+| 40  | Pending(id, ikc, -)    | Resolve(id, -, F)     | Resolved(id, ikc, -)   | OK                   |
+| 41  | Pending(id, ikc, -)    | Resolve(id, iku, T)   | Resolved(id, ikc, iku) | OK                   |
+| 42  | Pending(id, ikc, -)    | Resolve(id, iku, F)   | Resolved(id, ikc, iku) | OK                   |
+| 43  | Pending(id, ikc, -)    | Reject(id, -, T)      | Rejected(id, ikc, -)   | OK                   |
+| 44  | Pending(id, ikc, -)    | Reject(id, -, F)      | Rejected(id, ikc, -)   | OK                   |
+| 45  | Pending(id, ikc, -)    | Reject(id, iku, T)    | Rejected(id, ikc, iku) | OK                   |
+| 46  | Pending(id, ikc, -)    | Reject(id, iku, F)    | Rejected(id, ikc, iku) | OK                   |
+| 47  | Pending(id, ikc, -)    | Cancel(id, -, T)      | Canceled(id, ikc, -)   | OK                   |
+| 48  | Pending(id, ikc, -)    | Cancel(id, -, F)      | Canceled(id, ikc, -)   | OK                   |
+| 49  | Pending(id, ikc, -)    | Cancel(id, iku, T)    | Canceled(id, ikc, iku) | OK                   |
+| 50  | Pending(id, ikc, -)    | Cancel(id, iku, F)    | Canceled(id, ikc, iku) | OK                   |
+| 51  | Resolved(id, -, -)     | Create(id, -, T)      | Resolved(id, -, -)     | KO, Already Resolved |
+| 52  | Resolved(id, -, -)     | Create(id, -, F)      | Resolved(id, -, -)     | KO, Already Resolved |
+| 53  | Resolved(id, -, -)     | Create(id, ikc, T)    | Resolved(id, -, -)     | KO, Already Resolved |
+| 54  | Resolved(id, -, -)     | Create(id, ikc, F)    | Resolved(id, -, -)     | KO, Already Resolved |
+| 55  | Resolved(id, -, -)     | Resolve(id, -, T)     | Resolved(id, -, -)     | KO, Already Resolved |
+| 56  | Resolved(id, -, -)     | Resolve(id, -, F)     | Resolved(id, -, -)     | KO, Already Resolved |
+| 57  | Resolved(id, -, -)     | Resolve(id, iku, T)   | Resolved(id, -, -)     | KO, Already Resolved |
+| 58  | Resolved(id, -, -)     | Resolve(id, iku, F)   | Resolved(id, -, -)     | KO, Already Resolved |
+| 59  | Resolved(id, -, -)     | Reject(id, -, T)      | Resolved(id, -, -)     | KO, Already Resolved |
+| 60  | Resolved(id, -, -)     | Reject(id, -, F)      | Resolved(id, -, -)     | KO, Already Resolved |
+| 61  | Resolved(id, -, -)     | Reject(id, iku, T)    | Resolved(id, -, -)     | KO, Already Resolved |
+| 62  | Resolved(id, -, -)     | Reject(id, iku, F)    | Resolved(id, -, -)     | KO, Already Resolved |
+| 63  | Resolved(id, -, -)     | Cancel(id, -, T)      | Resolved(id, -, -)     | KO, Already Resolved |
+| 64  | Resolved(id, -, -)     | Cancel(id, -, F)      | Resolved(id, -, -)     | KO, Already Resolved |
+| 65  | Resolved(id, -, -)     | Cancel(id, iku, T)    | Resolved(id, -, -)     | KO, Already Resolved |
+| 66  | Resolved(id, -, -)     | Cancel(id, iku, F)    | Resolved(id, -, -)     | KO, Already Resolved |
+| 67  | Resolved(id, -, iku)   | Create(id, -, T)      | Resolved(id, -, iku)   | KO, Already Resolved |
+| 68  | Resolved(id, -, iku)   | Create(id, -, F)      | Resolved(id, -, iku)   | KO, Already Resolved |
+| 69  | Resolved(id, -, iku)   | Create(id, ikc, T)    | Resolved(id, -, iku)   | KO, Already Resolved |
+| 70  | Resolved(id, -, iku)   | Create(id, ikc, F)    | Resolved(id, -, iku)   | KO, Already Resolved |
+| 71  | Resolved(id, -, iku)   | Resolve(id, -, T)     | Resolved(id, -, iku)   | KO, Already Resolved |
+| 72  | Resolved(id, -, iku)   | Resolve(id, -, F)     | Resolved(id, -, iku)   | KO, Already Resolved |
+| 73  | Resolved(id, -, iku)   | Resolve(id, iku, T)   | Resolved(id, -, iku)   | OK, Deduplicated     |
+| 74  | Resolved(id, -, iku)   | Resolve(id, iku, F)   | Resolved(id, -, iku)   | OK, Deduplicated     |
+| 75  | Resolved(id, -, iku)   | Resolve(id, iku\*, T) | Resolved(id, -, iku)   | KO, Already Resolved |
+| 76  | Resolved(id, -, iku)   | Resolve(id, iku\*, F) | Resolved(id, -, iku)   | KO, Already Resolved |
+| 77  | Resolved(id, -, iku)   | Reject(id, -, T)      | Resolved(id, -, iku)   | KO, Already Resolved |
+| 78  | Resolved(id, -, iku)   | Reject(id, -, F)      | Resolved(id, -, iku)   | KO, Already Resolved |
+| 79  | Resolved(id, -, iku)   | Reject(id, iku, T)    | Resolved(id, -, iku)   | KO, Already Resolved |
+| 80  | Resolved(id, -, iku)   | Reject(id, iku, F)    | Resolved(id, -, iku)   | OK, Deduplicated     |
+| 81  | Resolved(id, -, iku)   | Reject(id, iku\*, T)  | Resolved(id, -, iku)   | KO, Already Resolved |
+| 82  | Resolved(id, -, iku)   | Reject(id, iku\*, F)  | Resolved(id, -, iku)   | KO, Already Resolved |
+| 83  | Resolved(id, -, iku)   | Cancel(id, -, T)      | Resolved(id, -, iku)   | KO, Already Resolved |
+| 84  | Resolved(id, -, iku)   | Cancel(id, -, F)      | Resolved(id, -, iku)   | KO, Already Resolved |
+| 85  | Resolved(id, -, iku)   | Cancel(id, iku, T)    | Resolved(id, -, iku)   | KO, Already Resolved |
+| 86  | Resolved(id, -, iku)   | Cancel(id, iku, F)    | Resolved(id, -, iku)   | OK, Deduplicated     |
+| 87  | Resolved(id, -, iku)   | Cancel(id, iku\*, T)  | Resolved(id, -, iku)   | KO, Already Resolved |
+| 88  | Resolved(id, -, iku)   | Cancel(id, iku\*, F)  | Resolved(id, -, iku)   | KO, Already Resolved |
+| 89  | Resolved(id, ikc, -)   | Create(id, -, T)      | Resolved(id, ikc, -)   | KO, Already Resolved |
+| 90  | Resolved(id, ikc, -)   | Create(id, -, F)      | Resolved(id, ikc, -)   | KO, Already Resolved |
+| 91  | Resolved(id, ikc, -)   | Create(id, ikc, T)    | Resolved(id, ikc, -)   | KO, Already Resolved |
+| 92  | Resolved(id, ikc, -)   | Create(id, ikc, F)    | Resolved(id, ikc, -)   | OK, Deduplicated     |
+| 93  | Resolved(id, ikc, -)   | Create(id, ikc\*, T)  | Resolved(id, ikc, -)   | KO, Already Resolved |
+| 94  | Resolved(id, ikc, -)   | Create(id, ikc\*, F)  | Resolved(id, ikc, -)   | KO, Already Resolved |
+| 95  | Resolved(id, ikc, -)   | Resolve(id, -, T)     | Resolved(id, ikc, -)   | KO, Already Resolved |
+| 96  | Resolved(id, ikc, -)   | Resolve(id, -, F)     | Resolved(id, ikc, -)   | KO, Already Resolved |
+| 97  | Resolved(id, ikc, -)   | Resolve(id, iku, T)   | Resolved(id, ikc, -)   | KO, Already Resolved |
+| 98  | Resolved(id, ikc, -)   | Resolve(id, iku, F)   | Resolved(id, ikc, -)   | KO, Already Resolved |
+| 99  | Resolved(id, ikc, -)   | Reject(id, -, T)      | Resolved(id, ikc, -)   | KO, Already Resolved |
+| 100 | Resolved(id, ikc, -)   | Reject(id, -, F)      | Resolved(id, ikc, -)   | KO, Already Resolved |
+| 101 | Resolved(id, ikc, -)   | Reject(id, iku, T)    | Resolved(id, ikc, -)   | KO, Already Resolved |
+| 102 | Resolved(id, ikc, -)   | Reject(id, iku, F)    | Resolved(id, ikc, -)   | KO, Already Resolved |
+| 103 | Resolved(id, ikc, -)   | Cancel(id, -, T)      | Resolved(id, ikc, -)   | KO, Already Resolved |
+| 104 | Resolved(id, ikc, -)   | Cancel(id, -, F)      | Resolved(id, ikc, -)   | KO, Already Resolved |
+| 105 | Resolved(id, ikc, -)   | Cancel(id, iku, T)    | Resolved(id, ikc, -)   | KO, Already Resolved |
+| 106 | Resolved(id, ikc, -)   | Cancel(id, iku, F)    | Resolved(id, ikc, -)   | KO, Already Resolved |
+| 107 | Resolved(id, ikc, iku) | Create(id, -, T)      | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 108 | Resolved(id, ikc, iku) | Create(id, -, F)      | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 109 | Resolved(id, ikc, iku) | Create(id, ikc, T)    | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 110 | Resolved(id, ikc, iku) | Create(id, ikc, F)    | Resolved(id, ikc, iku) | OK, Deduplicated     |
+| 111 | Resolved(id, ikc, iku) | Create(id, ikc\*, T)  | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 112 | Resolved(id, ikc, iku) | Create(id, ikc\*, F)  | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 113 | Resolved(id, ikc, iku) | Resolve(id, -, T)     | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 114 | Resolved(id, ikc, iku) | Resolve(id, -, F)     | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 115 | Resolved(id, ikc, iku) | Resolve(id, iku, T)   | Resolved(id, ikc, iku) | OK, Deduplicated     |
+| 116 | Resolved(id, ikc, iku) | Resolve(id, iku, F)   | Resolved(id, ikc, iku) | OK, Deduplicated     |
+| 117 | Resolved(id, ikc, iku) | Resolve(id, iku\*, T) | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 118 | Resolved(id, ikc, iku) | Resolve(id, iku\*, F) | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 119 | Resolved(id, ikc, iku) | Reject(id, -, T)      | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 120 | Resolved(id, ikc, iku) | Reject(id, -, F)      | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 121 | Resolved(id, ikc, iku) | Reject(id, iku, T)    | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 122 | Resolved(id, ikc, iku) | Reject(id, iku, F)    | Resolved(id, ikc, iku) | OK, Deduplicated     |
+| 123 | Resolved(id, ikc, iku) | Reject(id, iku\*, T)  | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 124 | Resolved(id, ikc, iku) | Reject(id, iku\*, F)  | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 125 | Resolved(id, ikc, iku) | Cancel(id, -, T)      | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 126 | Resolved(id, ikc, iku) | Cancel(id, -, F)      | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 127 | Resolved(id, ikc, iku) | Cancel(id, iku, T)    | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 128 | Resolved(id, ikc, iku) | Cancel(id, iku, F)    | Resolved(id, ikc, iku) | OK, Deduplicated     |
+| 129 | Resolved(id, ikc, iku) | Cancel(id, iku\*, T)  | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 130 | Resolved(id, ikc, iku) | Cancel(id, iku\*, F)  | Resolved(id, ikc, iku) | KO, Already Resolved |
+| 131 | Rejected(id, -, -)     | Create(id, -, T)      | Rejected(id, -, -)     | KO, Already Rejected |
+| 132 | Rejected(id, -, -)     | Create(id, -, F)      | Rejected(id, -, -)     | KO, Already Rejected |
+| 133 | Rejected(id, -, -)     | Create(id, ikc, T)    | Rejected(id, -, -)     | KO, Already Rejected |
+| 134 | Rejected(id, -, -)     | Create(id, ikc, F)    | Rejected(id, -, -)     | KO, Already Rejected |
+| 135 | Rejected(id, -, -)     | Resolve(id, -, T)     | Rejected(id, -, -)     | KO, Already Rejected |
+| 136 | Rejected(id, -, -)     | Resolve(id, -, F)     | Rejected(id, -, -)     | KO, Already Rejected |
+| 137 | Rejected(id, -, -)     | Resolve(id, iku, T)   | Rejected(id, -, -)     | KO, Already Rejected |
+| 138 | Rejected(id, -, -)     | Resolve(id, iku, F)   | Rejected(id, -, -)     | KO, Already Rejected |
+| 139 | Rejected(id, -, -)     | Reject(id, -, T)      | Rejected(id, -, -)     | KO, Already Rejected |
+| 140 | Rejected(id, -, -)     | Reject(id, -, F)      | Rejected(id, -, -)     | KO, Already Rejected |
+| 141 | Rejected(id, -, -)     | Reject(id, iku, T)    | Rejected(id, -, -)     | KO, Already Rejected |
+| 142 | Rejected(id, -, -)     | Reject(id, iku, F)    | Rejected(id, -, -)     | KO, Already Rejected |
+| 143 | Rejected(id, -, -)     | Cancel(id, -, T)      | Rejected(id, -, -)     | KO, Already Rejected |
+| 144 | Rejected(id, -, -)     | Cancel(id, -, F)      | Rejected(id, -, -)     | KO, Already Rejected |
+| 145 | Rejected(id, -, -)     | Cancel(id, iku, T)    | Rejected(id, -, -)     | KO, Already Rejected |
+| 146 | Rejected(id, -, -)     | Cancel(id, iku, F)    | Rejected(id, -, -)     | KO, Already Rejected |
+| 147 | Rejected(id, -, iku)   | Create(id, -, T)      | Rejected(id, -, iku)   | KO, Already Rejected |
+| 148 | Rejected(id, -, iku)   | Create(id, -, F)      | Rejected(id, -, iku)   | KO, Already Rejected |
+| 149 | Rejected(id, -, iku)   | Create(id, ikc, T)    | Rejected(id, -, iku)   | KO, Already Rejected |
+| 150 | Rejected(id, -, iku)   | Create(id, ikc, F)    | Rejected(id, -, iku)   | KO, Already Rejected |
+| 151 | Rejected(id, -, iku)   | Resolve(id, -, T)     | Rejected(id, -, iku)   | KO, Already Rejected |
+| 152 | Rejected(id, -, iku)   | Resolve(id, -, F)     | Rejected(id, -, iku)   | KO, Already Rejected |
+| 153 | Rejected(id, -, iku)   | Resolve(id, iku, T)   | Rejected(id, -, iku)   | KO, Already Rejected |
+| 154 | Rejected(id, -, iku)   | Resolve(id, iku, F)   | Rejected(id, -, iku)   | OK, Deduplicated     |
+| 155 | Rejected(id, -, iku)   | Resolve(id, iku\*, T) | Rejected(id, -, iku)   | KO, Already Rejected |
+| 156 | Rejected(id, -, iku)   | Resolve(id, iku\*, F) | Rejected(id, -, iku)   | KO, Already Rejected |
+| 157 | Rejected(id, -, iku)   | Reject(id, -, T)      | Rejected(id, -, iku)   | KO, Already Rejected |
+| 158 | Rejected(id, -, iku)   | Reject(id, -, F)      | Rejected(id, -, iku)   | KO, Already Rejected |
+| 159 | Rejected(id, -, iku)   | Reject(id, iku, T)    | Rejected(id, -, iku)   | OK, Deduplicated     |
+| 160 | Rejected(id, -, iku)   | Reject(id, iku, F)    | Rejected(id, -, iku)   | OK, Deduplicated     |
+| 161 | Rejected(id, -, iku)   | Reject(id, iku\*, T)  | Rejected(id, -, iku)   | KO, Already Rejected |
+| 162 | Rejected(id, -, iku)   | Reject(id, iku\*, F)  | Rejected(id, -, iku)   | KO, Already Rejected |
+| 163 | Rejected(id, -, iku)   | Cancel(id, -, T)      | Rejected(id, -, iku)   | KO, Already Rejected |
+| 164 | Rejected(id, -, iku)   | Cancel(id, -, F)      | Rejected(id, -, iku)   | KO, Already Rejected |
+| 165 | Rejected(id, -, iku)   | Cancel(id, iku, T)    | Rejected(id, -, iku)   | KO, Already Rejected |
+| 166 | Rejected(id, -, iku)   | Cancel(id, iku, F)    | Rejected(id, -, iku)   | OK, Deduplicated     |
+| 167 | Rejected(id, -, iku)   | Cancel(id, iku\*, T)  | Rejected(id, -, iku)   | KO, Already Rejected |
+| 168 | Rejected(id, -, iku)   | Cancel(id, iku\*, F)  | Rejected(id, -, iku)   | KO, Already Rejected |
+| 169 | Rejected(id, ikc, -)   | Create(id, -, T)      | Rejected(id, ikc, -)   | KO, Already Rejected |
+| 170 | Rejected(id, ikc, -)   | Create(id, -, F)      | Rejected(id, ikc, -)   | KO, Already Rejected |
+| 171 | Rejected(id, ikc, -)   | Create(id, ikc, T)    | Rejected(id, ikc, -)   | KO, Already Rejected |
+| 172 | Rejected(id, ikc, -)   | Create(id, ikc, F)    | Rejected(id, ikc, -)   | OK, Deduplicated     |
+| 173 | Rejected(id, ikc, -)   | Create(id, ikc\*, T)  | Rejected(id, ikc, -)   | KO, Already Rejected |
+| 174 | Rejected(id, ikc, -)   | Create(id, ikc\*, F)  | Rejected(id, ikc, -)   | KO, Already Rejected |
+| 175 | Rejected(id, ikc, -)   | Resolve(id, -, T)     | Rejected(id, ikc, -)   | KO, Already Rejected |
+| 176 | Rejected(id, ikc, -)   | Resolve(id, -, F)     | Rejected(id, ikc, -)   | KO, Already Rejected |
+| 177 | Rejected(id, ikc, -)   | Resolve(id, iku, T)   | Rejected(id, ikc, -)   | KO, Already Rejected |
+| 178 | Rejected(id, ikc, -)   | Resolve(id, iku, F)   | Rejected(id, ikc, -)   | KO, Already Rejected |
+| 179 | Rejected(id, ikc, -)   | Reject(id, -, T)      | Rejected(id, ikc, -)   | KO, Already Rejected |
+| 180 | Rejected(id, ikc, -)   | Reject(id, -, F)      | Rejected(id, ikc, -)   | KO, Already Rejected |
+| 181 | Rejected(id, ikc, -)   | Reject(id, iku, T)    | Rejected(id, ikc, -)   | KO, Already Rejected |
+| 182 | Rejected(id, ikc, -)   | Reject(id, iku, F)    | Rejected(id, ikc, -)   | KO, Already Rejected |
+| 183 | Rejected(id, ikc, -)   | Cancel(id, -, T)      | Rejected(id, ikc, -)   | KO, Already Rejected |
+| 184 | Rejected(id, ikc, -)   | Cancel(id, -, F)      | Rejected(id, ikc, -)   | KO, Already Rejected |
+| 185 | Rejected(id, ikc, -)   | Cancel(id, iku, T)    | Rejected(id, ikc, -)   | KO, Already Rejected |
+| 186 | Rejected(id, ikc, -)   | Cancel(id, iku, F)    | Rejected(id, ikc, -)   | KO, Already Rejected |
+| 187 | Rejected(id, ikc, iku) | Create(id, -, T)      | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 188 | Rejected(id, ikc, iku) | Create(id, -, F)      | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 189 | Rejected(id, ikc, iku) | Create(id, ikc, T)    | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 190 | Rejected(id, ikc, iku) | Create(id, ikc, F)    | Rejected(id, ikc, iku) | OK, Deduplicated     |
+| 191 | Rejected(id, ikc, iku) | Create(id, ikc\*, T)  | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 192 | Rejected(id, ikc, iku) | Create(id, ikc\*, F)  | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 193 | Rejected(id, ikc, iku) | Resolve(id, -, T)     | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 194 | Rejected(id, ikc, iku) | Resolve(id, -, F)     | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 195 | Rejected(id, ikc, iku) | Resolve(id, iku, T)   | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 196 | Rejected(id, ikc, iku) | Resolve(id, iku, F)   | Rejected(id, ikc, iku) | OK, Deduplicated     |
+| 197 | Rejected(id, ikc, iku) | Resolve(id, iku\*, T) | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 198 | Rejected(id, ikc, iku) | Resolve(id, iku\*, F) | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 199 | Rejected(id, ikc, iku) | Reject(id, -, T)      | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 200 | Rejected(id, ikc, iku) | Reject(id, -, F)      | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 201 | Rejected(id, ikc, iku) | Reject(id, iku, T)    | Rejected(id, ikc, iku) | OK, Deduplicated     |
+| 202 | Rejected(id, ikc, iku) | Reject(id, iku, F)    | Rejected(id, ikc, iku) | OK, Deduplicated     |
+| 203 | Rejected(id, ikc, iku) | Reject(id, iku\*, T)  | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 204 | Rejected(id, ikc, iku) | Reject(id, iku\*, F)  | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 205 | Rejected(id, ikc, iku) | Cancel(id, -, T)      | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 206 | Rejected(id, ikc, iku) | Cancel(id, -, F)      | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 207 | Rejected(id, ikc, iku) | Cancel(id, iku, T)    | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 208 | Rejected(id, ikc, iku) | Cancel(id, iku, F)    | Rejected(id, ikc, iku) | OK, Deduplicated     |
+| 209 | Rejected(id, ikc, iku) | Cancel(id, iku\*, T)  | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 210 | Rejected(id, ikc, iku) | Cancel(id, iku\*, F)  | Rejected(id, ikc, iku) | KO, Already Rejected |
+| 211 | Canceled(id, -, -)     | Create(id, -, T)      | Canceled(id, -, -)     | KO, Already Canceled |
+| 212 | Canceled(id, -, -)     | Create(id, -, F)      | Canceled(id, -, -)     | KO, Already Canceled |
+| 213 | Canceled(id, -, -)     | Create(id, ikc, T)    | Canceled(id, -, -)     | KO, Already Canceled |
+| 214 | Canceled(id, -, -)     | Create(id, ikc, F)    | Canceled(id, -, -)     | KO, Already Canceled |
+| 215 | Canceled(id, -, -)     | Resolve(id, -, T)     | Canceled(id, -, -)     | KO, Already Canceled |
+| 216 | Canceled(id, -, -)     | Resolve(id, -, F)     | Canceled(id, -, -)     | KO, Already Canceled |
+| 217 | Canceled(id, -, -)     | Resolve(id, iku, T)   | Canceled(id, -, -)     | KO, Already Canceled |
+| 218 | Canceled(id, -, -)     | Resolve(id, iku, F)   | Canceled(id, -, -)     | KO, Already Canceled |
+| 219 | Canceled(id, -, -)     | Reject(id, -, T)      | Canceled(id, -, -)     | KO, Already Canceled |
+| 220 | Canceled(id, -, -)     | Reject(id, -, F)      | Canceled(id, -, -)     | KO, Already Canceled |
+| 221 | Canceled(id, -, -)     | Reject(id, iku, T)    | Canceled(id, -, -)     | KO, Already Canceled |
+| 222 | Canceled(id, -, -)     | Reject(id, iku, F)    | Canceled(id, -, -)     | KO, Already Canceled |
+| 223 | Canceled(id, -, -)     | Cancel(id, -, T)      | Canceled(id, -, -)     | KO, Already Canceled |
+| 224 | Canceled(id, -, -)     | Cancel(id, -, F)      | Canceled(id, -, -)     | KO, Already Canceled |
+| 225 | Canceled(id, -, -)     | Cancel(id, iku, T)    | Canceled(id, -, -)     | KO, Already Canceled |
+| 226 | Canceled(id, -, -)     | Cancel(id, iku, F)    | Canceled(id, -, -)     | KO, Already Canceled |
+| 227 | Canceled(id, -, iku)   | Create(id, -, T)      | Canceled(id, -, iku)   | KO, Already Canceled |
+| 228 | Canceled(id, -, iku)   | Create(id, -, F)      | Canceled(id, -, iku)   | KO, Already Canceled |
+| 229 | Canceled(id, -, iku)   | Create(id, ikc, T)    | Canceled(id, -, iku)   | KO, Already Canceled |
+| 230 | Canceled(id, -, iku)   | Create(id, ikc, F)    | Canceled(id, -, iku)   | KO, Already Canceled |
+| 231 | Canceled(id, -, iku)   | Resolve(id, -, T)     | Canceled(id, -, iku)   | KO, Already Canceled |
+| 232 | Canceled(id, -, iku)   | Resolve(id, -, F)     | Canceled(id, -, iku)   | KO, Already Canceled |
+| 233 | Canceled(id, -, iku)   | Resolve(id, iku, T)   | Canceled(id, -, iku)   | KO, Already Canceled |
+| 234 | Canceled(id, -, iku)   | Resolve(id, iku, F)   | Canceled(id, -, iku)   | OK, Deduplicated     |
+| 235 | Canceled(id, -, iku)   | Resolve(id, iku\*, T) | Canceled(id, -, iku)   | KO, Already Canceled |
+| 236 | Canceled(id, -, iku)   | Resolve(id, iku\*, F) | Canceled(id, -, iku)   | KO, Already Canceled |
+| 237 | Canceled(id, -, iku)   | Reject(id, -, T)      | Canceled(id, -, iku)   | KO, Already Canceled |
+| 238 | Canceled(id, -, iku)   | Reject(id, -, F)      | Canceled(id, -, iku)   | KO, Already Canceled |
+| 239 | Canceled(id, -, iku)   | Reject(id, iku, T)    | Canceled(id, -, iku)   | KO, Already Canceled |
+| 240 | Canceled(id, -, iku)   | Reject(id, iku, F)    | Canceled(id, -, iku)   | OK, Deduplicated     |
+| 241 | Canceled(id, -, iku)   | Reject(id, iku\*, T)  | Canceled(id, -, iku)   | KO, Already Canceled |
+| 242 | Canceled(id, -, iku)   | Reject(id, iku\*, F)  | Canceled(id, -, iku)   | KO, Already Canceled |
+| 243 | Canceled(id, -, iku)   | Cancel(id, -, T)      | Canceled(id, -, iku)   | KO, Already Canceled |
+| 244 | Canceled(id, -, iku)   | Cancel(id, -, F)      | Canceled(id, -, iku)   | KO, Already Canceled |
+| 245 | Canceled(id, -, iku)   | Cancel(id, iku, T)    | Canceled(id, -, iku)   | OK, Deduplicated     |
+| 246 | Canceled(id, -, iku)   | Cancel(id, iku, F)    | Canceled(id, -, iku)   | OK, Deduplicated     |
+| 247 | Canceled(id, -, iku)   | Cancel(id, iku\*, T)  | Canceled(id, -, iku)   | KO, Already Canceled |
+| 248 | Canceled(id, -, iku)   | Cancel(id, iku\*, F)  | Canceled(id, -, iku)   | KO, Already Canceled |
+| 249 | Canceled(id, ikc, -)   | Create(id, -, T)      | Canceled(id, ikc, -)   | KO, Already Canceled |
+| 250 | Canceled(id, ikc, -)   | Create(id, -, F)      | Canceled(id, ikc, -)   | KO, Already Canceled |
+| 251 | Canceled(id, ikc, -)   | Create(id, ikc, T)    | Canceled(id, ikc, -)   | KO, Already Canceled |
+| 252 | Canceled(id, ikc, -)   | Create(id, ikc, F)    | Canceled(id, ikc, -)   | OK, Deduplicated     |
+| 253 | Canceled(id, ikc, -)   | Create(id, ikc\*, T)  | Canceled(id, ikc, -)   | KO, Already Canceled |
+| 254 | Canceled(id, ikc, -)   | Create(id, ikc\*, F)  | Canceled(id, ikc, -)   | KO, Already Canceled |
+| 255 | Canceled(id, ikc, -)   | Resolve(id, -, T)     | Canceled(id, ikc, -)   | KO, Already Canceled |
+| 256 | Canceled(id, ikc, -)   | Resolve(id, -, F)     | Canceled(id, ikc, -)   | KO, Already Canceled |
+| 257 | Canceled(id, ikc, -)   | Resolve(id, iku, T)   | Canceled(id, ikc, -)   | KO, Already Canceled |
+| 258 | Canceled(id, ikc, -)   | Resolve(id, iku, F)   | Canceled(id, ikc, -)   | KO, Already Canceled |
+| 259 | Canceled(id, ikc, -)   | Reject(id, -, T)      | Canceled(id, ikc, -)   | KO, Already Canceled |
+| 260 | Canceled(id, ikc, -)   | Reject(id, -, F)      | Canceled(id, ikc, -)   | KO, Already Canceled |
+| 261 | Canceled(id, ikc, -)   | Reject(id, iku, T)    | Canceled(id, ikc, -)   | KO, Already Canceled |
+| 262 | Canceled(id, ikc, -)   | Reject(id, iku, F)    | Canceled(id, ikc, -)   | KO, Already Canceled |
+| 263 | Canceled(id, ikc, -)   | Cancel(id, -, T)      | Canceled(id, ikc, -)   | KO, Already Canceled |
+| 264 | Canceled(id, ikc, -)   | Cancel(id, -, F)      | Canceled(id, ikc, -)   | KO, Already Canceled |
+| 265 | Canceled(id, ikc, -)   | Cancel(id, iku, T)    | Canceled(id, ikc, -)   | KO, Already Canceled |
+| 266 | Canceled(id, ikc, -)   | Cancel(id, iku, F)    | Canceled(id, ikc, -)   | KO, Already Canceled |
+| 267 | Canceled(id, ikc, iku) | Create(id, -, T)      | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 268 | Canceled(id, ikc, iku) | Create(id, -, F)      | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 269 | Canceled(id, ikc, iku) | Create(id, ikc, T)    | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 270 | Canceled(id, ikc, iku) | Create(id, ikc, F)    | Canceled(id, ikc, iku) | OK, Deduplicated     |
+| 271 | Canceled(id, ikc, iku) | Create(id, ikc\*, T)  | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 272 | Canceled(id, ikc, iku) | Create(id, ikc\*, F)  | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 273 | Canceled(id, ikc, iku) | Resolve(id, -, T)     | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 274 | Canceled(id, ikc, iku) | Resolve(id, -, F)     | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 275 | Canceled(id, ikc, iku) | Resolve(id, iku, T)   | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 276 | Canceled(id, ikc, iku) | Resolve(id, iku, F)   | Canceled(id, ikc, iku) | OK, Deduplicated     |
+| 277 | Canceled(id, ikc, iku) | Resolve(id, iku\*, T) | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 278 | Canceled(id, ikc, iku) | Resolve(id, iku\*, F) | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 279 | Canceled(id, ikc, iku) | Reject(id, -, T)      | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 280 | Canceled(id, ikc, iku) | Reject(id, -, F)      | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 281 | Canceled(id, ikc, iku) | Reject(id, iku, T)    | Canceled(id, ikc, iku) | OK, Deduplicated     |
+| 282 | Canceled(id, ikc, iku) | Reject(id, iku, F)    | Canceled(id, ikc, iku) | OK, Deduplicated     |
+| 283 | Canceled(id, ikc, iku) | Reject(id, iku\*, T)  | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 284 | Canceled(id, ikc, iku) | Reject(id, iku\*, F)  | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 285 | Canceled(id, ikc, iku) | Cancel(id, -, T)      | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 286 | Canceled(id, ikc, iku) | Cancel(id, -, F)      | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 287 | Canceled(id, ikc, iku) | Cancel(id, iku, T)    | Canceled(id, ikc, iku) | OK, Deduplicated     |
+| 288 | Canceled(id, ikc, iku) | Cancel(id, iku, F)    | Canceled(id, ikc, iku) | OK, Deduplicated     |
+| 289 | Canceled(id, ikc, iku) | Cancel(id, iku\*, T)  | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 290 | Canceled(id, ikc, iku) | Cancel(id, iku\*, F)  | Canceled(id, ikc, iku) | KO, Already Canceled |
+| 291 | Timedout(id, -, -)     | Create(id, -, T)      | Timedout(id, -, -)     | KO, Already Timedout |
+| 292 | Timedout(id, -, -)     | Create(id, -, F)      | Timedout(id, -, -)     | KO, Already Timedout |
+| 293 | Timedout(id, -, -)     | Create(id, ikc, T)    | Timedout(id, -, -)     | KO, Already Timedout |
+| 294 | Timedout(id, -, -)     | Create(id, ikc, F)    | Timedout(id, -, -)     | KO, Already Timedout |
+| 295 | Timedout(id, -, -)     | Resolve(id, -, T)     | Timedout(id, -, -)     | KO, Already Timedout |
+| 296 | Timedout(id, -, -)     | Resolve(id, -, F)     | Timedout(id, -, -)     | OK, Deduplicated     |
+| 297 | Timedout(id, -, -)     | Resolve(id, iku, T)   | Timedout(id, -, -)     | KO, Already Timedout |
+| 298 | Timedout(id, -, -)     | Resolve(id, iku, F)   | Timedout(id, -, -)     | OK, Deduplicated     |
+| 299 | Timedout(id, -, -)     | Reject(id, -, T)      | Timedout(id, -, -)     | KO, Already Timedout |
+| 300 | Timedout(id, -, -)     | Reject(id, -, F)      | Timedout(id, -, -)     | OK, Deduplicated     |
+| 301 | Timedout(id, -, -)     | Reject(id, iku, T)    | Timedout(id, -, -)     | KO, Already Timedout |
+| 302 | Timedout(id, -, -)     | Reject(id, iku, F)    | Timedout(id, -, -)     | OK, Deduplicated     |
+| 303 | Timedout(id, -, -)     | Cancel(id, -, T)      | Timedout(id, -, -)     | KO, Already Timedout |
+| 304 | Timedout(id, -, -)     | Cancel(id, -, F)      | Timedout(id, -, -)     | OK, Deduplicated     |
+| 305 | Timedout(id, -, -)     | Cancel(id, iku, T)    | Timedout(id, -, -)     | KO, Already Timedout |
+| 306 | Timedout(id, -, -)     | Cancel(id, iku, F)    | Timedout(id, -, -)     | OK, Deduplicated     |
+| 307 | Timedout(id, ikc, -)   | Create(id, -, T)      | Timedout(id, ikc, -)   | KO, Already Timedout |
+| 308 | Timedout(id, ikc, -)   | Create(id, -, F)      | Timedout(id, ikc, -)   | KO, Already Timedout |
+| 309 | Timedout(id, ikc, -)   | Create(id, ikc, T)    | Timedout(id, ikc, -)   | KO, Already Timedout |
+| 310 | Timedout(id, ikc, -)   | Create(id, ikc, F)    | Timedout(id, ikc, -)   | OK, Deduplicated     |
+| 311 | Timedout(id, ikc, -)   | Create(id, ikc\*, T)  | Timedout(id, ikc, -)   | KO, Already Timedout |
+| 312 | Timedout(id, ikc, -)   | Create(id, ikc\*, F)  | Timedout(id, ikc, -)   | KO, Already Timedout |
+| 313 | Timedout(id, ikc, -)   | Resolve(id, -, T)     | Timedout(id, ikc, -)   | KO, Already Timedout |
+| 314 | Timedout(id, ikc, -)   | Resolve(id, -, F)     | Timedout(id, ikc, -)   | OK, Deduplicated     |
+| 315 | Timedout(id, ikc, -)   | Resolve(id, iku, T)   | Timedout(id, ikc, -)   | KO, Already Timedout |
+| 316 | Timedout(id, ikc, -)   | Resolve(id, iku, F)   | Timedout(id, ikc, -)   | OK, Deduplicated     |
+| 317 | Timedout(id, ikc, -)   | Reject(id, -, T)      | Timedout(id, ikc, -)   | KO, Already Timedout |
+| 318 | Timedout(id, ikc, -)   | Reject(id, -, F)      | Timedout(id, ikc, -)   | OK, Deduplicated     |
+| 319 | Timedout(id, ikc, -)   | Reject(id, iku, T)    | Timedout(id, ikc, -)   | KO, Already Timedout |
+| 320 | Timedout(id, ikc, -)   | Reject(id, iku, F)    | Timedout(id, ikc, -)   | OK, Deduplicated     |
+| 321 | Timedout(id, ikc, -)   | Cancel(id, -, T)      | Timedout(id, ikc, -)   | KO, Already Timedout |
+| 322 | Timedout(id, ikc, -)   | Cancel(id, -, F)      | Timedout(id, ikc, -)   | OK, Deduplicated     |
+| 323 | Timedout(id, ikc, -)   | Cancel(id, iku, T)    | Timedout(id, ikc, -)   | KO, Already Timedout |
+| 324 | Timedout(id, ikc, -)   | Cancel(id, iku, F)    | Timedout(id, ikc, -)   | OK, Deduplicated     |
+
+---
+
+---
+url: /spec/programming-model
+title: Programming model
+---
+
+Distributed Async Await, like async/await, builds on two abstractions: functions and promises. Functions are a universal abstraction for computation; promises are a universal abstraction for coordination.
+
+
+## Async Await
+
+### Sequential programming
+
+- Combines invocation and synchronization.
+- Only one function execution enabled at one time.
+
+In a traditional programming model, when a function (the _caller_) invokes another function (the _callee_), the callee begins and the caller suspends until the callee returns. Upon return, the caller resumes execution with the return value of the callee. Executions proceed sequentially — at any point in time, exactly one execution may take a step.
+
+### Concurrent programming
+
+- Separates invocation and synchronization.
+- More than one function execution enabled at one time.
+
+In async/await, when the caller invokes the callee, the callee begins and the caller continues execution with a promise representing the callee. When the caller requires the return value of the callee, the caller awaits the promise — suspending execution until the callee returns, at which point the caller resumes with the return value of the callee. Executions proceed concurrently — at any point in time, more than one execution may take a step.
+
+### The role of promises
+
+Promises are a universal abstraction for coordination. They allow callers and callees to execute concurrently while still enabling the caller to coordinate by awaiting the completion and receiving the return value of the callee.
+
+![Execution locality of sequential vs concurrent](/images/spec/traditional-vs-async-await.svg)
+
+## Distributed Async Await
+
+Distributed Async Await extends async/await to a concurrent and distributed programming model: like async/await, Distributed Async Await is based on functions and promises, but adds **Distributed Coordination** and **Distributed Recovery**.
+
+### Distributed coordination
+
+Distributed Async Await allows callers to invoke and await callees across processes. Promises are no longer local objects — promises coordinate across the network, enabling the familiar semantics of async/await to span across systems.
+
+### Distributed recovery
+
+Distributed Async Await defines recovery semantics in case of a process interruption.
+
+## Call graphs
+
+
+Call graphs are a powerful tool for visualizing the execution of a program.
+
+
+A call graph is a directed graph where the nodes are functions and the edges are calls between functions. The call graph provides a flexible lens onto a computation. The call graph is zoomable, allowing one to expand a caller into its callees (treating a function as a composite) or collapse those callees into the caller (treating the function as atomic). This flexibility enables reasoning at different levels of abstraction.
+
+![Generic Call Graph](/images/spec/generic-call-graph.svg)
+
+Within the context of the Distributed Async Await specification, and all implementations of it, a call graph is the full set of promises and executions from ephemeral edge to ephemeral edge — a map of the durable world.
+
+In the Distributed Async Await specification, all execution invocations pair with a promise.
+
+![Promise execution pair](/images/spec/promise-execution-pairs.svg)
+
+An execution can be either a function execution or some action that must be taken outside of the system, such as a human clicking a button.
+
+![Promise execution promise action pairs](/images/spec/promise-execution-promise-action-pairs.svg)
+
+A call graph can illustrate locality — that is, an execution can display its locality in relation to other executions. This is called a **distributed call graph**.
+
+![Execution locality](/images/spec/execution-locality.svg)
+
+A call graph is zoomable — it can show the full set of promises and executions, or it can show just the root executions. Consider the following pseudo-code, where `foo()` and `bar()` are in process a, and `baz()` is in process b.
+
+
+The notation `async_local` / `async_remote` (and `async_r` used elsewhere in this specification) is **pseudo-code chosen for the spec**. It is not the surface API of any implementation. Reference implementations expose the same semantics through their own idioms — for example, `yield* ctx.run(fn)` for local invocation and `yield* ctx.beginRpc(fn, args)` for remote invocation in the TypeScript SDK. See the [TypeScript](/develop/typescript), [Python](/develop/python), and [Rust](/develop/rust) SDKs for the per-language mapping.
+
+
+process a:
+
+```text
+func foo():
+    r = await (async_local bar())
+    return r
+
+func bar():
+    r = await (async_remote baz())
+    return r
+```
+
+process b:
+
+```text
+func baz():
+    return 1
+```
+
+If the call graph zooms in on all the promises, function executions, and localities (details, concurrency, and distribution), it would look like this:
+
+![Detailed distributed concurrent Call Graph](/images/spec/detailed-distributed-concurrent-call-graph.svg)
+
+This same call structure can assume promises and the call graph can just show the function executions.
+
+![Distributed concurrent Call Graph](/images/spec/distributed-concurrent-call-graph.svg)
+
+To show just the distributed nature of the application, we can zoom out and show just the root executions of each process.
+
+![Distributed Call Graph](/images/spec/distributed-call-graph.svg)
+
+## Local and remote
+
+When a function calls another function within the same process, it is called a **Local Function Invocation (LFI)**.
+
+When a function calls another function in a different application node, it is considered a **Remote Function Invocation (RFI)**.
+
+An application can make use of both LFIs and RFIs, and thus a call graph can span just one or many application nodes.
+
+## Root promises
+
+There are two types of root promises. The first is the root promise of an application node (process), and the second is the root promise of a call graph.
+
+An application-node root promise (also known as the process) is the promise associated with the first execution in an application node — the execution invoked by `resonate.run()`.
+
+A call-graph root promise is the promise associated with the first execution in a call graph. This execution is also invoked by `resonate.run()`, but it is on the "edge" — typically the entry point into the application.
+
+## Sub-specifications
+
+---
+
+---
+url: /spec/system-model/executions
+title: Function Executions
+---
+
+Executions are the **fundamental unit of computation** in a system.
+
+
+On an execution level, a system is a collection of executions; each execution has a unique identity. An execution has a well-defined lifecycle, represented by the lifecycle events _invoke_ and _return_, that governs its participation in the system:
+
+**_invoke_** marks the initialization of the execution and represents its entry into the system.
+
+**_return_** marks the termination of the execution and represents its exit from the system.
+
+An execution is bound to a single process. An execution cannot emit events outside its (_invoke_, _return_) interval. As a consequence, an execution cannot be restarted. Instead, a new execution must be created that may be considered the logical successor or the logical equivalent of the terminated execution.
+
+![Execution lifecycle diagram](/images/spec/execution-lifecycle.svg)
+
+An execution may raise events such as send or receive events only within its (_invoke_, _return_) interval.
+
+## Long-running executions
+
+The term *long running* is not a well-defined term in the context of distributed systems — "long" is relative.
+
+This system model argues that you should not think about "long" in terms of time. Instead, *long* refers to the potential for a logical execution to span multiple physical locations. An execution is long-running if it potentially runs across multiple processes.
+
+## Physical vs logical
+
+Distributed Async Await makes the distinction between physical executions and logical executions.
+
+One logical execution consists of multiple concurrent and distributed physical executions — physical executions may execute independently and on different resources.
+
+For example, logical execution `le1` starts as physical execution `pe1` on physical process `p1`. Physical process `p1` then experiences a crash failure. Logical execution `le1` is then resumed as physical execution `pe2` on physical process `p2`.
+
+Physical executions never "restart". Each physical execution is distinct. A logical execution can contain many physical executions, each one starting from the beginning and attempting to make progress. The logical execution completes when a physical execution reaches the return statement of the function.
+
+## Concurrency
+
+The defining characteristic of concurrency is non-deterministic *partial order*; to mitigate the challenges of partial order, we leverage **coordination** to ensure consistency.
+
+## Distribution
+
+The defining characteristic of distribution is non-deterministic *partial failure*; to mitigate the challenges of partial failure, we leverage **recovery** to ensure completion.
+
+### Distribution across space
+
+An execution is distributed across space when the same logical execution spans multiple physical executions concurrently — at the same point in time.
+
+### Distribution across time
+
+An execution is distributed across time when the same logical execution spans multiple physical executions sequentially — at different points in time.
+
+---
+
+---
+url: /spec/system-model
+title: System model
+---
+
+The system model introduces a **way of thinking** about distributed systems that is foundational to the Distributed Async Await specification. It defines the rules that govern the behavior of distributed software systems.
+
+
+A distributed system is a collection of concurrent components — *processes* — that communicate by exchanging messages over the network. Each component has exclusive access to its local state as well as its local channel to the network. Components do not share state and cannot directly observe each other.
+
+![Distributed System diagram](/images/spec/distributed-system.svg)
+
+The behavior of a distributed system emerges from the behavior of its processes.
+
+The system model is structured into two parts:
+
+- **[Processes](/spec/system-model/processes)** — the fundamental unit of locality, with a well-defined lifecycle and a fail-stop failure model.
+- **[Function Executions](/spec/system-model/executions)** — the fundamental unit of computation, bound to a process, with a logical layer that can survive physical-process crashes.
+
+---
+
+---
+url: /spec/system-model/processes
+title: Processes
+---
+
+Processes are the **fundamental unit of locality** in a system.
+
+
+On a process level, a system is a collection of processes; each process has a unique identity. A process has a well-defined lifecycle, represented by the lifecycle events _init_ and _term_, that governs its participation in the system:
+
+**_init_** marks the initialization of the process and represents its entry into the system.
+
+**_term_** marks the termination of the process and represents its exit from the system.
+
+A process cannot emit events outside its (_init_, _term_) interval. As a consequence, a process cannot announce its termination after its termination. Instead, if desired, the process must announce its intent to terminate. In the case of failure, the process fails silently.
+
+![Process lifecycle diagram](/images/spec/process-lifecycle.svg)
+
+A process cannot be restarted. Instead, a new process must be created that may be considered the logical successor or the logical equivalent of the terminated process.
+
+A _term_ event may denote both a normal planned termination and an abnormal unplanned termination — fail-stop.
+
+The behavior of a process is represented by its trace, a totally ordered sequence of events such as sending or receiving a message.
+
+Within a process, events are totally ordered. However, across processes, events are only partially ordered.
+
+Processes emit events through [executions](/spec/system-model/executions).
+
+## Failure
+
+Distributed Async Await assumes a fail-stop, also called crash-stop, failure model for processes: when a process experiences a failure, the process stops performing any internal or external steps at an arbitrary moment in time and never again performs any further internal or external steps.
+
+
+This specification does not make statements about process creation. Specifically, when processes leave the system (e.g. in the event of failures), an external mechanism is responsible to add new processes if necessary.
+
+
+A process may non-deterministically terminate. Specifically, upon termination, the process does not raise additional events and therefore cannot announce its termination.
+
+In case of a failure — that is, an unexpected and unwanted termination event — a process is considered crashed. The process cannot be restarted. Instead, a new process must be created that may be considered the logical successor or the logical equivalent of the terminated process.
+
+The notion of logical successor or logical equivalent introduces two distinct levels of reasoning: the logical layer and the physical layer.
+
+### Logical layer
+
+The logical layer is populated by logical processes. A logical process has a logical id. A logical process is composed of one or more physical processes.
+
+### Physical layer
+
+The physical layer is populated by physical processes. A physical process has a physical id. One or more physical processes are composed into one logical process.
+
+A logical process can experience additional lifetime events: suspension and resumption. When a physical process terminates, the associated logical process suspends (commonly referred to as a crash). When another physical process initiates, the associated logical process resumes (commonly referred to as restart or recovery).
