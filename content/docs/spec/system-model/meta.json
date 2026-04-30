@@ -2,6 +2,7 @@
   "title": "System model",
   "pages": [
     "processes",
-    "executions"
+    "executions",
+    "tasks"
   ]
 }

@@ -12992,62 +12992,180 @@ url: /spec/execution-model/message-passing
 title: Message Passing Protocol
 ---
 
-The **Message Passing Protocol** defines the communication between components in Distributed Async Await.
+The **Message Passing Protocol** defines how components in Distributed Async Await communicate — the envelope every message uses, the addresses messages are sent to, and the transport variants the protocol rides on.
 
 
-The Message-Passing Protocol MUST support a wide array of transport mechanisms — push or poll over HTTP, message queues, or others. The specification therefore defines the behavior of sending and receiving messages between processes with minimal requirements and minimal guarantees.
+The Message Passing Protocol is transport-agnostic. The same envelope flows over HTTP, NATS, Kafka, or an SSE poll connection — only the framing changes. The specification defines minimal requirements and minimal guarantees so a wide array of transports can implement it.
 
 ## Message events
 
-Messages are the means by which processes communicate with each other — the primary mechanism for exchanging information and coordinating actions in a distributed system.
+Messages are the means by which processes communicate — the primary mechanism for exchanging information and coordinating actions in a distributed system.
 
 Messages are sent between processes; consequently, messages are addressed to processes. One (successful) message exchange consists of a *send event* at the sending process and a *receive event* at the receiving process.
 
 ![Send and Receive event diagram](/images/spec/send-receive-event.svg)
 
-The most fine-grained model of message exchange between two processes consists of **four events**: a send event at the sending process, a receive event at the network, followed by a send event at the network and a receive event at the receiving process. At this level of abstraction, message exchange between processes and the network is reliable; however, the network may reorder, drop, or duplicate messages.
+The most fine-grained model of message exchange between two processes consists of **four events**: a send event at the sending process, a receive event at the network, followed by a send event at the network and a receive event at the receiving process. At this level of abstraction, message exchange between processes and the network is reliable; the network itself may reorder, drop, or duplicate messages.
 
 The more common model of message exchange between two processes consists of **two events**: a send event at the sending process and a receive event at the receiving process. At this level of abstraction, message exchange between processes is unreliable — messages may be reordered, dropped, or duplicated.
 
 The only guarantee is that if a process experiences a receive event, there is a corresponding send event at a sending process (which may be the same process).
 
-## Messaging
+## Send
 
-Every component may issue a Send(address, message) command that will result in emitting a Send(address, message) event.
+Every component may issue a `Send(address, message)` command that emits a `Send(address, message)` event.
 
 ```text
 command Send(address : Address, message : T)
 ```
 
-The Send command is the foundation of Distributed Async Await's failover mechanics: Send's AnyCast semantics enables both routing as well as transparent rerouting in case of failure. This ensures that distributed executions can adapt dynamically to changes in the process topology automatically.
+The Send command is the foundation of Distributed Async Await's failover mechanics: Send's anycast semantics enable both routing and transparent rerouting in case of failure. This allows distributed executions to adapt dynamically to changes in process topology.
 
-### Invoke-Resume example: the canonical interaction
+### Invoke and Resume — the canonical interaction
 
-The canonical interaction in Distributed Async Await involves invoking and awaiting an asynchronous function remotely (see the [Distributed Coordination Protocol](/spec/execution-model/coordination-protocol)). This interaction involves two messages:
+The canonical interaction in Distributed Async Await is invoking and awaiting an asynchronous function remotely (see the [Coordination Protocol](/spec/execution-model/coordination-protocol)). It involves two messages:
 
-**Invoke** — the request to invoke an execution.
+- **Invoke** — the request to invoke an execution.
+- **Resume** — the request to resume an awaiting execution.
 
-**Resume** — the request to resume an awaiting execution.
+Both are delivered as the on-the-wire envelope described below.
+
+## Wire envelope
+
+All communication uses a uniform request/response envelope. The protocol is transport-agnostic — the envelope is the same regardless of whether the transport is HTTP, NATS, Kafka, or another binding.
+
+### Request
+
+```text
+{
+  kind: string,                  // operation identifier, e.g. "promise.create"
+  head: {
+    corrId: string,              // correlation ID for request/response matching
+    version: string,             // protocol version
+    auth?: string                // optional bearer token
+  },
+  data: { ... }                  // operation-specific payload
+}
+```
+
+### Response
+
+```text
+{
+  kind: string,                  // echoes the request kind
+  head: {
+    corrId: string,              // echoes the request correlation ID
+    status: integer,             // status code (see below)
+    version: string              // protocol version
+  },
+  data: { ... }                  // operation-specific payload, or error string on failure
+}
+```
+
+The `corrId` is echoed unchanged in the response so a client multiplexing multiple in-flight requests over a single connection can pair each response to its request. The `version` field carries the protocol version the request is built against; the server may reject unsupported versions with `400`.
+
+On error (status `>= 400`), the response `data` is a string describing the error.
+
+### Status codes
+
+| Code | Meaning |
+|------|---------|
+| 200 | Success |
+| 300 | Continue — for `task.suspend`, an awaited promise has already settled; the worker should resume immediately without suspending |
+| 400 | Bad request (validation error or unsupported protocol version) |
+| 401 | Unauthorized (missing or invalid auth token) |
+| 403 | Forbidden (valid token but insufficient access) |
+| 404 | Not found |
+| 409 | Conflict (version mismatch, invalid state transition, or fence check failed) |
+| 422 | Unprocessable entity (e.g., awaiter not found, missing required tag) |
+| 429 | Too many requests (rate limited) |
+| 500 | Internal server error |
+| 501 | Not implemented |
+
+## Reserved tags
+
+Promises carry a `tags` map. The protocol reserves the `resonate:` namespace for tags that drive routing, scheduling, and the execution tree.
+
+| Tag | Effect |
+|-----|--------|
+| `resonate:target` | Delivery address for execute messages. Triggers task creation on `promise.create`. |
+| `resonate:timer` | When `"true"`, timeout transitions to `resolved` instead of `rejected_timedout`. |
+| `resonate:origin` | Identifies the root promise that initiated the execution. All promises in an execution tree share the same `resonate:origin` value. |
+| `resonate:parent` | Identifies the direct parent promise in the execution tree. |
+| `resonate:branch` | Identifies the current execution branch. Set when a promise in an execution tree has a `resonate:target` tag. Drives preload semantics. |
+| `resonate:delay` | Reserved for future use. *Semantics not yet specified — implementations should ignore this tag until a future spec revision defines its behavior.* |
+
+User-defined tags outside the `resonate:` namespace are opaque to the protocol and may be used freely.
 
 ## Addressing
 
-Processes communicate via addresses. Distributed Async Await supports two types of addresses: **UniCast** addresses and **AnyCast** addresses.
+An **address** is a URI that determines which transport to use, where to deliver the message, and the delivery semantics. Addresses appear on the `resonate:target` tag of a promise (for execute messages) and on listener registrations (for unblock messages).
 
-- **UniCast** — denotes an individual process.
-- **AnyCast** — denotes a group of processes.
+### Address format
 
 ```text
-data Address =
-  | UniCast PSpecifier
-  | AnyCast GSpecifier x optional
+scheme[+connection]://[cast@]host[:port][/path][?query]
 ```
 
-- `PSpecifier` denotes a transport-specific specifier specifying a single process.
-- `GSpecifier` denotes a transport-specific specifier specifying a group of processes.
+The scheme selects the transport. The optional `+connection` suffix selects a named connection for that transport — when absent, the transport uses the connection named `default`.
 
-### Address resolution
+The remainder of the URI is transport-specific.
 
-This specification does not determine how and when addresses are resolved. Specifically, this specification does not determine whether addresses are resolved on send (early binding) or on recv (late binding).
+### Address schemes
+
+| Scheme | Transport | Description |
+|---|---|---|
+| `http://`, `https://` | HTTP | Deliver via HTTP POST to the given URL |
+| `poll://` | Poll | Deliver via Server-Sent Events to a connected poll client |
+| `nats://` | NATS | Deliver via NATS publish to a derived subject |
+| `kafka://` | Kafka | Deliver via Kafka produce to the given topic |
+
+HTTP is the required transport. Every conformant implementation must support `http://` for both receive and send.
+
+### Poll address
+
+```text
+poll://cast@group[/id]
+```
+
+| Component | Required | Description |
+|---|---|---|
+| `cast` | Yes | Delivery mode: `uni` (unicast) or `any` (anycast) |
+| `group` | Yes | Logical group name that workers register under |
+| `id` | No | Specific worker id within the group |
+
+The poll transport does not push messages over the network. Workers connect to the server via HTTP GET and receive messages as Server-Sent Events; the server holds the connection open and writes messages as `data: {json}\n\n` frames.
+
+Examples:
+
+- `poll://any@workers` — deliver to any one connected worker in the `workers` group
+- `poll://uni@workers/worker-1` — deliver only to the worker with id `worker-1`
+- `poll://any@my-service/abc123` — prefer worker `abc123`, fall back to any worker in `my-service` (sticky routing with fallback)
+
+## Delivery semantics
+
+The delivery semantics of `Send` depend on the transport and the address.
+
+| Mode | Definition |
+|---|---|
+| **Unicast** | The message is delivered to exactly one specific worker. If that worker is not available, delivery fails (the message remains in the outbox for retry). |
+| **Anycast** | The message is delivered to exactly one worker from a group. The server selects the recipient. If a preferred worker is specified and available, the server picks it; otherwise, a random worker in the group. |
+| **Broadcast** | The message is delivered to all workers listening on the address. Each worker receives a copy. |
+
+### Per-transport delivery
+
+| Transport | Recv | Send | Delivery model |
+|---|---|---|---|
+| HTTP | yes | yes | Point-to-point — one URL, one endpoint |
+| Poll | no | yes | Unicast (`uni@`) or anycast (`any@`) by address |
+| NATS | yes | yes | Queue-group subscription = unicast; plain subscription = broadcast |
+| Kafka | yes | yes | Kafka consumer-group semantics |
+
+Poll is a `send`-only transport — workers receive messages over SSE, but the requests they originate still ride a `recv`-capable transport (typically HTTP POST).
+
+## Address resolution
+
+This specification does not determine *how* and *when* addresses are resolved. Specifically, it does not determine whether addresses are resolved on send (early binding) or on recv (late binding). Conformant implementations may choose either model.
 
 ---
 
@@ -13059,10 +13177,6 @@ title: Recovery Protocol
 The **Distributed Recovery Protocol** is responsible for the detection and recovery of crash failures.
 
 
-
-A formal sequence-diagram treatment of the Recovery Protocol — analogous to the [Coordination Protocol](/spec/execution-model/coordination-protocol) — is in progress. This page captures the principles the protocol operationalizes; the formal protocol description will land in a future revision.
-
-
 ## What recovery means
 
 Recovery is the mechanism by which a [logical execution](/spec/system-model/executions) survives the [failure](/spec/system-model/processes#failure) of a physical process. Distributed Async Await assumes a fail-stop process failure model: a process may non-deterministically terminate without warning. When that happens, the logical execution suspends and a successor physical execution can resume the work.
@@ -13072,33 +13186,94 @@ Recovery is the second of the two foundational protocols in Distributed Async Aw
 - The [Coordination Protocol](/spec/execution-model/coordination-protocol) ensures coordination across **partial order** — the non-deterministic interleaving inherent to concurrent systems.
 - The Recovery Protocol ensures recovery across **partial failure** — the non-deterministic termination inherent to distributed systems.
 
-## Where the load-bearing pieces live
+## Three load-bearing pieces
 
-The recovery semantics described informally elsewhere in this specification rest on three load-bearing pieces:
+The recovery semantics described below rest on three load-bearing pieces:
 
-1. **Durable Promises persist execution state.** The state required to recreate a function execution is stored externally to any single process. See the [Durable Promise Specification](/spec/programming-model/durable-promise-specification) for the API + state-transition table.
-2. **Function executions are interruption-tolerant.** Re-running a durable function from the beginning, with deduplication via durable promises, converges to the same result as an uninterrupted execution. See the [Durable Function Specification](/spec/programming-model/durable-function-specification) for the formal definition of interruption tolerance.
-3. **Tasks claim work and report liveness.** Workers claim tasks from the durable system, heartbeat to indicate progress, and surrender claims on crash. The server uses heartbeat absence to detect failure and re-deliver invocations to a successor worker.
+1. **Durable Promises persist execution state.** The state required to recreate a function execution is stored externally to any single process. See the [Durable Promise Specification](/spec/programming-model/durable-promise-specification).
+2. **Function executions are interruption-tolerant.** Re-running a durable function from the beginning, with deduplication via durable promises, converges to the same result as an uninterrupted execution. See the [Durable Function Specification](/spec/programming-model/durable-function-specification).
+3. **Tasks claim work and report liveness.** Workers claim tasks from the durable system, heartbeat to indicate progress, and surrender claims on crash. See the [Tasks](/spec/system-model/tasks) page for the full lifecycle.
 
-## Properties the protocol must guarantee
+## Lease and heartbeat
+
+Liveness is enforced by a lease. When a worker acquires a task, the server records a deadline by which the worker must signal it is still making progress. Each successful heartbeat extends that deadline.
+
+```text
+acquire     →  lease = now + leaseTimeout
+heartbeat   →  lease = now + leaseTimeout
+release     →  lease deleted, version++
+lease expiry → release back to pending, version++
+```
+
+Heartbeat is **process-level, not task-level**: a worker sends one heartbeat for all the acquired tasks it holds, and the server refreshes every matching `(id, version)` pair in a single round-trip. Workers typically heartbeat at roughly half the lease interval to absorb transient network delay.
+
+If a worker crashes — or loses the ability to make progress — its lease expires. The server transitions the task back to `pending` with an incremented version, deletes the lease, and re-enqueues the execute message. A successor worker can then claim the task with the new version.
+
+The version is the optimistic concurrency control (OCC) token: every mutating task operation must present the current version, and the server returns `409 Conflict` on mismatch. This guarantees a worker that has lost the lease cannot still effect a settle or a fulfill — the new version on the task means the late operation collides with whatever the successor is doing.
+
+## The settlement chain
+
+Every promise settlement — whether triggered by `promise.settle`, `task.fulfill`, `task.fence`, or a server-driven timeout — follows the same path. Settlement is a **chain**: a linear sequence of causality where each link is a different kind of effect.
+
+```text
+settle → resume → execute
+```
+
+1. **Settle (intra-object).** The composite settles itself. The promise transitions to its terminal state, `value` and `settledAt` are recorded, the promise timeout is deleted, the task (if present) transitions to `fulfilled`, and the callbacks and listeners are consumed. *External side effect:* one **unblock** message is sent to each listener address.
+
+2. **Resume (inter-object, internal side effect).** For each callback that was registered on the settled promise, enqueue a resume on the awaiter's task — mutating another composite's task state within the server.
+
+3. **Execute (external side effect).** When the resume transitions an awaiter task from `suspended` to `pending`, the server sends an **execute** message to that task's `resonate:target` address.
+
+The chain is linear, not recursive. Settling composite X does not settle any other composite. It may resume awaiter tasks, which may eventually lead those composites to settle through their own future operations — but not as part of this settlement.
+
+The essential guarantee: **when a promise settles, all dependents are reliably notified.**
+
+## Properties a conformant implementation must guarantee
 
 A Recovery Protocol implementation must satisfy:
 
-- **Liveness under failure.** A logical execution's progress is bounded by the availability of *some* worker, not any specific worker. If a worker crashes, a successor worker must be able to resume.
+- **Liveness under failure.** A logical execution's progress is bounded by the availability of *some* worker, not any specific worker. If a worker crashes, a successor must be able to resume.
 - **Safety under recovery.** A re-invoked durable function must not externalize observable side effects twice. Side-effect deduplication is provided by the durable promises representing each step.
-- **Bounded re-execution.** A worker that has lost the ability to make progress (lost network, paused VM) must yield its task claim within a bounded time so a successor worker can take over without indefinite waiting.
+- **Bounded re-execution.** A worker that has lost the ability to make progress must yield its task claim within a bounded time so a successor can take over without indefinite waiting. The lease enforces this bound.
 
-## Reference implementation pointers
+## Server invariants
 
-For implementation-level recovery semantics, see:
+Recovery rests on structural invariants the server maintains over its promise, task, and callback stores at all times. A violation indicates a bug in the implementation, not a recoverable runtime condition.
 
-- [The concepts that power Resonate](/evaluate/why-resonate) — recovery in the context of a working durable execution engine.
-- [TypeScript](/develop/typescript), [Python](/develop/python), and [Rust](/develop/rust) SDKs — how each language realizes recovery on top of this specification.
+### Promise invariants
+
+| Invariant | Condition |
+|---|---|
+| `orphan_invokes` | Every pending promise with `resonate:target` must have a task. |
+| `missing_ptimeout` | Every pending promise must have a promise timeout entry. |
+| `stale_ptimeout` | No promise timeout should exist for a non-pending promise. |
+| `timedout_settled_at_mismatch` | Every `rejected_timedout` promise must have `settledAt == timeoutAt`. |
+| `listener_for_settled_promise` | No listener should exist for a non-pending promise. |
+
+### Task invariants
+
+| Invariant | Condition |
+|---|---|
+| `orphan_tasks` | Every task must have a corresponding promise. |
+| `pending_task_no_ttimeout` | Every pending task must have a retry timeout. |
+| `acquired_task_no_lease` | Every acquired task must have a lease. |
+| `suspended_no_callback` | Every suspended task must have at least one callback registered on an awaited promise. |
+| `suspended_with_consumed_callbacks` | No suspended task should have any consumed callbacks. |
+| `suspended_task_has_ttimeout` | No suspended task should have any timeout. |
+| `fulfilled_task_has_ttimeout` | No fulfilled task should have any timeout. |
+
+### Callback invariant
+
+| Invariant | Condition |
+|---|---|
+| `callback_awaiter_no_target` | Every callback's awaiter promise must have a `resonate:target` tag. |
 
 ## See also
 
 - [Coordination Protocol](/spec/execution-model/coordination-protocol) — the sibling protocol covering partial order.
-- [Message Passing Protocol](/spec/execution-model/message-passing) — the underlying transport layer.
+- [Message Passing Protocol](/spec/execution-model/message-passing) — the underlying transport layer including the wire envelope and address scheme.
+- [Tasks](/spec/system-model/tasks) — the lifecycle and operations recovery operationalizes.
 - [Processes](/spec/system-model/processes) — the failure model assumed by recovery.
 
 ---
@@ -13108,9 +13283,25 @@ url: /spec/glossary
 title: Glossary
 ---
 
+### Activation
+
+A single physical attempt to run a function. A logical execution may consist of multiple activations across recoveries — each one starts from the beginning, replays past completed steps using recorded results, and attempts to make further progress. Synonym for [Physical Execution](#physical-process). See [Function Executions](/spec/system-model/executions).
+
+### Address
+
+A URI identifying where a message should be delivered. Addresses appear on the `resonate:target` tag of a promise (for execute messages) and on listener registrations (for unblock messages). The address scheme selects the [transport](/spec/execution-model/message-passing#address-schemes) (for example `http://`, `poll://`, `nats://`, `kafka://`).
+
 ### Agent
 
 A program that generates and executes code on behalf of a user — including, increasingly, code that calls Distributed Async Await APIs. From the perspective of the protocol, an agent is just another process. See [Process](#process).
+
+### Anycast
+
+A delivery mode in which a message is sent to exactly one worker drawn from a group, with optional preference for a named worker. Contrast with [Unicast](#unicast). See [Message Passing Protocol](/spec/execution-model/message-passing#delivery-semantics).
+
+### Application Node
+
+A process that hosts function executions and communicates with the server to coordinate them. The first execution on an application node is its [Root Promise](/spec/programming-model/#root-promises). Reference SDKs typically expose this as the entry point invoked by a top-level `run` call.
 
 ### Async Await
 
@@ -13127,6 +13318,10 @@ A Call Graph is a directed graph where the nodes are functions and the edges are
 See also:
 
 - [Async Call Graph](#async-call-graph)
+
+### Callback
+
+A registration on a pending promise that, when the promise settles, enqueues a resume on the awaiter's task. Callbacks are the link between settlement and the [Settlement Chain's](#settlement-chain) resume step. See [Recovery Protocol](/spec/execution-model/recovery-protocol#the-settlement-chain).
 
 ### Concurrency
 
@@ -13148,13 +13343,29 @@ The property of a system in which executions span multiple [Processes](#process)
 
 A Durable Execution is a programming abstraction with an interruption-agnostic definition resulting in an interruption-transparent execution.
 
+### Envelope
+
+The uniform request/response container all protocol messages use: a `kind` (operation identifier), a `head` (correlation id, protocol version, optional auth or status), and a `data` payload (operation-specific). See [Message Passing Protocol](/spec/execution-model/message-passing#wire-envelope).
+
 ### Execution
 
 The dynamic instance of a [Definition](#definition) — the running program, with all its in-flight state. An execution has a well-defined lifecycle: *invoke* (entry) and *return* (exit). See also [Definition](#definition).
 
+### Fence
+
+A conditional task fulfill: settle the task's promise *only if* the task is still acquired at the presented version. Used when a worker needs to know it is the unique current claimant before externalizing a side effect. See [Tasks](/spec/system-model/tasks#operations).
+
 ### Function
 
 A unit of computation defined by its inputs, its outputs, and its body. In Distributed Async Await, functions compose recursively — a function may call other functions, spanning a [Call Graph](#call-graph). Together with [Promises](#promise), functions are one of two universal abstractions on which the programming model is built.
+
+### Heartbeat
+
+A periodic process-level signal a worker sends to extend the [Lease](#lease) on every task it currently holds. The cadence is implementation-defined; workers typically heartbeat at roughly half the lease interval. See [Recovery Protocol](/spec/execution-model/recovery-protocol#lease-and-heartbeat).
+
+### Idempotency Key
+
+An optional opaque value attached to a [Promise](#promise) operation that allows the server to deduplicate a retry from an unknown-outcome request. Two keys are tracked per promise: `ikc` (idempotency key for create) and `iku` (idempotency key for update). See the [Durable Promise Specification](/spec/programming-model/durable-promise-specification#state-transitions) state-transition table.
 
 ### Interruption
 
@@ -13167,6 +13378,14 @@ A property of a [Definition](#definition): the definition (program, code) does n
 ### Interruption-tolerant
 
 A property of an [Execution](#execution): an execution that experiences an interruption and subsequently recovers is equivalent to some execution that does not experience an interruption. Formally, `(⟨p⟩, →(+interruption)) ≃ (⟨p⟩, →(-interruption))`. See the [Durable Function Specification](/spec/programming-model/durable-function-specification) for the formal treatment.
+
+### Lease
+
+A deadline by which a [Worker](#worker) must signal liveness on an acquired [Task](#task). Each successful [Heartbeat](#heartbeat) extends the lease. If the lease expires, the server releases the task back to `pending` with an incremented [Version](#version), allowing a successor worker to claim it. See [Recovery Protocol](/spec/execution-model/recovery-protocol#lease-and-heartbeat).
+
+### Listener
+
+An external address registered to receive an *unblock* message when a [Promise](#promise) settles. Distinct from a [Callback](#callback): a listener is consumed by external delivery, a callback is consumed by internal resume. See [Message Passing Protocol](/spec/execution-model/message-passing).
 
 ### Logical Process
 
@@ -13189,6 +13408,10 @@ See also:
 - [Logical Process](#logical-process)
 - [Physical Process](#physical-process)
 
+### Process Group
+
+A logical group name that workers register under. Used by the [Anycast](#anycast) and [Unicast](#unicast) addressing modes to identify the recipient set for a message. See [Message Passing Protocol](/spec/execution-model/message-passing#poll-address).
+
 ### Programming Model
 
 The developer-facing surface of a system: the abstractions that authors compose to express computation. Distributed Async Await's programming model is built on [Functions](#function) and [Promises](#promise) — the same primitives as ordinary async/await, lifted to span [Distribution](#distribution).
@@ -13200,6 +13423,34 @@ A representation of a future value. A promise is either *pending* or *completed*
 ### Recovery
 
 The mechanism by which a [Logical Process](#logical-process) survives the [Failure](#interruption) of a [Physical Process](#physical-process). Recovery is the response to *partial failure*, just as [Coordination](#coordination) is the response to *partial order*. See the [Recovery Protocol](/spec/execution-model/recovery-protocol) for details.
+
+### Reserved Tag
+
+A tag in the `resonate:` namespace whose meaning is defined by the protocol — for example `resonate:target` (delivery address), `resonate:timer` (timeout-as-resolved), `resonate:origin` (root promise of an execution tree). See [Message Passing Protocol](/spec/execution-model/message-passing#reserved-tags).
+
+### Server
+
+The component that owns durable promise and task state, runs the [Settlement Chain](#settlement-chain), enforces protocol [Invariants](/spec/execution-model/recovery-protocol#server-invariants), and routes messages between [Workers](#worker). Reference implementation: the open-source Resonate Server.
+
+### Settlement Chain
+
+The linear sequence of effects triggered by every promise settlement: *settle* → *resume* → *execute*. Settling a promise in one composite may cause resumes on awaiter tasks, which may cause execute messages to other workers — but the chain is linear, not recursive. See [Recovery Protocol](/spec/execution-model/recovery-protocol#the-settlement-chain).
+
+### Task
+
+The unit of work the server delivers to a worker. A task and its associated promise share an identifier; the promise owns the *value*, the task owns the *claim*. Tasks have a lifecycle (`pending`/`acquired`/`suspended`/`fulfilled`), a [Version](#version), and a [Lease](#lease). See [Tasks](/spec/system-model/tasks).
+
+### Unicast
+
+A delivery mode in which a message is sent to exactly one specific worker by id. If that worker is not available, delivery fails and the message remains in the outbox for retry. Contrast with [Anycast](#anycast). See [Message Passing Protocol](/spec/execution-model/message-passing#delivery-semantics).
+
+### Version
+
+The optimistic concurrency control (OCC) token on a [Task](#task). The version increments on every transition back to `pending`. All mutating task operations must present the current version; a mismatch returns `409 Conflict`. See [Tasks](/spec/system-model/tasks#lifecycle).
+
+### Worker
+
+A process that claims [Tasks](#task) from the [Server](#server), executes the associated function, and reports liveness via [Heartbeat](#heartbeat). A worker can host multiple acquired tasks at once. Reference SDKs (TypeScript, Python, Rust) embed worker logic alongside the application code.
 
 ---
 
@@ -13255,10 +13506,48 @@ Interruption tolerance can be defined formally as:
 **In words.** A program `p` is interruption-tolerant if, starting from an initial configuration `⟨p⟩`, an execution in the presence of interruptions `(⟨p⟩, →(+interruption))` is equivalent to some execution in the absence of interruptions `(⟨p⟩, →(-interruption))`.
 
 
+## Preconditions for the equivalence
 
-The formal interruption-tolerance definition above is stable. The remainder of this document — formal treatment of step composition, durable side-effect semantics, and the relationship between durable function state and durable promise state — is in progress.
+The equivalence above is conditional. For an execution to be interruption-tolerant in practice, the function must satisfy three constraints.
 
-For the operational shape of durable functions in working systems, see the [Durable Promise Specification](/spec/programming-model/durable-promise-specification) (the state on which durable functions execute) and the [TypeScript](/develop/typescript), [Python](/develop/python), and [Rust](/develop/rust) SDKs for how each language realizes durable functions.
+### 1. Determinism
+
+Same inputs always produce the same control-flow path. A durable function may be replayed from the beginning after a crash; if a second execution makes different decisions than the first — picks a different branch, reads a different timestamp, observes a different random value — replay is no longer equivalent to the original execution.
+
+In practice, determinism requires interception of every source of non-determinism the function consumes, including:
+
+- **Time** — wall-clock timestamps must be retrieved through a durable primitive so the recorded value is replayed, not re-sampled.
+- **Randomness** — pseudo-random values must be retrieved through a durable primitive for the same reason.
+- **External I/O** — any call whose result depends on the outside world (network requests, file reads, queue lookups) must be wrapped as a step whose result is recorded and replayed.
+
+The protocol does not prescribe the surface of these primitives; reference implementations expose them as context-bound calls (for example, `ctx.run(...)` for arbitrary I/O steps, plus typed helpers for clock and randomness).
+
+### 2. Idempotency
+
+Side effects must be safe to retry. A durable function may execute the same step more than once across the lifecycle of a logical execution — once on the original physical execution, again on a successor after recovery. The function's externalized effects must converge regardless of how many times each step runs.
+
+The protocol provides one half of idempotency for free: every step is associated with a deterministically-derived [Durable Promise](/spec/programming-model/durable-promise-specification) id, and the state-transition table guarantees that subsequent attempts to settle a promise with a matching idempotency key are deduplicated rather than repeated. The other half — that the *content* of a step is itself replay-safe — is the function author's responsibility.
+
+### 3. Activation lifetime
+
+A function execution cannot outlive the physical process that hosts it. This is a consequence of the [process lifecycle model](/spec/system-model/processes): events outside the `(init, term)` interval cannot be emitted. Long-running work — sleep, await for external input, multi-day workflows — must be expressed through protocol primitives (durable sleep, durable promises awaiting external settlement) so that the *logical* execution can outlive any one physical execution while no individual physical execution does.
+
+## Why the constraints matter
+
+The three constraints are not arbitrary. They are the preconditions under which the formal interruption-tolerance equivalence holds:
+
+| Constraint | What breaks without it |
+|---|---|
+| Determinism | Replay produces a different control-flow path; the recovered execution is not equivalent to the original |
+| Idempotency | A retried step externalizes a side effect twice; the recovered execution is observably different from one without interruption |
+| Activation lifetime | A "long-running" execution cannot be recovered at all because no physical successor can take over from the dead one |
+
+Together they define what it means to write a function the protocol can recover.
+
+
+This page captures the constraints any conformant durable function must satisfy and the formal equivalence that defines interruption tolerance. A more rigorous treatment of step composition, durable side-effect semantics, and the formal relationship between durable function state and durable promise state is in progress.
+
+For the operational shape of durable functions in working systems, see the [Durable Promise Specification](/spec/programming-model/durable-promise-specification) (the state on which durable functions execute) and the [TypeScript](/develop/typescript), [Python](/develop/python), and [Rust](/develop/rust) SDKs (how each language realizes durable functions).
 
 ---
 
@@ -13536,15 +13825,22 @@ components:
 
     Task:
       type: object
-      required: [id, counter, timeout]
+      required: [id, version, state]
       properties:
         id: { type: string }
-        counter: { type: integer }
+        state:
+          type: string
+          enum: [pending, acquired, suspended, fulfilled]
+        version: { type: integer }
         timeout: { type: integer, format: int64 }
         processId: { type: string }
         createdOn: { type: integer, format: int64 }
         completedOn: { type: integer, format: int64 }
 ```
+
+A task and its associated promise share an identifier; they are paired but distinct. A task carries a `version` that increments on every transition back to `pending` (release, resume, lease expiry). All mutating task operations require the caller to present the current `version` — a mismatch returns conflict (status `409`).
+
+For the full task lifecycle, operations, and invariants, see [Tasks](/spec/system-model/tasks).
 
 ## State transitions
 
@@ -14070,10 +14366,13 @@ A distributed system is a collection of concurrent components — *processes* �
 
 The behavior of a distributed system emerges from the behavior of its processes.
 
-The system model is structured into two parts:
+The system model is structured into three parts:
 
 - **[Processes](/spec/system-model/processes)** — the fundamental unit of locality, with a well-defined lifecycle and a fail-stop failure model.
 - **[Function Executions](/spec/system-model/executions)** — the fundamental unit of computation, bound to a process, with a logical layer that can survive physical-process crashes.
+- **[Tasks](/spec/system-model/tasks)** — the unit of work the server delivers to a worker, with a lease-based liveness model that operationalizes recovery.
+
+The communication layer that ties these together — message events, addressing, the wire envelope — lives in the [Message Passing Protocol](/spec/execution-model/message-passing).
 
 ---
 
@@ -14128,3 +14427,107 @@ The logical layer is populated by logical processes. A logical process has a log
 The physical layer is populated by physical processes. A physical process has a physical id. One or more physical processes are composed into one logical process.
 
 A logical process can experience additional lifetime events: suspension and resumption. When a physical process terminates, the associated logical process suspends (commonly referred to as a crash). When another physical process initiates, the associated logical process resumes (commonly referred to as restart or recovery).
+
+---
+
+---
+url: /spec/system-model/tasks
+title: Tasks
+---
+
+A task is the unit of work the server delivers to a worker. Where a [Promise](/spec/programming-model/durable-promise-specification) represents a future value, a task represents the *responsibility for producing that value* — claimed by a worker, kept alive by a lease, and surrendered on crash so a successor can take over.
+
+
+A task and its associated promise share an identifier. They are paired but distinct: the promise owns the value; the task owns the claim. Tasks exist only when work needs to be delivered to a worker — that is, when the promise carries a `resonate:target` tag specifying a delivery address.
+
+## Lifecycle
+
+A task moves through five states. Transitions back to `pending` increment the task's version; the version is the optimistic concurrency control (OCC) token every mutating operation must present.
+
+```text
+          create (via promise.create with resonate:target)
+            |
+            v
+        [pending] <---(release)--- [acquired] <--- create (via task.create)
+            ^                         |   ^
+            |                      (suspend)
+            |                         |   |
+            |                         v   |
+            |                     [suspended]
+            |                         |
+            +---(resume, version++)---+
+
+        [acquired] ---(fulfill)---> [fulfilled]
+```
+
+| State | Meaning |
+|---|---|
+| `pending` | The task is available to be claimed. The server has enqueued an `execute` message to the `resonate:target` address. |
+| `acquired` | A worker has claimed the task and is making progress. The worker holds a lease that must be refreshed via heartbeat. |
+| `suspended` | The worker has declared it is awaiting one or more other promises. The server holds the task here until any awaited promise settles. |
+| `fulfilled` | Terminal. The associated promise has settled and the task is complete. |
+| `halted` | Terminal admin state for tasks that should not progress. (See operations below.) |
+
+`task.create` creates the task directly in `acquired` state. `promise.create` with a `resonate:target` tag creates the task in `pending` state. The version field increments on every transition back to `pending` (release, resume, lease expiry); it does not change on `pending → acquired`.
+
+All mutating task operations require the caller to present the current version. A version mismatch results in conflict (status 409) — the task has moved on without you, and the operation must be re-fetched and retried.
+
+## Lease and heartbeat
+
+An acquired task carries a **lease**: a deadline by which the worker must signal liveness. The lease is set when the task is acquired and refreshed by every successful heartbeat. If the lease expires, the server releases the task back to `pending` with an incremented version, allowing a different worker to claim it.
+
+```text
+acquire     →  set lease = now + leaseTimeout
+heartbeat   →  set lease = now + leaseTimeout
+release     →  delete lease, version++
+lease expiry → release back to pending, version++
+```
+
+Heartbeat is **process-level, not task-level**. A worker sends one heartbeat for all the acquired tasks it holds; the server refreshes every matching `(id, version)` pair in a single round-trip.
+
+The heartbeat cadence is implementation-defined. A typical worker heartbeats at roughly half the lease interval to absorb transient network delay without losing the lease.
+
+## Operations
+
+The server exposes the following task operations. Each operation takes the task's current `id` and `version` (where applicable) and returns the new state or an error.
+
+| Operation | Purpose |
+|---|---|
+| `task.get` | Retrieve a task by id (read-only). |
+| `task.create` | Create a task and its promise atomically; the task starts in `acquired`. The action must carry a `resonate:target` tag. |
+| `task.acquire` | Transition `pending → acquired`. Only the worker presenting the current version succeeds; concurrent workers see 409. |
+| `task.heartbeat` | Refresh the lease on one or more acquired tasks. Each `(id, version)` pair is processed independently; mismatches are silently skipped. |
+| `task.suspend` | Declare the worker is awaiting one or more promises. The server registers callbacks atomically and transitions the task to `suspended`. If any awaited promise has already settled, the server returns 300 — the worker should resume immediately without suspending. |
+| `task.fulfill` | Settle the task's promise and transition the task to `fulfilled` in one atomic operation. The action's promise id must equal the task id. |
+| `task.fence` | Conditional fulfill: settle only if the task is still acquired at the presented version. Used when the worker needs to know it is the unique current claimant before externalizing a side effect. |
+| `task.release` | Surrender the claim. The task transitions back to `pending` with an incremented version, becoming available to other workers. |
+| `task.halt` | Administratively block the task from being claimed or resumed. |
+| `task.continue` | Reverse `task.halt`. |
+| `task.search` | Enumerate tasks (filtered by state, target, etc.). |
+
+## Asymmetry with promises
+
+Task operations are **not idempotent** in the way promise operations are. A promise carries idempotency keys (`ikc`, `iku`) that allow safe retry after an unknown-outcome failure (see the [Durable Promise Specification](/spec/programming-model/durable-promise-specification#state-transitions)). A task carries only its version — retrying a successful `task.acquire` with the same version succeeds again at first but fails as soon as the next operation increments the version.
+
+This asymmetry reflects the role of each: a promise represents *state* whose final value is what matters; a task represents *progress*, where each transition is a decisive moment of claim ownership. The version protects against duplicate progress; idempotency keys protect against duplicate state.
+
+## Invariants
+
+A conformant server must maintain the following invariants over its task store:
+
+- **`orphan_tasks`** — every task must have a corresponding promise.
+- **`pending_task_no_ttimeout`** — every pending task must have a retry timeout.
+- **`acquired_task_no_lease`** — every acquired task must have a lease.
+- **`suspended_no_callback`** — every suspended task must have at least one callback registered on an awaited promise.
+- **`suspended_with_consumed_callbacks`** — no suspended task should have any consumed callbacks.
+- **`suspended_task_has_ttimeout`** — no suspended task should have any timeout.
+- **`fulfilled_task_has_ttimeout`** — no fulfilled task should have any timeout.
+
+Violations indicate a bug in the implementation, not a recoverable runtime condition.
+
+## See also
+
+- [Processes](/spec/system-model/processes) — the failure model that motivates leases.
+- [Recovery Protocol](/spec/execution-model/recovery-protocol) — how tasks operationalize recovery.
+- [Coordination Protocol](/spec/execution-model/coordination-protocol) — how `task.suspend` and the settlement chain coordinate awaiting executions.
+- [Durable Promise Specification](/spec/programming-model/durable-promise-specification) — the state a task ultimately settles.

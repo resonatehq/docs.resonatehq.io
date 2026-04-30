@@ -278,15 +278,22 @@ components:
 
     Task:
       type: object
-      required: [id, counter, timeout]
+      required: [id, version, state]
       properties:
         id: { type: string }
-        counter: { type: integer }
+        state:
+          type: string
+          enum: [pending, acquired, suspended, fulfilled]
+        version: { type: integer }
         timeout: { type: integer, format: int64 }
         processId: { type: string }
         createdOn: { type: integer, format: int64 }
         completedOn: { type: integer, format: int64 }
 ```
+
+A task and its associated promise share an identifier; they are paired but distinct. A task carries a `version` that increments on every transition back to `pending` (release, resume, lease expiry). All mutating task operations require the caller to present the current `version` — a mismatch returns conflict (status `409`).
+
+For the full task lifecycle, operations, and invariants, see [Tasks](/spec/system-model/tasks).
 
 ## State transitions
 

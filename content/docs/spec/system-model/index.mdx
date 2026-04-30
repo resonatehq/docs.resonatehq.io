@@ -1,11 +1,12 @@
 ---
 title: System model
-description: A first-principles model of distributed systems — processes, executions, and messages — that grounds the rest of the specification.
+description: A first-principles model of distributed systems — processes, executions, and tasks — that grounds the rest of the specification.
 keywords:
   - system-model
   - distributed-systems
   - processes
   - executions
+  - tasks
 ---
 
 <Callout type="info" title="A way of thinking">
@@ -20,10 +21,13 @@ A distributed system is a collection of concurrent components — *processes* �
 
 The behavior of a distributed system emerges from the behavior of its processes.
 
-The system model is structured into two parts:
+The system model is structured into three parts:
 
 - **[Processes](/spec/system-model/processes)** — the fundamental unit of locality, with a well-defined lifecycle and a fail-stop failure model.
 - **[Function Executions](/spec/system-model/executions)** — the fundamental unit of computation, bound to a process, with a logical layer that can survive physical-process crashes.
+- **[Tasks](/spec/system-model/tasks)** — the unit of work the server delivers to a worker, with a lease-based liveness model that operationalizes recovery.
+
+The communication layer that ties these together — message events, addressing, the wire envelope — lives in the [Message Passing Protocol](/spec/execution-model/message-passing).
 
 <DocCardList
   items={[
@@ -38,6 +42,12 @@ The system model is structured into two parts:
       label: "Function Executions",
       href: "/spec/system-model/executions",
       description: "The fundamental unit of computation. Lifecycle, long-running semantics, and logical vs physical executions.",
+    },
+    {
+      type: "link",
+      label: "Tasks",
+      href: "/spec/system-model/tasks",
+      description: "The unit of work the server delivers to a worker. State machine, lease and heartbeat, version-based concurrency control.",
     },
   ]}
 />
