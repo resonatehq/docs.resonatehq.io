@@ -52,7 +52,7 @@ Distributed Async Await defines recovery semantics in case of a process interrup
 Call graphs are a powerful tool for visualizing the execution of a program.
 </Callout>
 
-A call graph is a directed graph where the nodes are functions and the edges are calls between functions. The call graph provides a flexible lens onto a computation. The call graph is zoomable, allowing one to expand a caller into its callees (treating a function as a composite) or collapse those callees into the caller (treating the function as atomic). This flexibility enables reasoning at different levels of abstraction.
+Functions compose recursively — a function may call other functions, spanning a call graph. A call graph is a directed graph where the nodes are functions and the edges are calls between functions. The call graph provides a flexible lens onto a computation: it is zoomable, allowing one to expand a caller into its callees (treating a function as a composite) or collapse those callees into the caller (treating the function as atomic). This flexibility enables reasoning at different levels of abstraction.
 
 ![Generic Call Graph](/images/spec/generic-call-graph.svg)
 
