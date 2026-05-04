@@ -15,7 +15,7 @@ Source for [https://docs.resonatehq.io](https://docs.resonatehq.io). Built with 
 
 ### [Example application library](https://github.com/resonatehq-examples)
 
-### [The concepts that power Resonate](https://www.distributed-async-await.io/)
+### [The concepts that power Resonate](https://docs.resonatehq.io/spec)
 
 ### [Join the Discord](https://resonatehq.io/discord)
 

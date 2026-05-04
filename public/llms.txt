@@ -52,3 +52,16 @@
 - [Get started with Resonate](/get-started): Quickstart, examples, and migration guides.
 - [Quickstart](/get-started/quickstart): Install the server and SDK and run your first Resonate workflow.
 - [Home](/index): Resonate — agent-native durable execution. Generated, optimized, absurdly cheap.
+- [Distributed Coordination Protocol](/spec/execution-model/coordination-protocol): How callers and remote callees coordinate via durable promises — eventual and immediate resumption.
+- [Execution model](/spec/execution-model): Coordination, recovery, and message-passing protocols that make distributed programs make progress.
+- [Message Passing Protocol](/spec/execution-model/message-passing): The wire-level contract — envelope, status codes, addressing, transport variants — that all Distributed Async Await communication rides on.
+- [Recovery Protocol](/spec/execution-model/recovery-protocol): How a logical execution survives the failure of a physical process — settlement chain, lease and heartbeat, and the invariants a conformant server maintains.
+- [Glossary](/spec/glossary): Load-bearing terms used throughout the Distributed Async Await specification.
+- [Specification](/spec): The Distributed Async Await specification — protocols, definitions, and models for durable execution.
+- [Durable Function Specification](/spec/programming-model/durable-function-specification): Formal definition of interruption tolerance and the constraints a function must satisfy for the equivalence to hold.
+- [Durable Promise Specification](/spec/programming-model/durable-promise-specification): API + state-transition table for durable promises — the persistent coordination primitive of Distributed Async Await.
+- [Programming model](/spec/programming-model): Functions and promises lifted to span processes, machines, and time. Defines the developer interface.
+- [Function Executions](/spec/system-model/executions): The fundamental unit of computation — lifecycle, long-running semantics, and the logical/physical distinction.
+- [System model](/spec/system-model): A first-principles model of distributed systems — processes, executions, and tasks — that grounds the rest of the specification.
+- [Processes](/spec/system-model/processes): The fundamental unit of locality — lifecycle, fail-stop failure, and the logical/physical distinction.
+- [Tasks](/spec/system-model/tasks): The unit of work the server delivers to a worker — lifecycle, version-based concurrency, and lease semantics.
