@@ -140,7 +140,7 @@ Serverless workers run inside platform-imposed invocation timeouts. Resonate's a
 | Cloudflare Workers | varies (CPU-time vs wall-clock differ by plan) | See [Cloudflare Workers limits](https://developers.cloudflare.com/workers/platform/limits/) |
 | Supabase Edge Functions | varies | See [Supabase Edge Functions limits](https://supabase.com/docs/guides/functions/limits) |
 
-<Callout type="warning" title="Avoid forever loops in a single durable invocation">
+<Callout type="caution" title="Avoid forever loops in a single durable invocation">
 A workflow that loops forever inside one root promise — `while(true) { doWork() }` — accumulates child promises with every iteration. After thousands of iterations (10k+ in practice), replay duration exceeds the acquired-task lease, the server emits error code `1199 — Task is not acquired` and reassigns the task mid-execution, and cadence collapses. The longer the workflow runs, the worse it gets.
 </Callout>
 

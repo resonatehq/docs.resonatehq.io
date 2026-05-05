@@ -471,7 +471,7 @@ function* playGame(ctx: Context, n: number) {
 }
 ```
 
-<Callout type="warning" title="The split must happen *inside* the per-iteration function">
+<Callout type="caution" title="The split must happen *inside* the per-iteration function">
 A parent loop that calls `ctx.detached` repeatedly — `for (;;) yield* ctx.detached(work, n)` — still records each call in the parent's history, reproducing the same accumulation problem on the parent. The recursive-tail shape (per-iteration function spawns its own successor as the last yield, then returns) is what bounds replay scope.
 </Callout>
 
