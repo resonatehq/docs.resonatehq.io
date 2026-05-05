@@ -125,3 +125,49 @@ Ready to use example apps:
 
 - [Durable Counter with Supabase Edge Functions | TypeScript](https://github.com/resonatehq-examples/example-countdown-supabase-ts)
 - [Deep Research Agent with Supabase Edge Functions | TypeScript](https://github.com/resonatehq-examples/example-openai-deep-research-agent-supabase-ts)
+
+## Serverless-specific constraints
+
+Serverless workers run inside platform-imposed invocation timeouts. Resonate's acquired-task lease (`ttl`) interacts with that timeout: the lease is the window the server gives the worker to make progress on a task before it considers the task abandoned and reassigns it. Workflows that accumulate many promises in a single root will eventually fail to replay within the lease, even if individual steps are fast.
+
+### Platform timeouts
+
+| Platform | Max invocation timeout | Notes |
+|---|---|---|
+| AWS Lambda | 15 min | Check `@resonatehq/aws` for default `ttl` |
+| Google Cloud Functions Gen 2 | 9 min (540s) | `@resonatehq/gcp` defaults `ttl` to 5 min — bump to 10 min so the lease always exceeds the function timeout |
+| Google Cloud Run | 60 min | Check `@resonatehq/gcp` for default `ttl` |
+| Cloudflare Workers | varies (CPU-time vs wall-clock differ by plan) | See [Cloudflare Workers limits](https://developers.cloudflare.com/workers/platform/limits/) |
+| Supabase Edge Functions | varies | See [Supabase Edge Functions limits](https://supabase.com/docs/guides/functions/limits) |
+
+<Callout type="warning" title="Avoid forever loops in a single durable invocation">
+A workflow that loops forever inside one root promise — `while(true) { doWork() }` — accumulates child promises with every iteration. After thousands of iterations (10k+ in practice), replay duration exceeds the acquired-task lease, the server emits error code `1199 — Task is not acquired` and reassigns the task mid-execution, and cadence collapses. The longer the workflow runs, the worse it gets.
+</Callout>
+
+### The fix: recursive tail call with `ctx.detached`
+
+Have the per-iteration function play exactly *one* iteration, and as its **last yield**, spawn the next iteration as a brand-new root via `ctx.detached`. The current invocation returns; the next invocation starts with a fresh origin id and an empty history.
+
+```typescript
+function* playGame(ctx: Context, n: number) {
+  // ...play exactly one game (ctx.run, ctx.sleep, etc.)...
+  yield* ctx.detached(playGame, n + 1); // ✅ last yield, fresh root, bounded replay
+}
+```
+
+The split must happen *inside* the per-iteration function. A parent loop that calls `ctx.detached` repeatedly — `for (;;) yield* ctx.detached(work, n)` — still records each call in the parent's history, reproducing the bug on the parent. See [Bound the promise count of a single execution](/develop/constraints#bound-the-promise-count-of-a-single-execution) for the full explanation.
+
+### Configuring `ttl`
+
+The shim `Resonate` constructor accepts a `ttl` option (milliseconds):
+
+```typescript
+import { Resonate } from "@resonatehq/gcp";
+
+const resonate = new Resonate({ ttl: 10 * 60 * 1000 }); // 10 min
+```
+
+`ttl` should exceed the platform's max invocation timeout. The lease tells the server how long to wait before assuming the worker is dead. If `ttl` is shorter than the platform timeout, the server may reassign the task to a fresh invocation while the original is still legitimately running, leading to mid-execution task reassignment (error code 1199) and duplicate work.
+
+**See also:**
+- [Bound the promise count of a single execution](/develop/constraints#bound-the-promise-count-of-a-single-execution)

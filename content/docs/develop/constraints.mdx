@@ -9,13 +9,14 @@ keywords:
 
 Resonate enables you to write distributed applications that survive failures and restarts, but this power comes with a few important rules you need to follow. This page explains what those rules are and, more importantly, **why they exist**.
 
-## The three rules
+## The four rules
 
 When writing durable functions with Resonate, you must follow these constraints:
 
 1. **Functions must be deterministic** - Same inputs always produce the same outputs
 2. **Functions must be idempotent** - Safe to retry multiple times
 3. **Activations cannot outlive the process** - Long-running work needs Resonate primitives
+4. **Bound the promise count of a single execution** - Replay cost scales with accumulated child promises
 
 Let's explore each one.
 
@@ -431,6 +432,60 @@ For work that takes hours, days, or weeks, use `ctx.sleep()` or Durable Promises
 
 ---
 
+## Bound the promise count of a single execution
+
+### What does this mean?
+
+Replay duration grows with the count of executed promises in a single root invocation. On cold-start, every prior step is replayed before the next can proceed.
+
+Each `ctx.run()`, `ctx.rpc()`, `ctx.sleep()`, or other Context call inside a root invocation adds one promise to that root's history. When the worker restarts (deploy, scale-down, crash, task reassignment), Resonate replays the function from the beginning, walking every recorded promise to reconstruct state. The more promises accumulated under a single root, the longer replay takes.
+
+### When this becomes a problem
+
+Workflows that loop indefinitely or accumulate many child promises within a single root.
+
+On serverless platforms with fixed acquired-task leases (e.g., `@resonatehq/gcp` default `ttl` = 5 min), replay duration eventually exceeds the lease, the server reassigns the task mid-execution (error code `1199 — Task is not acquired`), and cadence collapses.
+
+❌ **Single root accumulates children forever**
+
+```typescript
+function* playGame(ctx: Context, n: number) {
+  while (true) {                                  // ⚠️ one durable invocation forever
+    // ...play one game (ctx.run, ctx.sleep, etc.)...
+    // every yield adds a child promise to this root's history;
+    // after thousands of iterations, replay > task lease
+  }
+}
+```
+
+### The solution: Recursive tail call with `ctx.detached`
+
+Have the per-iteration function play exactly *one* iteration, and as its **last yield**, spawn the next iteration as a brand-new root via `ctx.detached`. The current invocation returns; the next invocation starts with a fresh origin id and an empty history.
+
+✅ **Each invocation = one iteration, replay scope bounded**
+
+```typescript
+function* playGame(ctx: Context, n: number) {
+  // ...play exactly one game (ctx.run, ctx.sleep, etc.)...
+  yield* ctx.detached(playGame, n + 1); // ✅ last yield, fresh root, bounded replay
+}
+```
+
+<Callout type="warning" title="The split must happen *inside* the per-iteration function">
+A parent loop that calls `ctx.detached` repeatedly — `for (;;) yield* ctx.detached(work, n)` — still records each call in the parent's history, reproducing the same accumulation problem on the parent. The recursive-tail shape (per-iteration function spawns its own successor as the last yield, then returns) is what bounds replay scope.
+</Callout>
+
+The same pattern applies to any forever-running workflow: poll loops, monitoring agents, recurring jobs, demo loops. The per-iteration function plays one iteration, then `yield* ctx.detached(self, next)` as its final yield.
+
+<Callout type="tip" title="One iteration = one root">
+If a workflow loops indefinitely or accumulates many child promises, split iterations with `ctx.detached()`. Each iteration gets a fresh root and a bounded replay scope, regardless of how long the overall workflow runs.
+</Callout>
+
+**See also:**
+- [Serverless-specific constraints](/deploy/serverless-workers#serverless-specific-constraints)
+
+---
+
 ## Summary
 
 | Constraint | Why it exists | Solution |
@@ -438,6 +493,7 @@ For work that takes hours, days, or weeks, use `ctx.sleep()` or Durable Promises
 | **Deterministic** | Functions are replayed on restart - must produce same results | Use `ctx.math.random()`, `ctx.date.now()`, `ctx.run()` |
 | **Idempotent** | Functions are retried on failure - must be safe to repeat | Use idempotency keys, upserts, deduplication checks |
 | **Process lifetime** | Activations end when process ends - can't outlive it | Use `ctx.sleep()`, Durable Promises for long-running work |
+| **Bounded promise count** | Replay walks all prior promises - cost scales linearly | Use `ctx.detached()` for forever-loop iterations |
 
 Following these rules ensures your distributed application survives process crashes and restarts, retries safely without duplicating work, and handles long-running workflows spanning hours or days.
 
