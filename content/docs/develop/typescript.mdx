@@ -164,7 +164,9 @@ See [Message transports](/deploy/message-transports) for the transports the curr
 
 ### Consuming Kafka with Resonate
 
-There is no native Kafka transport in the current server. The supported pattern is a normal Kafka consumer that dispatches a Resonate workflow per message — the message ID becomes the durable promise ID, so duplicate deliveries reconnect to the in-flight execution rather than starting over.
+**Example: Kafka worker.** Kafka is the most common message-broker integration ask, so we ship a complete reference implementation. The pattern below works for any message broker — substitute your client library, keep the `resonate.beginRun(messageId, "workflow", ...)` shape.
+
+There is no native Kafka transport in the current server. The supported pattern is a normal Kafka consumer that dispatches a Resonate workflow per message — a stable per-message identifier becomes the durable promise ID, so duplicate deliveries reconnect to the in-flight execution rather than starting over.
 
 ```ts title="src/consumer.ts"
 import { Kafka } from "kafkajs";
@@ -177,15 +179,20 @@ await consumer.connect();
 await consumer.subscribe({ topic: "records_to_process", fromBeginning: true });
 
 await consumer.run({
-  eachMessage: async ({ message }) => {
-    const messageId = message.key!.toString("utf-8");
+  eachMessage: async ({ topic, partition, message }) => {
+    // topic-partition-offset uniquely identifies the message even when no key is set
+    const messageId = `${topic}-${partition}-${message.offset}`;
     // messageId is the durable promise id — duplicate invocations dedupe.
     await resonate.beginRun(messageId, "workflow", messageId, message.offset);
   },
 });
 ```
 
-The full example, with the workflow definition and a runnable Redpanda compose file, lives at [resonatehq-examples/example-kafka-worker-ts](https://github.com/resonatehq-examples/example-kafka-worker-ts) — see also the [Kafka worker example page](/get-started/examples/kafka-worker) for a side-by-side TypeScript / Python / Rust walkthrough and the [Kafka integration guide](/deploy/kafka).
+If your producer sets a stable message key (or your payload carries a domain ID), that's an equally valid promise ID — pick whichever uniquely identifies the logical message.
+
+The full example, with the workflow definition and a runnable Redpanda compose file, lives at [resonatehq-examples/example-kafka-worker-ts](https://github.com/resonatehq-examples/example-kafka-worker-ts) — see also the [Kafka worker example page](/get-started/examples/kafka-worker) for a side-by-side TypeScript / Python / Rust walkthrough.
+
+→ Full guide: [Kafka integration](/deploy/kafka)
 
 <Callout type="info" title="Roadmap">
 Native `kafka://` transport is specified in the [Message Passing Protocol](/spec/execution-model/message-passing#address-schemes) and on the roadmap. This page will gain a transport-plugin section once it ships.
