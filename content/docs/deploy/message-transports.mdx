@@ -130,6 +130,10 @@ The transports below are specified in the [Message Passing Protocol](/spec/execu
 
 ### Kafka
 
+<Callout type="caution" title="Heads up: @resonatehq/kafka NPM plugin is legacy">
+The published `@resonatehq/kafka` NPM plugin (v0.1.x) targets the **legacy Go-based** Resonate Server. It does **not** work with the current Rust server (v0.9.x). Use the [Kafka worker pattern](/deploy/kafka) today; native `kafka://` transport is on the roadmap below.
+</Callout>
+
 **Not available in the current server.** Native `kafka://` transport is on the roadmap.
 
 For Kafka integration today, use a normal Kafka consumer to dispatch a Resonate workflow per message — see the [Kafka integration guide](/deploy/kafka) and the [Kafka worker example](/get-started/examples/kafka-worker).

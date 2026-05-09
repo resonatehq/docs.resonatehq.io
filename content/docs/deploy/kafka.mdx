@@ -15,7 +15,7 @@ Resonate does not ship a native Kafka transport in the current server. The suppo
 
 ## The Kafka worker pattern
 
-Use a regular Kafka consumer (`kafkajs`, `confluent-kafka-python`, `rdkafka`, etc.) and call `beginRun` on each message. The Kafka message ID becomes the Resonate promise ID, so the dispatch is idempotent — duplicate deliveries reconnect to the in-flight execution rather than starting over.
+Use a regular Kafka consumer (`kafkajs`, `confluent-kafka-python`, `rdkafka`, etc.) and call `beginRun` on each message. A stable per-message identifier becomes the Resonate promise ID, so the dispatch is idempotent — duplicate deliveries reconnect to the in-flight execution rather than starting over.
 
 ```ts title="src/consumer.ts"
 import { Kafka } from "kafkajs";
@@ -28,12 +28,15 @@ await consumer.connect();
 await consumer.subscribe({ topic: "records_to_process", fromBeginning: true });
 
 await consumer.run({
-  eachMessage: async ({ message }) => {
-    const messageId = message.key!.toString("utf-8");
+  eachMessage: async ({ topic, partition, message }) => {
+    // topic-partition-offset uniquely identifies the message even when no key is set
+    const messageId = `${topic}-${partition}-${message.offset}`;
     await resonate.beginRun(messageId, "workflow", messageId, message.offset);
   },
 });
 ```
+
+If your producer sets a stable message key (or your payload carries a domain ID like a record UUID), that's also a valid promise ID — the only requirement is that the same logical message always resolves to the same string.
 
 Full TypeScript / Python / Rust walkthroughs and runnable repos are on the [Kafka worker example page](/get-started/examples/kafka-worker). Source repos:
 
@@ -43,7 +46,7 @@ Full TypeScript / Python / Rust walkthroughs and runnable repos are on the [Kafk
 
 ## Idempotent dispatch
 
-Every Kafka message carries a stable identifier — usually the message key, optionally combined with topic and partition. Pass that identifier as the Resonate promise ID:
+Every Kafka message has a stable identifier you can derive from its coordinates: `${topic}-${partition}-${offset}` is unique by construction, and a producer-supplied key (or a domain ID inside the payload) works equally well when present. Pass that identifier as the Resonate promise ID:
 
 ```ts
 await resonate.beginRun(messageId, "workflow", ...args);
