@@ -160,20 +160,36 @@ A Resonate Client receives messages by making HTTP Long Polling requests to a Re
 The messages tell the client/sdk what to work on next.
 
 You can customize the transport by which the client receives messages using a transport plugin.
-For example, here is how to configure it with a [Kafka message transport plugin](https://github.com/resonatehq/resonate-transport-kafka-ts).
+See [Message transports](/deploy/message-transports) for the transports the current server ships.
 
-```ts title="index.ts"
-import { type Context, Resonate } from "@resonatehq/sdk";
-import { Kafka } from "@resonatehq/kafka";
+### Consuming Kafka with Resonate
 
-const transport = new Kafka({ brokers: ["localhost:9092"] });
-await transport.start();
+There is no native Kafka transport in the current server. The supported pattern is a normal Kafka consumer that dispatches a Resonate workflow per message — the message ID becomes the durable promise ID, so duplicate deliveries reconnect to the in-flight execution rather than starting over.
 
-const resonate = new Resonate({ transport });
+```ts title="src/consumer.ts"
+import { Kafka } from "kafkajs";
+import { resonate } from "./workflow";
+
+const kafka = new Kafka({ brokers: ["localhost:9092"] });
+const consumer = kafka.consumer({ groupId: "workers" });
+
+await consumer.connect();
+await consumer.subscribe({ topic: "records_to_process", fromBeginning: true });
+
+await consumer.run({
+  eachMessage: async ({ message }) => {
+    const messageId = message.key!.toString("utf-8");
+    // messageId is the durable promise id — duplicate invocations dedupe.
+    await resonate.beginRun(messageId, "workflow", messageId, message.offset);
+  },
+});
 ```
 
-The underlying protocols enable a wide range of potential message transports including SQS, Pub/Sub, RabbitMQ, NATS, and more.
-See [Message transports](/deploy/message-transports) for a complete list.
+The full example, with the workflow definition and a runnable Redpanda compose file, lives at [resonatehq-examples/example-kafka-worker-ts](https://github.com/resonatehq-examples/example-kafka-worker-ts) — see also the [Kafka worker example page](/get-started/examples/kafka-worker) for a side-by-side TypeScript / Python / Rust walkthrough and the [Kafka integration guide](/deploy/kafka).
+
+<Callout type="info" title="Roadmap">
+Native `kafka://` transport is specified in the [Message Passing Protocol](/spec/execution-model/message-passing#address-schemes) and on the roadmap. This page will gain a transport-plugin section once it ships.
+</Callout>
 
 ### Environment Variables
 
