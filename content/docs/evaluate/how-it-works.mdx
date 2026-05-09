@@ -41,11 +41,11 @@ And each instance needs to be able to send and receive messages from a Resonate 
 
 The protocol used to pass these messages is called [Async RPC](https://www.async-rpc.io/), and it is completely agnostic to the transport.
 
-For example, Resonate can pass all its messages over HTTP APIs, or it can pass all its messages over Kafka queues, or some workers might receive on one transport and send on another.
+For example, Resonate can pass all its messages over HTTP APIs, or over GCP Pub/Sub topics, or some workers might receive on one transport and send on another. Kafka transport is [planned](/deploy/message-transports#planned) for a future release.
 
 The Async RPC protocol is designed to enable reliable and scalable communication between distributed processes, no matter the transport.
 
-Resonate already has several transport plugins available and more are being developed.
+Resonate already ships several transport plugins and more are being developed — see [Message transports](/deploy/message-transports) for the current set.
 
 Additionally, thanks to the protocol, Resonate offers built-in service discovery and load balancing.
 

@@ -124,10 +124,18 @@ A failure to spawn `bash`, a missing named script, or malformed `param.data` (e.
 
 While the script runs, the server refreshes the task lease at one third of `tasks.lease_timeout` so long-running scripts don't lose their lease.
 
-## Kafka
+## Planned
 
-**Not available in v0.9.5.** Kafka transport support is planned for a future release. The Kafka SDK plugin ([resonatehq/resonate-transport-kafka-ts](https://github.com/resonatehq/resonate-transport-kafka-ts)) exists for use with future server versions once server-side support is added.
+The transports below are specified in the [Message Passing Protocol](/spec/execution-model/message-passing#address-schemes) but are not yet implemented in the current server.
 
-## SQS
+### Kafka
 
-**Not available in v0.9.5.** AWS SQS transport support is planned for a future release.
+**Not available in the current server.** Native `kafka://` transport is on the roadmap.
+
+For Kafka integration today, use a normal Kafka consumer to dispatch a Resonate workflow per message — see the [Kafka integration guide](/deploy/kafka) and the [Kafka worker example](/get-started/examples/kafka-worker).
+
+The published `@resonatehq/kafka` plugin (and the [resonatehq/resonate-transport-kafka-ts](https://github.com/resonatehq/resonate-transport-kafka-ts) repo) targets the **legacy Go server** and does not work against the current Rust server. Don't install it expecting it to wire up.
+
+### SQS
+
+**Not available in the current server.** AWS SQS transport support is on the roadmap.
