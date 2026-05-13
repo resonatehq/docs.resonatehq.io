@@ -98,6 +98,8 @@ The SDK init defaults are the values you get from calling `new Resonate()` (Type
 
 There is no `workers` / `concurrency` parameter in the TypeScript SDK — task execution runs on the Node/Bun event loop with no SDK-side cap.
 
+See [TypeScript SDK Defaults](/develop/typescript#defaults) for surface-scoped framing.
+
 ### Python
 
 | Option | Default | Source |
@@ -115,6 +117,8 @@ There is no `workers` / `concurrency` parameter in the TypeScript SDK — task e
 Python `ttl=10` is **10 seconds**. TypeScript `ttl=60000` is **60 seconds**. They are not identical defaults in either value or unit.
 </Callout>
 
+See [Python SDK Defaults](/develop/python#defaults) for surface-scoped framing.
+
 ### Rust
 
 | Option | Default | Source |
@@ -128,6 +132,8 @@ Python `ttl=10` is **10 seconds**. TypeScript `ttl=60000` is **60 seconds**. The
 | `prefix` | resolved from `RESONATE_PREFIX`, else empty | `resonate-sdk-rs/resonate/src/resonate.rs:154-156` |
 
 The Rust SDK has no `workers` parameter — function execution runs on the user-supplied Tokio runtime.
+
+See [Rust SDK Defaults](/develop/rust#defaults) for surface-scoped framing.
 
 ---
 
@@ -151,6 +157,8 @@ The TypeScript `Options` class sets the following defaults in its constructor:
 
 So the practical answer to "what is the default retry behaviour of `ctx.run` in the TypeScript SDK?" is: **`Exponential()` with its own defaults** (see below) for regular `async` functions, and **`Never()`** for generator functions.
 
+See [TypeScript SDK Defaults](/develop/typescript#defaults) for surface-scoped framing.
+
 ### Python
 
 The Python `Options` dataclass:
@@ -168,6 +176,8 @@ The Python `Options` dataclass:
 | `timeout` | `31_536_000` = **1 year, in seconds** | `resonate-sdk-py/resonate/options.py:26` |
 | `version` | `0` | `resonate-sdk-py/resonate/options.py:27` |
 
+See [Python SDK Defaults](/develop/python#defaults) for surface-scoped framing.
+
 ### Rust
 
 The Rust `Options` struct currently exposes only structural fields:
@@ -182,6 +192,8 @@ The Rust `Options` struct currently exposes only structural fields:
 <Callout type="caution" title="Rust SDK has no per-call retry policy yet">
 The Rust SDK `Options` struct does **not** carry a `retry_policy` field — retry behaviour is governed by the server's task-retry contract, not by a per-invocation policy. This is a known asymmetry with the TypeScript and Python SDKs and is tracked separately.
 </Callout>
+
+See [Rust SDK Defaults](/develop/rust#defaults) for surface-scoped framing.
 
 ---
 

@@ -113,7 +113,7 @@ For MySQL, the equivalent block is:
 type = "mysql"
 
 [storage.mysql]
-url = "mysql://user:pass@host:3306/resonate"
+url = "mysql://<USER>:<PASSWORD>@host:3306/resonate"
 pool_size = 20
 ```
 
@@ -236,7 +236,7 @@ With a `resonate.toml` (recommended):
 type = "mysql"
 
 [storage.mysql]
-url = "mysql://user:pass@localhost:3306/resonate"
+url = "mysql://<USER>:<PASSWORD>@localhost:3306/resonate"
 pool_size = 20
 ```
 
@@ -245,7 +245,7 @@ Or with CLI flags:
 ```shell
 resonate serve \
   --storage-type mysql \
-  --storage-mysql-url "mysql://user:pass@localhost:3306/resonate" \
+  --storage-mysql-url "mysql://<USER>:<PASSWORD>@localhost:3306/resonate" \
   --storage-mysql-pool-size 20
 ```
 
@@ -253,7 +253,7 @@ Or with environment variables:
 
 ```shell
 RESONATE_STORAGE__TYPE=mysql
-RESONATE_STORAGE__MYSQL__URL=mysql://user:pass@localhost:3306/resonate
+RESONATE_STORAGE__MYSQL__URL=mysql://<USER>:<PASSWORD>@localhost:3306/resonate
 RESONATE_STORAGE__MYSQL__POOL_SIZE=20
 ```
 
