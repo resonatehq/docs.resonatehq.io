@@ -58,7 +58,7 @@ docker run --rm -p 8001:8001 -p 9090:9090 resonatehqio/resonate:v0.9.5
 ```shell title="Use Postgres storage"
 docker run --rm -p 8001:8001 -p 9090:9090 \
   -e RESONATE_STORAGE__TYPE=postgres \
-  -e RESONATE_STORAGE__POSTGRES__URL="postgres://user:pass@host:5432/resonate" \
+  -e RESONATE_STORAGE__POSTGRES__URL="postgres://<USER>:<PASSWORD>@host:5432/resonate" \
   resonatehqio/resonate:v0.9.5
 ```
 
@@ -102,7 +102,7 @@ For Postgres, swap the `[storage]` section:
 type = "postgres"
 
 [storage.postgres]
-url = "postgres://user:pass@host:5432/resonate"
+url = "postgres://<USER>:<PASSWORD>@host:5432/resonate"
 pool_size = 20
 ```
 
@@ -132,7 +132,7 @@ Every config field is also reachable as an environment variable. The convention 
 RESONATE_LEVEL=info
 RESONATE_SERVER__PORT=8001
 RESONATE_STORAGE__TYPE=postgres
-RESONATE_STORAGE__POSTGRES__URL=postgres://user:pass@host:5432/resonate
+RESONATE_STORAGE__POSTGRES__URL=postgres://<USER>:<PASSWORD>@host:5432/resonate
 RESONATE_AUTH__PUBLICKEY=/etc/resonate/auth/public.pem
 ```
 
@@ -145,7 +145,7 @@ Most settings can also be passed as CLI flags — useful for ad-hoc overrides:
 ```shell
 resonate serve \
   --storage-type postgres \
-  --storage-postgres-url "postgres://user:pass@localhost:5432/resonate" \
+  --storage-postgres-url "postgres://<USER>:<PASSWORD>@localhost:5432/resonate" \
   --storage-postgres-pool-size 20
 ```
 
@@ -208,7 +208,7 @@ With a `resonate.toml` (recommended):
 type = "postgres"
 
 [storage.postgres]
-url = "postgres://user:pass@localhost:5432/resonate"
+url = "postgres://<USER>:<PASSWORD>@localhost:5432/resonate"
 pool_size = 20
 ```
 
@@ -217,7 +217,7 @@ Or with CLI flags:
 ```shell
 resonate serve \
   --storage-type postgres \
-  --storage-postgres-url "postgres://user:pass@localhost:5432/resonate" \
+  --storage-postgres-url "postgres://<USER>:<PASSWORD>@localhost:5432/resonate" \
   --storage-postgres-pool-size 20
 ```
 
@@ -418,6 +418,23 @@ cd resonate
 cargo build --release
 ./target/release/resonate serve
 ```
+
+## Defaults
+
+The most commonly referenced server defaults:
+
+- **HTTP API port** — `8001` (`--server-port`)
+- **Bind address** — `0.0.0.0` (`--server-bind`); host advertised as `localhost`
+- **Storage backend** — `sqlite` at `resonate.db`
+- **`--tasks-lease-timeout`** — `15_000 ms`
+- **`--tasks-retry-timeout`** — `30_000 ms` (lower to `500 ms` for chained / recursive workflows)
+- **Prometheus metrics port** — `9090` (`0` disables)
+- **Log level** — `info`
+- **Postgres / MySQL pool size** — `10`
+- **`--transports-http-push-enabled` / `--transports-http-poll-enabled`** — `true`
+- **`--transports-gcps-enabled` / `--transports-bash-exec-enabled`** — `false`
+
+These mirror the operator surface above; the canonical cross-component reference (including SDK init, `ctx.run`, retry policy, and env-var defaults) is the [Defaults reference](/reference/defaults).
 
 ## Ports
 

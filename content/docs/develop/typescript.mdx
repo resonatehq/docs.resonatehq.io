@@ -853,3 +853,17 @@ resonate.register("foo", function* (ctx: Context) {
   // Code after this call will be executed as normal
 });
 ```
+
+## Defaults
+
+The TypeScript SDK ships with these key defaults. All values are in **milliseconds** unless noted.
+
+- **`new Resonate()`** — `group = "default"`, `ttl = 60_000 ms`, `logLevel = "warn"`. URL falls back to `RESONATE_URL`; when both are unset, a local in-memory network is used.
+- **`HttpNetwork`** — request `timeout = 10_000 ms` (overridable via `RESONATE_TIMEOUT`), URL fallback `"http://localhost:8001"`.
+- **`ctx.run` / `Options`** — `timeout = 86_400_000 ms (24 h)`, `target = "default"`, `version = 0`, `tags = {}`, `nonRetryableErrors = []`.
+- **`retryPolicy`** for `ctx.run` — `Exponential()` for regular `async` functions, `Never()` for generator functions.
+- **`Exponential()` defaults** — `delay = 1_000 ms`, `factor = 2`, `maxDelay = 30_000 ms`, `maxRetries = Number.MAX_SAFE_INTEGER`.
+- **`Constant()` / `Linear()` defaults** — `delay = 1_000 ms`, `maxRetries = Number.MAX_SAFE_INTEGER`.
+
+For the full table, per-SDK comparison, and source citations, see the [Defaults reference](/reference/defaults).
+

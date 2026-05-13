@@ -568,3 +568,21 @@ def foo(ctx, arg):
 ### `.options()`
 
 Many of Context's methods support options on the call you are making.
+
+## Defaults
+
+The Python SDK ships with these key defaults. Times are in **seconds**.
+
+- **`Resonate()`** — `group = "default"`, `ttl = 10 s`, `log_level = logging.INFO`. URL falls back to `RESONATE_URL`, then `RESONATE_HOST`/`RESONATE_PORT`; otherwise local mode.
+- **`workers`** — defaults to `min(32, workers or (os.cpu_count() or 1))` execution threads.
+- **`ctx.run` / `Options`** — `durable = True`, `timeout = 31_536_000 s (1 year)`, `target = "default"`, `version = 0`, `tags = {}`, `non_retryable_exceptions = ()`, `idempotency_key = lambda id: id`.
+- **`retry_policy`** for `ctx.run` — resolves to `Exponential()` for regular functions, `Never()` for generator functions.
+- **`Exponential()` defaults** — `delay = 1`, `factor = 2`, `max_delay = 30`, `max_retries = sys.maxsize` (all times in seconds).
+- **`Constant()` / `Linear()` defaults** — `delay = 1`, `max_retries = sys.maxsize`.
+
+<Callout type="caution" title="Python times are seconds, TypeScript times are milliseconds">
+The Python SDK uses seconds for `ttl`, `timeout`, and retry-policy delays. The TypeScript SDK uses milliseconds. The numbers do not transfer directly between the two.
+</Callout>
+
+For the full table, per-SDK comparison, and source citations, see the [Defaults reference](/reference/defaults).
+

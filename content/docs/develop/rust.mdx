@@ -438,3 +438,18 @@ async fn my_workflow(ctx: &Context) -> Result<()> {
     Ok(())
 }
 ```
+
+## Defaults
+
+The Rust SDK ships with these key defaults:
+
+- **`Resonate::local()`** — `pid = "default"`, `group = "default"`, `ttl = u64::MAX` (no expiry, local mode).
+- **`Resonate::new(ResonateConfig::default())`** — `ttl = 60_000 ms` (remote mode). URL falls back to `RESONATE_URL`, then `RESONATE_HOST` + `RESONATE_SCHEME` ("http") + `RESONATE_PORT` ("8001").
+- **`Options::default()`** — `target = "default"`, `timeout = Duration::from_secs(86_400)` (24 h), `version = 0`, `tags = HashMap::new()`.
+
+<Callout type="caution" title="Rust SDK has no per-call retry policy yet">
+The Rust `Options` struct does **not** carry a `retry_policy` field. Retry behaviour for Rust workers is governed server-side by the `--tasks-retry-timeout` flag (default `30_000 ms`). This is a known asymmetry with the TypeScript and Python SDKs, both of which support per-`ctx.run` retry policies.
+</Callout>
+
+For the full table, per-SDK comparison, and source citations, see the [Defaults reference](/reference/defaults).
+
