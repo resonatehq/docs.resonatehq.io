@@ -1,0 +1,288 @@
+---
+title: Defaults reference
+description: Canonical reference for default values across the Resonate server and SDKs (TypeScript, Python, Rust).
+keywords:
+  - reference
+  - defaults
+  - retries
+  - configuration
+  - timeout
+  - retry policy
+---
+
+This page is the **single source of truth** for default values across the Resonate server and SDKs. Every value below is sourced from a specific file and line in the canonical source repositories; if a default changes in source, this page is wrong until it is updated.
+
+If you only want to know "what does `ctx.run` retry by default?" — see [ctx.run / per-call options](#ctxrun--per-call-options) and [Retry policies](#retry-policies).
+
+---
+
+## Server defaults
+
+The Resonate server is a Rust binary. Its source lives at [`resonatehq/resonate`](https://github.com/resonatehq/resonate); every default below is sourced from `src/config.rs`. The CLI flag name is the kebab-case path through the config struct (e.g. `tasks.lease_timeout` → `--tasks-lease-timeout`); the equivalent environment variable uses double-underscore nesting (e.g. `RESONATE_TASKS__LEASE_TIMEOUT`). Loading order: built-in defaults → optional `resonate.toml` → env vars.
+
+### HTTP server
+
+| Setting | Default | Source |
+|---|---|---|
+| `--server-host` | `"localhost"` | `resonate/src/config.rs:99` |
+| `--server-port` | `8001` | `resonate/src/config.rs:102` |
+| `--server-bind` | `"0.0.0.0"` | `resonate/src/config.rs:105` |
+| `--server-shutdown-timeout` | `10000` ms | `resonate/src/config.rs:108` |
+| `--server-url` | unset (falls back to `http://{host}:{port}` in response headers) | `resonate/src/config.rs:91` |
+| `--server-cors-allow-origins` | empty (CORS disabled) | `resonate/src/config.rs:67` |
+| `--level` | `"info"` | `resonate/src/config.rs:60` |
+
+### Storage
+
+| Setting | Default | Source |
+|---|---|---|
+| `--storage-type` | `"sqlite"` | `resonate/src/config.rs:148` |
+| `--storage-sqlite-path` | `"resonate.db"` | `resonate/src/config.rs:159` |
+| `--storage-postgres-url` | unset | `resonate/src/config.rs:174` |
+| `--storage-postgres-pool-size` | `10` | `resonate/src/config.rs:182` |
+| `--storage-mysql-url` | unset | `resonate/src/config.rs:197` |
+| `--storage-mysql-pool-size` | `10` | `resonate/src/config.rs:182` (shared `default_pool_size`) |
+
+### Tasks + background scans
+
+| Setting | Default | Source |
+|---|---|---|
+| `--tasks-lease-timeout` | `15000` ms | `resonate/src/config.rs:250` |
+| `--tasks-retry-timeout` | `30000` ms | `resonate/src/config.rs:253` — most deployments should lower this to `500` ms; see the [tip on Run a server](/deploy/run-server#configuration) |
+| `--timeouts-poll-interval` | `1000` ms | `resonate/src/config.rs:273` |
+| `--messages-poll-interval` | `100` ms | `resonate/src/config.rs:296` |
+| `--messages-batch-size` | `100` | `resonate/src/config.rs:299` |
+
+### Transports
+
+| Setting | Default | Source |
+|---|---|---|
+| `--transports-http-push-enabled` | `true` | `resonate/src/config.rs:399` |
+| `--transports-http-push-concurrency` | `16` | `resonate/src/config.rs:387` |
+| `--transports-http-push-connect-timeout` | `10000` ms | `resonate/src/config.rs:390` |
+| `--transports-http-push-request-timeout` | `180000` ms | `resonate/src/config.rs:393` |
+| `--transports-http-push-auth-mode` | `"none"` | `resonate/src/config.rs:462` (`HttpPushAuthMode::None`) |
+| `--transports-http-push-auth-header` | `"Authorization"` | `resonate/src/config.rs:442` |
+| `--transports-http-poll-enabled` | `true` | `resonate/src/config.rs:494` |
+| `--transports-http-poll-max-connections` | `1000` | `resonate/src/config.rs:485` |
+| `--transports-http-poll-buffer-size` | `100` | `resonate/src/config.rs:488` |
+| `--transports-gcps-enabled` | `false` | `resonate/src/config.rs:351` |
+| `--transports-bash-exec-enabled` | `false` | `resonate/src/config.rs:342` |
+
+### Observability
+
+| Setting | Default | Source |
+|---|---|---|
+| `--observability-metrics-port` | `9090` (set to `0` to disable) | `resonate/src/config.rs:513` |
+| `--observability-otlp-endpoint` | `"localhost:4317"` | `resonate/src/config.rs:516` |
+
+---
+
+## SDK init defaults
+
+The SDK init defaults are the values you get from calling `new Resonate()` (TypeScript), `Resonate()` (Python), or `Resonate::local()` / `Resonate::new(ResonateConfig::default())` (Rust) with no arguments.
+
+### TypeScript
+
+| Option | Default | Source |
+|---|---|---|
+| `url` | resolved from `RESONATE_URL` env, otherwise local in-memory network | `resonate-sdk-ts/src/resonate.ts:147` |
+| `group` | `"default"` | `resonate-sdk-ts/src/resonate.ts:103` |
+| `pid` | random UUID | `resonate-sdk-ts/src/resonate.ts:149` |
+| `ttl` | `1 * util.MIN` = **60,000 ms** | `resonate-sdk-ts/src/resonate.ts:105` (constant at `src/util.ts:25`) |
+| `verbose` | `false` | `resonate-sdk-ts/src/resonate.ts:108` |
+| `logLevel` | `"warn"` (fallback when `verbose=false`) | `resonate-sdk-ts/src/resonate.ts:137` |
+| `prefix` | resolved from `RESONATE_PREFIX`, else empty | `resonate-sdk-ts/src/resonate.ts:132` |
+| HTTP request timeout (`HttpNetwork`) | `RESONATE_TIMEOUT` env var if set, else `10 * util.SEC` = **10,000 ms** | `resonate-sdk-ts/src/network/http.ts:60-62` |
+| HTTP URL fallback | `"http://localhost:8001"` | `resonate-sdk-ts/src/network/http.ts:58` |
+
+There is no `workers` / `concurrency` parameter in the TypeScript SDK — task execution runs on the Node/Bun event loop with no SDK-side cap.
+
+See [TypeScript SDK Defaults](/develop/typescript#defaults) for surface-scoped framing.
+
+### Python
+
+| Option | Default | Source |
+|---|---|---|
+| `url` | resolved from `RESONATE_URL`, else `RESONATE_HOST` + `RESONATE_PORT`, else local | `resonate-sdk-py/resonate/resonate.py:173-181` |
+| `group` | `"default"` | `resonate-sdk-py/resonate/resonate.py:99` |
+| `pid` | `uuid.uuid4().hex` | `resonate-sdk-py/resonate/resonate.py:161` |
+| `ttl` | `10` (seconds) | `resonate-sdk-py/resonate/resonate.py:101` |
+| `log_level` | `logging.INFO` | `resonate-sdk-py/resonate/resonate.py:102` |
+| `workers` | `min(32, workers or (os.cpu_count() or 1))` | `resonate-sdk-py/resonate/processor.py:16` |
+| `RESONATE_SCHEME` fallback | `"http"` | `resonate-sdk-py/resonate/resonate.py:179` |
+| `RESONATE_PORT` fallback | `"8001"` | `resonate-sdk-py/resonate/resonate.py:180` |
+
+<Callout type="caution" title="Python ttl is in seconds; TypeScript ttl is in milliseconds">
+Python `ttl=10` is **10 seconds**. TypeScript `ttl=60000` is **60 seconds**. They are not identical defaults in either value or unit.
+</Callout>
+
+See [Python SDK Defaults](/develop/python#defaults) for surface-scoped framing.
+
+### Rust
+
+| Option | Default | Source |
+|---|---|---|
+| `url` | resolved from `RESONATE_URL`, else `RESONATE_HOST`/`RESONATE_SCHEME`/`RESONATE_PORT` | `resonate-sdk-rs/resonate/src/resonate.rs:164-171` |
+| `RESONATE_SCHEME` fallback | `"http"` | `resonate-sdk-rs/resonate/src/resonate.rs:168` |
+| `RESONATE_PORT` fallback | `"8001"` | `resonate-sdk-rs/resonate/src/resonate.rs:169` |
+| `group` | `"default"` (in `local_with`) | `resonate-sdk-rs/resonate/src/resonate.rs:121` |
+| `pid` | `"default"` (in `local_with`); from network in remote mode | `resonate-sdk-rs/resonate/src/resonate.rs:120,191` |
+| `ttl` | `60_000` ms (remote) / `u64::MAX` (local) | `resonate-sdk-rs/resonate/src/resonate.rs:151,127` |
+| `prefix` | resolved from `RESONATE_PREFIX`, else empty | `resonate-sdk-rs/resonate/src/resonate.rs:154-156` |
+
+The Rust SDK has no `workers` parameter — function execution runs on the user-supplied Tokio runtime.
+
+See [Rust SDK Defaults](/develop/rust#defaults) for surface-scoped framing.
+
+---
+
+## ctx.run / per-call options
+
+These are the defaults applied to a single `ctx.run(...)`, `ctx.rpc(...)`, or top-level `resonate.run(...)` call when no per-call options are passed.
+
+### TypeScript
+
+The TypeScript `Options` class sets the following defaults in its constructor:
+
+| Field | Default | Source |
+|---|---|---|
+| `id` | `undefined` (auto-generated by the runtime) | `resonate-sdk-ts/src/options.ts:48` |
+| `retryPolicy` | `undefined` at the options layer; **resolved to `new Exponential()` for regular functions, `new Never()` for generator functions** when `ctx.run` / `ctx.rpc` executes | `resonate-sdk-ts/src/options.ts:49`, resolution at `resonate-sdk-ts/src/context.ts:397,432` |
+| `tags` | `{}` | `resonate-sdk-ts/src/options.ts:50` |
+| `target` | `"default"` | `resonate-sdk-ts/src/options.ts:51` |
+| `timeout` | `24 * util.HOUR` = **86,400,000 ms (24 h)** | `resonate-sdk-ts/src/options.ts:52` (constants at `src/util.ts:24-26`) |
+| `version` | `0` | `resonate-sdk-ts/src/options.ts:53` |
+| `nonRetryableErrors` | `[]` | `resonate-sdk-ts/src/options.ts:54` |
+
+So the practical answer to "what is the default retry behaviour of `ctx.run` in the TypeScript SDK?" is: **`Exponential()` with its own defaults** (see below) for regular `async` functions, and **`Never()`** for generator functions.
+
+See [TypeScript SDK Defaults](/develop/typescript#defaults) for surface-scoped framing.
+
+### Python
+
+The Python `Options` dataclass:
+
+| Field | Default | Source |
+|---|---|---|
+| `durable` | `True` | `resonate-sdk-py/resonate/options.py:18` |
+| `encoder` | `None` | `resonate-sdk-py/resonate/options.py:19` |
+| `id` | `None` (auto-generated) | `resonate-sdk-py/resonate/options.py:20` |
+| `idempotency_key` | `lambda id: id` (identity) | `resonate-sdk-py/resonate/options.py:21` |
+| `non_retryable_exceptions` | `()` | `resonate-sdk-py/resonate/options.py:22` |
+| `retry_policy` | `lambda f: Never() if isgeneratorfunction(f) else Exponential()` | `resonate-sdk-py/resonate/options.py:23` |
+| `target` | `"default"` | `resonate-sdk-py/resonate/options.py:24` |
+| `tags` | `{}` | `resonate-sdk-py/resonate/options.py:25` |
+| `timeout` | `31_536_000` = **1 year, in seconds** | `resonate-sdk-py/resonate/options.py:26` |
+| `version` | `0` | `resonate-sdk-py/resonate/options.py:27` |
+
+See [Python SDK Defaults](/develop/python#defaults) for surface-scoped framing.
+
+### Rust
+
+The Rust `Options` struct currently exposes only structural fields:
+
+| Field | Default | Source |
+|---|---|---|
+| `tags` | `HashMap::new()` (empty) | `resonate-sdk-rs/resonate/src/options.rs:20` |
+| `target` | `"default"` | `resonate-sdk-rs/resonate/src/options.rs:21` |
+| `timeout` | `Duration::from_secs(86_400)` = **24 h** | `resonate-sdk-rs/resonate/src/options.rs:22` |
+| `version` | `0` | `resonate-sdk-rs/resonate/src/options.rs:23` |
+
+<Callout type="caution" title="Rust SDK has no per-call retry policy yet">
+The Rust SDK `Options` struct does **not** carry a `retry_policy` field — retry behaviour is governed by the server's task-retry contract, not by a per-invocation policy. This is a known asymmetry with the TypeScript and Python SDKs and is tracked separately.
+</Callout>
+
+See [Rust SDK Defaults](/develop/rust#defaults) for surface-scoped framing.
+
+---
+
+## Retry policies
+
+Retry policies are constructible by users and supplied via the per-call options. The four built-in policies share the same shape across TypeScript and Python with one important difference: **TypeScript times are in milliseconds, Python times are in seconds.**
+
+### Exponential
+
+| Parameter | TypeScript default | Python default |
+|---|---|---|
+| `delay` | `1000` (ms) — `resonate-sdk-ts/src/retries.ts:53` | `1` (sec) — `resonate-sdk-py/resonate/retry_policies/exponential.py:11` |
+| `factor` | `2` — `resonate-sdk-ts/src/retries.ts:54` | `2` — `resonate-sdk-py/resonate/retry_policies/exponential.py:13` |
+| `maxRetries` / `max_retries` | `Number.MAX_SAFE_INTEGER` — `resonate-sdk-ts/src/retries.ts:55` | `sys.maxsize` — `resonate-sdk-py/resonate/retry_policies/exponential.py:12` |
+| `maxDelay` / `max_delay` | `30000` (ms) — `resonate-sdk-ts/src/retries.ts:56` | `30` (sec) — `resonate-sdk-py/resonate/retry_policies/exponential.py:14` |
+
+Both SDKs use the formula `min(delay * factor^attempt, maxDelay)` for the n-th retry, with attempt 0 returning 0.
+
+### Constant
+
+| Parameter | TypeScript default | Python default |
+|---|---|---|
+| `delay` | `1000` (ms) — `resonate-sdk-ts/src/retries.ts:16` | `1` (sec) — `resonate-sdk-py/resonate/retry_policies/constant.py:11` |
+| `maxRetries` / `max_retries` | `Number.MAX_SAFE_INTEGER` — `resonate-sdk-ts/src/retries.ts:16` | `sys.maxsize` — `resonate-sdk-py/resonate/retry_policies/constant.py:12` |
+
+### Linear
+
+| Parameter | TypeScript default | Python default |
+|---|---|---|
+| `delay` | `1000` (ms) — `resonate-sdk-ts/src/retries.ts:93` | `1` (sec) — `resonate-sdk-py/resonate/retry_policies/linear.py:11` |
+| `maxRetries` / `max_retries` | `Number.MAX_SAFE_INTEGER` — `resonate-sdk-ts/src/retries.ts:93` | `sys.maxsize` — `resonate-sdk-py/resonate/retry_policies/linear.py:12` |
+
+The n-th retry delay is `delay * attempt` in both SDKs.
+
+### Never
+
+`Never` takes no parameters in either SDK. It returns `0` on attempt 0 and `null` / `None` for all later attempts.
+
+- TypeScript — `resonate-sdk-ts/src/retries.ts:118-135`
+- Python — `resonate-sdk-py/resonate/retry_policies/never.py`
+
+### Rust
+
+The Rust SDK does not yet ship `Exponential` / `Constant` / `Linear` / `Never` retry-policy types — there is no per-invocation retry policy on the Rust `Options` struct (see the callout above). Retry behaviour for Rust workers is determined server-side via `--tasks-retry-timeout`.
+
+---
+
+## Cross-SDK parity
+
+| Concept | TypeScript | Python | Rust |
+|---|---|---|---|
+| Init `group` | `"default"` | `"default"` | `"default"` |
+| Init `ttl` | `60_000` ms | `10` sec | `60_000` ms (remote) / `u64::MAX` (local) |
+| Init time unit | milliseconds | seconds | milliseconds (ttl) / `Duration` (timeout) |
+| Per-call `timeout` | 24 h | 1 year | 24 h |
+| Per-call `target` | `"default"` | `"default"` | `"default"` |
+| Per-call `tags` | `{}` | `{}` | empty `HashMap` |
+| Per-call `version` | `0` | `0` | `0` |
+| Default retry policy (regular fn) | `Exponential()` | `Exponential()` | not configurable per-call |
+| Default retry policy (generator fn) | `Never()` | `Never()` | n/a |
+| Retry-policy time unit | milliseconds | seconds | n/a |
+| `Exponential` `maxDelay` | `30_000` ms | `30` sec | n/a |
+| Concurrency cap | none | `min(32, workers or os.cpu_count() or 1)` | none (Tokio runtime) |
+
+**Asymmetries to call out:**
+
+- **Per-call `timeout`.** TypeScript and Rust default to **24 h**; Python defaults to **1 year**. Same field, very different envelope.
+- **`ttl`.** TypeScript and Rust use **milliseconds**; Python uses **seconds**. Same name, different unit.
+- **Retry-policy time units.** TypeScript retry policies are configured in **milliseconds**; Python retry policies are configured in **seconds**. The behaviour curve is identical; the numbers are not.
+- **Per-call retry policy.** Available in TypeScript and Python; **not yet on the Rust `Options` struct**. Rust retries are governed by the server's `--tasks-retry-timeout` flag.
+- **Worker concurrency cap.** Only Python imposes one (`min(32, ...)`). TypeScript and Rust lean on the host event-loop / runtime.
+
+---
+
+## Environment variables
+
+The SDKs share a common set of `RESONATE_*` environment variables. Defaults below are the fallbacks applied when both the constructor argument and the env var are unset.
+
+| Env var | Default | Sources |
+|---|---|---|
+| `RESONATE_URL` | unset → local in-memory mode | TS: `resonate-sdk-ts/src/resonate.ts:147`; Py: `resonate-sdk-py/resonate/resonate.py:175`; Rs: `resonate-sdk-rs/resonate/src/resonate.rs:165` |
+| `RESONATE_HOST` | unset | TS: not consumed; Py: `resonate-sdk-py/resonate/resonate.py:177`; Rs: `resonate-sdk-rs/resonate/src/resonate.rs:167` |
+| `RESONATE_SCHEME` | `"http"` | Py: `resonate-sdk-py/resonate/resonate.py:179`; Rs: `resonate-sdk-rs/resonate/src/resonate.rs:168` |
+| `RESONATE_PORT` | `"8001"` | Py: `resonate-sdk-py/resonate/resonate.py:180`; Rs: `resonate-sdk-rs/resonate/src/resonate.rs:169` |
+| `RESONATE_TOKEN` | unset | TS: `resonate-sdk-ts/src/network/http.ts:67`; Py: `resonate-sdk-py/resonate/resonate.py:184`; Rs: `resonate-sdk-rs/resonate/src/resonate.rs:175` |
+| `RESONATE_USERNAME` | unset (Python only) | Py: `resonate-sdk-py/resonate/resonate.py:187` |
+| `RESONATE_PASSWORD` | `""` (Python only) | Py: `resonate-sdk-py/resonate/resonate.py:189` |
+| `RESONATE_PREFIX` | unset → empty prefix | TS: `resonate-sdk-ts/src/resonate.ts:132`; Rs: `resonate-sdk-rs/resonate/src/resonate.rs:155` |
+| `RESONATE_TIMEOUT` | `10000` ms (TS HTTP only) | TS: `resonate-sdk-ts/src/network/http.ts:60-62` |
+| `RESONATE_URL` HTTP fallback | `"http://localhost:8001"` (TS `HttpNetwork` constructor) | `resonate-sdk-ts/src/network/http.ts:58` |
+
+Server-side `RESONATE_*` environment variables (storage, auth, transports) follow the `RESONATE_<SECTION>__<FIELD>` convention. See [Run a server › Environment variables](/deploy/run-server#environment-variables) for the complete list — those defaults track the server flag table above.

@@ -296,6 +296,18 @@ This means if you use Resonate's APIs correctly, **you don't have to manually ch
 When you call operations through `ctx.run()` or `ctx.rpc()`, Resonate generates promise IDs that are the same across retries. This gives you automatic idempotency without manual deduplication logic.
 </Callout>
 
+### What `ctx.run` retries by default
+
+When you call `ctx.run(fn)` without supplying a `retryPolicy`, the SDK applies:
+
+- **TypeScript** — `Exponential()` for regular `async` functions, `Never()` for generator functions. `Exponential()` defaults: `delay = 1000 ms`, `factor = 2`, `maxDelay = 30 000 ms`, `maxRetries = Number.MAX_SAFE_INTEGER`.
+- **Python** — `Exponential()` for regular functions, `Never()` for generator functions. `Exponential()` defaults: `delay = 1 s`, `factor = 2`, `max_delay = 30 s`, `max_retries = sys.maxsize`.
+- **Rust** — no per-invocation retry policy yet; retries are governed by the server's `--tasks-retry-timeout` flag.
+
+This means a `ctx.run(fn)` call that keeps failing will keep retrying with exponential backoff, capped at 30 seconds between attempts, effectively forever — until the surrounding invocation's `timeout` fires.
+
+See the [Defaults reference](/reference/defaults) for the full per-SDK table.
+
 ---
 
 ## Activations cannot outlive the process
