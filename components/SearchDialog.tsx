@@ -39,7 +39,7 @@ export default function SearchDialog() {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm text-muted border border-primary/10 hover:border-primary/30 transition focus-visible:outline-2 focus-visible:outline-secondary"
+        className="hidden md:flex items-center gap-2 px-4 py-2 text-sm text-muted border border-primary/10 hover:border-primary/30 transition focus-visible:outline-2 focus-visible:outline-secondary"
         aria-label="Quick navigation"
       >
         <Search size={14} />
