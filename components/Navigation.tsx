@@ -50,7 +50,7 @@ export default function Navigation() {
             </a>
             <Link
               href="/"
-              className="font-display text-xl font-semibold tracking-tight text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
+              className="font-display text-sm font-medium tracking-tight text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
             >
               Docs
             </Link>
