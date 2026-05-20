@@ -321,16 +321,15 @@ resonate.stop().await?;
 
 ```rust title="src/main.rs"
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
     let resonate = Resonate::local();
-    resonate.register("greet", greet);
+    resonate.register(greet).unwrap();
 
-    let result: String = resonate.run("greet-1", "greet", "world").await?;
+    let result: String = resonate.run("greet-1", greet, "world").await.unwrap();
     println!("{result}");
 
     // Required for the process to exit.
-    resonate.stop().await?;
-    Ok(())
+    resonate.stop().await.unwrap();
 }
 ```
 
@@ -343,6 +342,8 @@ Calling `.stop()` on a worker (an RPC service, a Kafka consumer, an MCP server, 
 
 The worker keeps running but silently stops processing work. Workers should stay up; let process termination (SIGINT / SIGTERM) end the lifecycle.
 </Callout>
+
+**Between debug runs, stop the previous client.** If you keep starting fresh workers in the same process group without stopping the previous one, the old workers keep heartbeating and still hold task leases — they will pick up new dispatches and produce surprising routing. Call `.stop()` in a shutdown hook so leases release cleanly.
 
 After calling `.stop()`, the client should not be used for further operations — construct a new `Resonate` instance instead.
 

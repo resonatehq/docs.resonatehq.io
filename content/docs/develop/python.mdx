@@ -330,16 +330,20 @@ resonate.promises.reject(
 
 ### `.start()` and `.stop()`
 
-The Python SDK uses background threads for the bridge, message source, and heartbeat. `.start()` boots them; `.stop()` joins them.
+The Python SDK uses background threads for the bridge, message source, and heartbeat. `.start()` boots them; `.stop()` signals them to exit.
 
 ```py
 resonate.start()  # explicit start (also auto-runs on first .run() / .rpc())
 resonate.stop()   # graceful shutdown
 ```
 
-`.stop()` is synchronous (no `await` — Python's SDK is thread-based, not async). It signals the background threads to exit and joins them.
+`.stop()` is synchronous (no `await` — Python's SDK is thread-based, not async). It signals the background threads to exit. The threads are daemon threads, so the interpreter will exit when only daemon threads remain.
 
-**When to call `.stop()`.** Call it from any process that should exit after its work finishes — demo scripts, one-shot jobs, examples, CI tasks. Without it, the daemon threads keep running and the interpreter may not exit cleanly when `main()` returns.
+<Callout type="info" title="Default poller blocks on `iter_lines`">
+The default `Poller` message source uses a blocking long-poll HTTP read. Its `stop()` sets a shutdown flag, but the underlying `iter_lines` call only checks that flag between messages — so `.stop()` may not return until the next message arrives or the connection's read timeout fires. Workers exit cleanly on `SIGINT`/`SIGTERM` because the threads are daemonized; the same is true on a script reaching end-of-`main`.
+</Callout>
+
+**When to call `.stop()`.** Call it from any process that should exit after its work finishes — demo scripts, one-shot jobs, examples, CI tasks. Without it, you rely on daemon-thread exit at interpreter shutdown, which is less graceful than a clean stop.
 
 ```py title="main.py"
 from resonate import Resonate
@@ -350,7 +354,7 @@ resonate.register(greet)
 result = resonate.run("greet-1", "greet", "world")
 print(result)
 
-# Required for clean shutdown.
+# Graceful shutdown.
 resonate.stop()
 ```
 
@@ -363,6 +367,8 @@ Calling `.stop()` on a worker (an RPC service, a Kafka consumer, an MCP server, 
 
 The process keeps running but silently stops processing work. Workers should stay up; let process termination (SIGINT / SIGTERM) end the lifecycle.
 </Callout>
+
+**Between debug runs, stop the previous client.** If you keep starting fresh workers in the same process group without stopping the previous one, the old workers keep heartbeating and still hold task leases — they will pick up new dispatches and produce surprising routing. Call `.stop()` in a shutdown hook so leases release cleanly.
 
 After calling `.stop()`, the client should not be used for further operations — construct a new `Resonate` instance instead.
 

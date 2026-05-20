@@ -572,7 +572,7 @@ The worker keeps running but silently stops processing work. Workers should stay
 **Common pitfalls.**
 
 - **Don't reuse the client after `.stop()`.** The transport is closed and the refresh interval is gone. Subsequent calls do not throw, but they will not behave correctly. Construct a new `Resonate` instance instead.
-- **Always `await` the call.** The unawaited form (`resonate.stop();`) happens to work in narrow cases because Node drains microtasks before exit, but it races any work that follows. Tests in the SDK uniformly use `await resonate.stop()` — match that.
+- **Always `await` the call.** The unawaited form (`resonate.stop();`) starts the shutdown and discards the returned promise. Node drains the microtasks before exit, so a script that has nothing after the stop call still exits, but any code that follows — another `await`, a second `resonate.run()`, a `process.exit(0)` — runs against an in-flight teardown. Tests in the SDK uniformly use `await resonate.stop()`; match that.
 - **Between debug runs, stop the previous client.** If you keep starting fresh workers in the same process group without stopping the previous one, the old workers still hold task leases and will pick up new work, producing surprising routing.
 
 ## Context APIs
