@@ -311,11 +311,41 @@ resonate.promises.cancel("promise-id", json!(null)).await?;
 
 ### `.stop()`
 
-Graceful shutdown. Stops background tasks (heartbeat, subscriptions).
+Gracefully shuts down a Resonate Client. Closes the connection to the Resonate Server, stops the heartbeat loop, and aborts the subscription refresh task.
 
 ```rust
 resonate.stop().await?;
 ```
+
+**When to call it.** Call `.stop()` from any process that should exit after its work finishes — demo binaries, one-shot jobs, examples, CI tasks. Without it, the background tasks keep the Tokio runtime alive and the process hangs after `main` returns.
+
+```rust title="src/main.rs"
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::local();
+    resonate.register(greet).unwrap();
+
+    let result: String = resonate.run("greet-1", greet, "world").await.unwrap();
+    println!("{result}");
+
+    // Required for the process to exit.
+    resonate.stop().await.unwrap();
+}
+```
+
+<Callout type="caution" title="Don't call `.stop()` on a long-running worker">
+Calling `.stop()` on a worker (an RPC service, a Kafka consumer, an MCP server, or any other long-lived process) tears down the channels the worker uses to receive and hold work:
+
+- The connection to the Resonate Server closes — the worker stops receiving dispatched tasks.
+- The heartbeat loop stops — the server-side TTL on in-flight tasks expires, and the server reassigns them.
+- The subscription refresh task is aborted — listeners on awaited promises are no longer re-registered.
+
+The worker keeps running but silently stops processing work. Workers should stay up; let process termination (SIGINT / SIGTERM) end the lifecycle.
+</Callout>
+
+**Between debug runs, stop the previous client.** If you keep starting fresh workers in the same process group without stopping the previous one, the old workers keep heartbeating and still hold task leases — they will pick up new dispatches and produce surprising routing. Call `.stop()` in a shutdown hook so leases release cleanly.
+
+After calling `.stop()`, the client should not be used for further operations — construct a new `Resonate` instance instead.
 
 ## Context APIs
 

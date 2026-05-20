@@ -76,7 +76,7 @@ await resonate.schedule(
   123,              // userId argument
 );
 console.log("Schedule created. Start the worker to process executions.");
-resonate.stop();
+await resonate.stop();
 ```
 
 </TabItem>

@@ -84,7 +84,7 @@ const fooR = resonate.register("foo", foo);
 
 const result = await fooR.run("greeting-workflow", "World");
 console.log(result);
-resonate.stop();
+await resonate.stop();
 ```
 
 </TabItem>
