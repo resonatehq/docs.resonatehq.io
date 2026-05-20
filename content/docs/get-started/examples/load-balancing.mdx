@@ -174,7 +174,7 @@ await resonate.beginRpc(
   { id, computeCost },
   resonate.options({ target: "poll://any@workers" }),
 );
-resonate.stop();
+await resonate.stop();
 ```
 
 </TabItem>

@@ -328,6 +328,44 @@ resonate.promises.reject(
 )
 ```
 
+### `.start()` and `.stop()`
+
+The Python SDK uses background threads for the bridge, message source, and heartbeat. `.start()` boots them; `.stop()` joins them.
+
+```py
+resonate.start()  # explicit start (also auto-runs on first .run() / .rpc())
+resonate.stop()   # graceful shutdown
+```
+
+`.stop()` is synchronous (no `await` — Python's SDK is thread-based, not async). It signals the background threads to exit and joins them.
+
+**When to call `.stop()`.** Call it from any process that should exit after its work finishes — demo scripts, one-shot jobs, examples, CI tasks. Without it, the daemon threads keep running and the interpreter may not exit cleanly when `main()` returns.
+
+```py title="main.py"
+from resonate import Resonate
+
+resonate = Resonate()
+resonate.register(greet)
+
+result = resonate.run("greet-1", "greet", "world")
+print(result)
+
+# Required for clean shutdown.
+resonate.stop()
+```
+
+<Callout type="caution" title="Don't call `.stop()` on a long-running worker">
+Calling `.stop()` on a worker (an RPC service, a Kafka consumer, an MCP server, or any other long-lived process) tears down the channels the worker uses to receive and hold work:
+
+- The message source (poller) stops — the worker stops receiving dispatched tasks.
+- The heartbeat thread stops — the server-side TTL on in-flight tasks expires, and the server reassigns them.
+- The bridge thread joins — in-flight commands are not processed.
+
+The process keeps running but silently stops processing work. Workers should stay up; let process termination (SIGINT / SIGTERM) end the lifecycle.
+</Callout>
+
+After calling `.stop()`, the client should not be used for further operations — construct a new `Resonate` instance instead.
+
 ## Context APIs
 
 **How to use the Resonate Context object in the Python SDK.**

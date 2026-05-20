@@ -530,6 +530,51 @@ Example:
 await resonate.promises.cancel("promise-id");
 ```
 
+### `.stop()`
+
+Gracefully shuts down a Resonate Client. Closes the long-polling connection to the Resonate Server, stops the heartbeat loop, and clears the subscription refresh interval.
+
+```ts
+await resonate.stop();
+```
+
+`.stop()` returns a `Promise<void>` and **must be awaited**.
+
+**When to call it.** Call `.stop()` from any process that should exit after its work finishes — demo scripts, one-shot jobs, examples, CI tasks. Without it, the client keeps the Node.js event loop alive via the long-poll connection and the subscription refresh interval, and the process hangs after `main()` returns.
+
+```ts title="src/index.ts"
+import { Resonate } from "@resonatehq/sdk";
+
+async function main() {
+  const resonate = new Resonate();
+  resonate.register("greet", (ctx, name) => `Hello, ${name}!`);
+
+  const result = await resonate.run("greet-1", "greet", "world");
+  console.log(result);
+
+  // Required for the process to exit.
+  await resonate.stop();
+}
+
+main();
+```
+
+<Callout type="caution" title="Don't call `.stop()` on a long-running worker">
+Calling `.stop()` on a worker (an RPC service, a Kafka consumer, an MCP server, or any other long-lived process) tears down the very channels the worker uses to receive and hold work:
+
+- The long-polling connection to the Resonate Server closes — the worker stops receiving dispatched tasks.
+- The heartbeat loop stops — the server-side TTL on in-flight tasks expires, and the server reassigns them.
+- The subscription refresh interval stops — listeners on awaited promises are no longer re-registered.
+
+The worker keeps running but silently stops processing work. Workers should stay up; let process termination (SIGINT / SIGTERM) end the lifecycle.
+</Callout>
+
+**Common pitfalls.**
+
+- **Don't reuse the client after `.stop()`.** The transport is closed and the refresh interval is gone. Subsequent calls do not throw, but they will not behave correctly. Construct a new `Resonate` instance instead.
+- **Always `await` the call.** The unawaited form (`resonate.stop();`) happens to work in narrow cases because Node drains microtasks before exit, but it races any work that follows. Tests in the SDK uniformly use `await resonate.stop()` — match that.
+- **Between debug runs, stop the previous client.** If you keep starting fresh workers in the same process group without stopping the previous one, the old workers still hold task leases and will pick up new work, producing surprising routing.
+
 ## Context APIs
 
 **How to use the Resonate Context object in the TypeScript SDK.**

@@ -156,7 +156,7 @@ const result = await resonate.rpc(
   resonate.options({ target: "poll://any@workers" }),
 );
 console.log(result);
-resonate.stop();
+await resonate.stop();
 ```
 
 </TabItem>

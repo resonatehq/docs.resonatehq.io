@@ -179,7 +179,7 @@ const result = await resonate.rpc(
   resonate.options({ target: "poll://any@factorial-workers" }),
 );
 console.log(`Factorial of ${n} is ${result}`);
-resonate.stop();
+await resonate.stop();
 ```
 
 </TabItem>
