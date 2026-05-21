@@ -1,7 +1,7 @@
 ---
 title: Durable bash from Claude Code
 pageTitle: Run durable bash from Claude Code with Resonate
-description: Wire Claude Code to a local Resonate server so your coding agent can run durable, asynchronous shell scripts — locally, in Docker, or in a remote Tensorlake sandbox.
+description: Wire Claude Code to a local Resonate server so your coding agent can run durable, asynchronous shell scripts — locally, in Docker, or in a remote sandbox.
 keywords:
   - get-started
   - claude-code
@@ -80,6 +80,10 @@ A single binary serves as both the server (`resonate dev` / `resonate serve`) an
 
 Start with the foreground option to confirm everything works, then switch to the launchd option for a persistent install.
 
+<Callout type="note" title="Why port 8888?">
+This guide uses `8888` to avoid colliding with `resonate dev`'s default port `8001` (which you may already be running for other work). Pick whatever you want — just keep the port consistent across the server, the plist, and the MCP `--server` URL in step 3.
+</Callout>
+
 <Tabs groupId="server-run-mode" defaultValue="foreground" values={[
   { label: "Foreground (temporary)", value: "foreground" },
   { label: "Background (launchd)", value: "launchd" },
@@ -95,8 +99,12 @@ export TENSORLAKE_API_KEY="tl_apiKey_REPLACE_ME"
 
 resonate dev \
   --server-port 8888 \
-  --transports-bash-exec-enabled
+  --transports-bash-exec-enabled true
 ```
+
+<Callout type="caution" title="The bash transport flag needs an explicit value">
+`--transports-bash-exec-enabled` requires `true` or `false`. A bare flag will error with `a value is required for '--transports-bash-exec-enabled <BOOL>'`.
+</Callout>
 
 Verify in another shell:
 
@@ -130,13 +138,6 @@ Write `~/Library/LaunchAgents/io.resonatehq.resonate.dev.plist`:
         <string>true</string>
     </array>
 
-    <!-- Omit this block if you are not using bash://tensorlake/... -->
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>TENSORLAKE_API_KEY</key>
-        <string>tl_apiKey_REPLACE_ME</string>
-    </dict>
-
     <key>RunAtLoad</key>
     <true/>
 
@@ -150,6 +151,16 @@ Write `~/Library/LaunchAgents/io.resonatehq.resonate.dev.plist`:
     <string>/tmp/resonate-dev.log</string>
 </dict>
 </plist>
+```
+
+If you target `bash://tensorlake/...`, add an `EnvironmentVariables` block to the `<dict>` above so the API key is visible to the resonate process (not just your shell):
+
+```xml
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>TENSORLAKE_API_KEY</key>
+        <string>tl_apiKey_REPLACE_ME</string>
+    </dict>
 ```
 
 Load it:
@@ -228,7 +239,7 @@ Then exercise the tool with a real durable promise:
 
 > Please watch my desktop for a file `Resonate.md` to appear, with resonate.
 
-Claude should call `mcp__resonate__resonate-bash` with a poll-until-exists script. Create the file in another window — Claude will be notified the moment the promise resolves.
+Claude should call `mcp__resonate__resonate-bash` with a poll-until-exists script. `touch ~/Desktop/Resonate.md` in another shell — Claude will be notified the moment the promise resolves.
 
 Useful follow-up prompts:
 
