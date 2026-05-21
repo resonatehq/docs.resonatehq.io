@@ -1,0 +1,296 @@
+---
+title: Durable bash from Claude Code
+pageTitle: Run durable bash from Claude Code with Resonate
+description: Wire Claude Code to a local Resonate server so your coding agent can run durable, asynchronous shell scripts — locally, in Docker, or in a remote Tensorlake sandbox.
+keywords:
+  - get-started
+  - claude-code
+  - mcp
+  - resonate-bash
+  - durable execution
+  - tensorlake
+---
+
+Resonate ships an MCP tool, `resonate-bash`, that turns any shell script into a durable, asynchronous task. You point Claude Code at a local Resonate server, and Claude gains the ability to hand off a script and be notified when it terminates — without holding the wait in its context window.
+
+This page walks through what `resonate-bash` is good at and how to set it up.
+
+## What `resonate-bash` is good at
+
+The polling loop runs in the shell, not in the model. The model is not invoked during the wait. That's the property that makes the rest worthwhile.
+
+### Long-running polling loops
+
+Waiting for an external system to reach a state — a CI run finishes, a deploy goes live, DNS propagates, an image-generation job returns, a Tensorlake sandbox completes, a BigQuery export job lands.
+
+```bash title="Wait for a GitHub Actions run to finish"
+until gh run view 12345 --json status -q .status | grep -q completed; do
+  sleep 60
+done
+```
+
+Submitted to `resonate-bash` with a 1-hour timeout, that loop runs in the shell on the resonate host. Claude is notified the moment the run completes.
+
+### Operations that need to outlive the session
+
+Promises live on the Resonate server, not in the calling Claude Code session. If the laptop closes, the host hiccups, or you start a new conversation tomorrow, the work continues. A later session can look up the promise ID and read the result with the same MCP server.
+
+### Named, queryable state
+
+Promise IDs are first-class. Prefix them by project and date (`ci-watch-2026-05-21`, `dns-propagation-2026-05-21`) and filter `promise-search` later by the `tags` parameter to audit what fired across days.
+
+### Fire-and-watch coordination with external systems
+
+Most CI tools, deploy platforms, image-generation APIs, and data-export jobs expose a status endpoint but no webhook. `resonate-bash` is the right shape for that: submit the work, poll in the shell, get notified on completion. Tensorlake, Vectorizer.ai, Recraft, Midjourney, and any "submit job, poll status" service fit this mold cleanly.
+
+### Composable with the rest of the promise API
+
+The same promise IDs work with `promise-create`, `promise-listen`, and `promise-settle`. A one-off durable script can be promoted into a multi-step workflow later without re-architecture.
+
+<Callout type="note" title="Scripts restart from the top on crash">
+Always write idempotent scripts. For "trigger external action then poll" patterns, structure as `check-then-trigger + poll` so a restart does not double-fire.
+</Callout>
+
+---
+
+## Prerequisites
+
+- macOS (Apple Silicon or Intel) with Homebrew, or a Linux host with the `resonate` binary on `$PATH`.
+- Claude Code installed.
+- (Optional, for the Tensorlake target) a Tensorlake API key from <https://tensorlake.ai>.
+
+<Callout type="note" title="Path differences">
+The examples below assume `/opt/homebrew/bin/resonate` (Apple Silicon Homebrew). On Intel Mac use `/usr/local/bin/resonate`; on Linux use whichever path your installer chose.
+</Callout>
+
+---
+
+## 1. Install the Resonate binary
+
+```shell
+brew install resonatehq/tap/resonate
+resonate --version   # expect 0.9.7 or newer
+```
+
+A single binary serves as both the server (`resonate dev` / `resonate serve`) and the MCP shim Claude talks to (`resonate mcp`).
+
+---
+
+## 2. Run the Resonate server with the bash transport enabled
+
+Start with the foreground option to confirm everything works, then switch to the launchd option for a persistent install.
+
+<Tabs groupId="server-run-mode" defaultValue="foreground" values={[
+  { label: "Foreground (temporary)", value: "foreground" },
+  { label: "Background (launchd)", value: "launchd" },
+]}>
+
+<TabItem value="foreground">
+
+In-memory storage; stops on Ctrl-C. Good for confirming the wiring.
+
+```shell
+# Only needed if you'll target bash://tensorlake/...
+export TENSORLAKE_API_KEY="tl_apiKey_REPLACE_ME"
+
+resonate dev \
+  --server-port 8888 \
+  --transports-bash-exec-enabled
+```
+
+Verify in another shell:
+
+```shell
+curl -s http://localhost:8888/health   # → 200 OK
+```
+
+</TabItem>
+
+<TabItem value="launchd">
+
+Persistent install that auto-starts at login.
+
+Write `~/Library/LaunchAgents/io.resonatehq.resonate.dev.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.resonatehq.resonate.dev</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/resonate</string>
+        <string>dev</string>
+        <string>--server-port</string>
+        <string>8888</string>
+        <string>--transports-bash-exec-enabled</string>
+        <string>true</string>
+    </array>
+
+    <!-- Omit this block if you are not using bash://tensorlake/... -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>TENSORLAKE_API_KEY</key>
+        <string>tl_apiKey_REPLACE_ME</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/resonate-dev.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/resonate-dev.log</string>
+</dict>
+</plist>
+```
+
+Load it:
+
+```shell
+launchctl load ~/Library/LaunchAgents/io.resonatehq.resonate.dev.plist
+launchctl list | grep resonate          # expect PID, exit code 0
+curl -s http://localhost:8888/health    # → 200 OK
+```
+
+**Restart cheat-sheet:**
+
+| When | Command |
+|---|---|
+| Changed the binary or want a clean restart | `launchctl kickstart -k gui/$(id -u)/io.resonatehq.resonate.dev` |
+| Changed `EnvironmentVariables` or `ProgramArguments` in the plist | `launchctl unload <plist> && launchctl load <plist>` (kickstart will **not** pick up new env vars) |
+
+Logs: `tail -f /tmp/resonate-dev.log`.
+
+<Callout type="caution" title="API keys in the plist">
+The plist stores any API keys in plaintext under your home directory. For a hardened setup, fetch keys from Keychain in a wrapper script and exec `resonate` from there.
+</Callout>
+
+</TabItem>
+
+</Tabs>
+
+---
+
+## 3. Wire Claude Code to the Resonate MCP server
+
+Edit `~/.claude.json` and add a `resonate` entry under `mcpServers`. Merge with any existing MCP entries — don't overwrite the file.
+
+```json
+{
+  "mcpServers": {
+    "resonate": {
+      "type": "stdio",
+      "command": "/opt/homebrew/bin/resonate",
+      "args": ["mcp", "--server", "http://localhost:8888"],
+      "env": {}
+    }
+  }
+}
+```
+
+---
+
+## 4. Enable the Claude Code preview channel
+
+The `mcp__resonate__resonate-bash` tool ships behind a Claude Code preview channel. Update your `claude` alias in `~/.zshrc` (or `~/.bashrc`):
+
+```shell
+alias claude='claude --dangerously-load-development-channels server:resonate'
+```
+
+Reload the shell:
+
+```shell
+source ~/.zshrc
+```
+
+---
+
+## 5. Verify
+
+Open a fresh `claude` session and run:
+
+```text
+/mcp
+```
+
+`resonate` should be listed and connected. If it isn't, see [Troubleshooting](#troubleshooting).
+
+Then exercise the tool with a real durable promise:
+
+> Please watch my desktop for a file `Resonate.md` to appear, with resonate.
+
+Claude should call `mcp__resonate__resonate-bash` with a poll-until-exists script. Create the file in another window — Claude will be notified the moment the promise resolves.
+
+Useful follow-up prompts:
+
+> How did you do that? Show me the promise. And show me the script.
+
+> What else can you use resonate for? Give me three examples.
+
+> Run `echo hello from $RESONATE_PROMISE_ID` on tensorlake.
+
+---
+
+## Tool reference
+
+### Parameters
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `script` | yes | — | Inline bash script. Will be base64-encoded into `param.data` for you. |
+| `target` | no | `bash://` | Where the script runs. See [target addresses](#target-addresses). |
+| `timeout_ms` | no | 5 min | Promise deadline relative to now. |
+| `id` | no | `bash-<millis>-<nanos>` | Deterministic promise id for idempotency. |
+| `tags` | no | — | JSON object merged into promise tags (`resonate:target` is set automatically). |
+
+The tool registers a listener and resolves via channel notification when the script terminates, returning `{exit_code, stdout, stderr}`.
+
+### Target addresses
+
+| Address | Where it runs | Notes |
+|---|---|---|
+| `bash://` | Local shell on the resonate host | Default if `target` is omitted |
+| `bash://docker/<image>` | `docker run --rm <image> bash -c <script>` | Image required; the resonate host must have Docker |
+| `bash://tensorlake/<image>` | Tensorlake Sandboxes API | `<image>` optional — empty path uses Tensorlake's default sandbox. Requires `TENSORLAKE_API_KEY` on the resonate process |
+
+### Env vars injected into every script
+
+| Variable | Meaning |
+|---|---|
+| `RESONATE_PROMISE_ID` | The promise/task id |
+| `RESONATE_PROMISE_CREATED_AT` | ms since epoch — **stable across retries** |
+| `RESONATE_PROMISE_TIMEOUT_AT` | ms since epoch — **stable across retries** |
+
+Loop **until `$RESONATE_PROMISE_TIMEOUT_AT`**, not for a fixed duration. That keeps a restart-from-top retry idempotent.
+
+### Failure semantics
+
+- **Script exits non-zero** → workflow failure; the promise rejects with the exit info.
+- **Script killed** (local signal, Docker exit 137 / 143, Tensorlake `signaled`) → treated as **infrastructure failure**: the lease expires and the message is redispatched to a fresh worker. Don't rely on signals to short-circuit a workflow.
+- **Crash/restart** → the script restarts from the top. Idempotent scripts only.
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `/mcp` doesn't show `resonate` | MCP entry missing from `~/.claude.json`, or resonate server isn't running | `curl http://localhost:8888/health`; check the JSON entry |
+| `mcp__resonate__resonate-bash` tool absent in Claude | Missing `--dangerously-load-development-channels server:resonate` flag | Re-check the alias; restart `claude` |
+| Promise resolves with `TENSORLAKE_API_KEY env var not set` | Env var not in resonate process env | For launchd: `unload` then `load` (kickstart won't pick up new env). Verify with `ps eww $(launchctl list \| awk '/resonate/{print $1}') \| tr ' ' '\n' \| grep TENSORLAKE` |
+| Promises stuck `pending` forever | Bash exec transport not enabled | Confirm `--transports-bash-exec-enabled` is in the resonate launch args |
+| Tensorlake sandbox creation hangs | Sandbox readiness timeout (120s) exceeded; bad image name | Check `/tmp/resonate-dev.log` for `tensorlake create` errors |
+
+### Tensorlake-specific gotchas
+
+- Sandbox lifetime is hardcoded server-side to 600s. Promises with longer timeouts will see a fresh sandbox per retry.
+- `TENSORLAKE_API_KEY` is read directly from the resonate process env via `std::env::var` — not from `RESONATE_*` config. It must be visible to the **resonate process**, not just your interactive shell.
