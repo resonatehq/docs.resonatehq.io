@@ -40,7 +40,7 @@ pg_isready -h localhost -p 5432
 type = "postgres"
 
 [storage.postgres]
-url = "postgres://resonate:secret@localhost:5432/resonate"
+url = "postgres://<USER>:<PASSWORD>@localhost:5432/resonate"
 ```
 
 Or set `RESONATE_STORAGE__POSTGRES__URL` in the environment. Check the host, port, database, user, and password all match what your Postgres instance expects.
@@ -376,7 +376,7 @@ time curl -s http://resonate-server:8001/health
 2. **Tune connection pool:**
 ```toml title="resonate.toml"
 [storage.postgres]
-url = "postgres://resonate:secret@localhost:5432/resonate"
+url = "postgres://<USER>:<PASSWORD>@localhost:5432/resonate"
 pool_size = 50  # Increase pool size (default: 10)
 ```
 
@@ -494,7 +494,7 @@ Use PostgreSQL for any deployment with concurrent writers:
 type = "postgres"
 
 [storage.postgres]
-url = "postgres://resonate:secret@localhost:5432/resonate"
+url = "postgres://<USER>:<PASSWORD>@localhost:5432/resonate"
 ```
 
 SQLite is best for development and single-tenant deployments where there is no concurrent write contention against the server.

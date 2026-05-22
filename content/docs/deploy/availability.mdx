@@ -48,14 +48,14 @@ For shared, multi-tenant deployments, PostgreSQL provides better concurrency and
 ```bash title="Start server with PostgreSQL"
 resonate serve \
   --storage-type postgres \
-  --storage-postgres-url "postgres://resonate:secret@localhost:5432/resonate" \
+  --storage-postgres-url "postgres://<USER>:<PASSWORD>@localhost:5432/resonate" \
   --storage-postgres-pool-size 20
 ```
 
 For SSL connections, include `sslmode` in the connection string:
 
 ```bash
---storage-postgres-url "postgres://resonate:secret@postgres.example.com:5432/resonate?sslmode=require"
+--storage-postgres-url "postgres://<USER>:<PASSWORD>@postgres.example.com:5432/resonate?sslmode=require"
 ```
 
 ## PostgreSQL high availability

@@ -8,6 +8,7 @@
 - [Availability](/deploy/availability): High availability strategies for Resonate deployments.
 - [Deployment patterns](/deploy/deployment-patterns): Deploy Resonate to different environments - Docker, Kubernetes, serverless, and more.
 - [Deploy a Resonate application](/deploy): Deploy Resonate from development to production.
+- [Kafka integration](/deploy/kafka): How to integrate Resonate with Kafka today (the worker pattern) and what to expect when native Kafka transport ships.
 - [Logging](/deploy/logging): Server and SDK logs for observing application behavior.
 - [Message transports](/deploy/message-transports): Configure message transport plugins for communication between workers and server.
 - [Metrics](/deploy/metrics): Prometheus metrics exposed by the Resonate server.
@@ -30,6 +31,7 @@
 - [How it works](/evaluate/how-it-works): Architecture overview of checkpoints, replay, and message flow in Resonate.
 - [Evaluate Resonate](/evaluate): Get started with Resonate by evaluating its features and capabilities.
 - [Why Resonate](/evaluate/why-resonate): Resonate is the durable execution engine that agents build with, deploy on, and operate — at a fraction of the cost of anything else.
+- [Durable bash](/get-started/claude-code): Wire Claude Code to a local Resonate server so your coding agent can run durable, asynchronous shell scripts — locally, in Docker, or in a remote sandbox.
 - [Resonate CLI](/get-started/cli-guide): Learn how to use the Resonate command-line interface effectively.
 - [Async agent tools](/get-started/examples/async-agent-tools): Convert synchronous MCP tool calls into durable async jobs an LLM can fire-and-forget then poll for results.
 - [Async HTTP APIs](/get-started/examples/async-http-api-endpoints): Turn long-running HTTP requests into durable workflows. Clients fire-and-forget, then poll for completion.
@@ -51,7 +53,10 @@
 - [Webhook handler](/get-started/examples/webhook-handler): A Stripe-style webhook handler where the event ID is the workflow ID — duplicate deliveries dedupe, partial failures resume, the customer gets charged once.
 - [Get started with Resonate](/get-started): Quickstart, examples, and migration guides.
 - [Quickstart](/get-started/quickstart): Install the server and SDK and run your first Resonate workflow.
-- [Home](/index): Resonate — agent-native durable execution. Generated, optimized, absurdly cheap.
+- [Home](/index): Resonate — agent-native durable execution. Generated, optimized, cost-efficient by design.
+- [CLI reference](/reference/cli): Canonical reference for every Resonate CLI command — server, promise, task, schedule, invoke, tree, MCP — with usage scenarios and worked examples.
+- [Defaults reference](/reference/defaults): Canonical reference for default values across the Resonate server and SDKs (TypeScript, Python, Rust).
+- [Reference](/reference): Canonical, source-cited reference for Resonate defaults and the resonate CLI.
 - [Distributed Coordination Protocol](/spec/execution-model/coordination-protocol): How callers and remote callees coordinate via durable promises — eventual and immediate resumption.
 - [Execution model](/spec/execution-model): Coordination, recovery, and message-passing protocols that make distributed programs make progress.
 - [Message Passing Protocol](/spec/execution-model/message-passing): The wire-level contract — envelope, status codes, addressing, transport variants — that all Distributed Async Await communication rides on.

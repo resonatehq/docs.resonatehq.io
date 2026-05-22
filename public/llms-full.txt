@@ -319,7 +319,7 @@ pg_isready -h localhost -p 5432
 type = "postgres"
 
 [storage.postgres]
-url = "postgres://resonate:secret@localhost:5432/resonate"
+url = "postgres://:@localhost:5432/resonate"
 ```
 
 Or set `RESONATE_STORAGE__POSTGRES__URL` in the environment. Check the host, port, database, user, and password all match what your Postgres instance expects.
@@ -655,7 +655,7 @@ time curl -s http://resonate-server:8001/health
 2. **Tune connection pool:**
 ```toml title="resonate.toml"
 [storage.postgres]
-url = "postgres://resonate:secret@localhost:5432/resonate"
+url = "postgres://:@localhost:5432/resonate"
 pool_size = 50  # Increase pool size (default: 10)
 ```
 
@@ -773,7 +773,7 @@ Use PostgreSQL for any deployment with concurrent writers:
 type = "postgres"
 
 [storage.postgres]
-url = "postgres://resonate:secret@localhost:5432/resonate"
+url = "postgres://:@localhost:5432/resonate"
 ```
 
 SQLite is best for development and single-tenant deployments where there is no concurrent write contention against the server.
@@ -861,14 +861,14 @@ For shared, multi-tenant deployments, PostgreSQL provides better concurrency and
 ```bash title="Start server with PostgreSQL"
 resonate serve \
   --storage-type postgres \
-  --storage-postgres-url "postgres://resonate:secret@localhost:5432/resonate" \
+  --storage-postgres-url "postgres://:@localhost:5432/resonate" \
   --storage-postgres-pool-size 20
 ```
 
 For SSL connections, include `sslmode` in the connection string:
 
 ```bash
---storage-postgres-url "postgres://resonate:secret@postgres.example.com:5432/resonate?sslmode=require"
+--storage-postgres-url "postgres://:@postgres.example.com:5432/resonate?sslmode=require"
 ```
 
 ## PostgreSQL high availability
@@ -1104,7 +1104,7 @@ services:
     environment:
       RESONATE_SERVER__BIND: "0.0.0.0"
       RESONATE_STORAGE__TYPE: postgres
-      RESONATE_STORAGE__POSTGRES__URL: postgres://resonate:secret@postgres:5432/resonate
+      RESONATE_STORAGE__POSTGRES__URL: postgres://:@postgres:5432/resonate
     depends_on:
       postgres:
         condition: service_healthy
@@ -1769,6 +1769,70 @@ These features aren't implemented because **worker horizontal scaling** handles 
 ---
 
 ---
+url: /deploy/kafka
+title: Kafka integration
+---
+
+## TL;DR
+
+Resonate does not ship a native Kafka transport in the current server. The supported integration today is the **Kafka worker pattern**: your code consumes Kafka with a normal client library and dispatches a Resonate workflow per message. Native `kafka://` transport is specified in the [Message Passing Protocol](/spec/execution-model/message-passing#address-schemes) and is on the roadmap — when it ships, the server will deliver task messages over Kafka directly.
+
+## The Kafka worker pattern
+
+Use a regular Kafka consumer (`kafkajs`, `confluent-kafka-python`, `rdkafka`, etc.) and call `beginRun` on each message. A stable per-message identifier becomes the Resonate promise ID, so the dispatch is idempotent — duplicate deliveries reconnect to the in-flight execution rather than starting over.
+
+```ts title="src/consumer.ts"
+const kafka = new Kafka({ brokers: ["localhost:9092"] });
+const consumer = kafka.consumer({ groupId: "workers" });
+
+await consumer.connect();
+await consumer.subscribe({ topic: "records_to_process", fromBeginning: true });
+
+await consumer.run({
+  eachMessage: async ({ topic, partition, message }) => {
+    // topic-partition-offset uniquely identifies the message even when no key is set
+    const messageId = `${topic}-${partition}-${message.offset}`;
+    await resonate.beginRun(messageId, "workflow", messageId, message.offset);
+  },
+});
+```
+
+If your producer sets a stable message key (or your payload carries a domain ID like a record UUID), that's also a valid promise ID — the only requirement is that the same logical message always resolves to the same string.
+
+Full TypeScript / Python / Rust walkthroughs and runnable repos are on the [Kafka worker example page](/get-started/examples/kafka-worker). Source repos:
+
+- [example-kafka-worker-ts](https://github.com/resonatehq-examples/example-kafka-worker-ts)
+- [example-kafka-worker-py](https://github.com/resonatehq-examples/example-kafka-worker-py)
+- [example-kafka-worker-rs](https://github.com/resonatehq-examples/example-kafka-worker-rs)
+
+## Idempotent dispatch
+
+Every Kafka message has a stable identifier you can derive from its coordinates: `${topic}-${partition}-${offset}` is unique by construction, and a producer-supplied key (or a domain ID inside the payload) works equally well when present. Pass that identifier as the Resonate promise ID:
+
+```ts
+await resonate.beginRun(messageId, "workflow", ...args);
+```
+
+Resonate dedupes by promise ID. A consumer that crashes after starting a workflow but before committing the offset will redeliver the same message on restart. The redelivery hits `beginRun` with the same ID, Resonate recognizes the in-flight execution, and the workflow resumes from its last checkpoint instead of starting over. No per-message dedup table, no idempotency key bookkeeping — the workflow ID is the idempotency key.
+
+This is the property that makes the worker pattern crash-safe: the consumer can be at-least-once, and the dispatch into Resonate stays exactly-once.
+
+## What about `@resonatehq/kafka`?
+
+The `@resonatehq/kafka` NPM package (and the [resonatehq/resonate-transport-kafka-ts](https://github.com/resonatehq/resonate-transport-kafka-ts) repo) targets the **legacy Go server**, not the current Rust server. It expects server flags like `--api-kafka-enable` that don't exist in the current server binary. Don't install it expecting it to wire up against a current Resonate Server — it won't.
+
+If you want native Kafka transport, watch:
+
+- The [`kafka://` address scheme](/spec/execution-model/message-passing#address-schemes) in the protocol specification.
+- The [Planned section](/deploy/message-transports#planned) of the Message transports page — it gets updated when transports land in the server.
+
+## Roadmap
+
+Native Kafka transport is on the roadmap. See [Message transports — Planned](/deploy/message-transports#planned) for status, and the [Kafka worker example](/get-started/examples/kafka-worker) for the supported integration today.
+
+---
+
+---
 url: /deploy/logging
 title: Logging
 ---
@@ -2254,13 +2318,25 @@ A failure to spawn `bash`, a missing named script, or malformed `param.data` (e.
 
 While the script runs, the server refreshes the task lease at one third of `tasks.lease_timeout` so long-running scripts don't lose their lease.
 
-## Kafka
+## Planned
 
-**Not available in v0.9.5.** Kafka transport support is planned for a future release. The Kafka SDK plugin ([resonatehq/resonate-transport-kafka-ts](https://github.com/resonatehq/resonate-transport-kafka-ts)) exists for use with future server versions once server-side support is added.
+The transports below are specified in the [Message Passing Protocol](/spec/execution-model/message-passing#address-schemes) but are not yet implemented in the current server.
 
-## SQS
+### Kafka
 
-**Not available in v0.9.5.** AWS SQS transport support is planned for a future release.
+
+The published `@resonatehq/kafka` NPM plugin (v0.1.x) targets the **legacy Go-based** Resonate Server. It does **not** work with the current Rust server (v0.9.x). Use the [Kafka worker pattern](/deploy/kafka) today; native `kafka://` transport is on the roadmap below.
+
+
+**Not available in the current server.** Native `kafka://` transport is on the roadmap.
+
+For Kafka integration today, use a normal Kafka consumer to dispatch a Resonate workflow per message — see the [Kafka integration guide](/deploy/kafka) and the [Kafka worker example](/get-started/examples/kafka-worker).
+
+The published `@resonatehq/kafka` plugin (and the [resonatehq/resonate-transport-kafka-ts](https://github.com/resonatehq/resonate-transport-kafka-ts) repo) targets the **legacy Go server** and does not work against the current Rust server. Don't install it expecting it to wire up.
+
+### SQS
+
+**Not available in the current server.** AWS SQS transport support is on the roadmap.
 
 ---
 
@@ -2838,7 +2914,7 @@ docker run --rm -p 8001:8001 -p 9090:9090 resonatehqio/resonate:v0.9.5
 ```shell title="Use Postgres storage"
 docker run --rm -p 8001:8001 -p 9090:9090 \
   -e RESONATE_STORAGE__TYPE=postgres \
-  -e RESONATE_STORAGE__POSTGRES__URL="postgres://user:pass@host:5432/resonate" \
+  -e RESONATE_STORAGE__POSTGRES__URL="postgres://:@host:5432/resonate" \
   resonatehqio/resonate:v0.9.5
 ```
 
@@ -2882,7 +2958,7 @@ For Postgres, swap the `[storage]` section:
 type = "postgres"
 
 [storage.postgres]
-url = "postgres://user:pass@host:5432/resonate"
+url = "postgres://:@host:5432/resonate"
 pool_size = 20
 ```
 
@@ -2893,7 +2969,7 @@ For MySQL, the equivalent block is:
 type = "mysql"
 
 [storage.mysql]
-url = "mysql://user:pass@host:3306/resonate"
+url = "mysql://:@host:3306/resonate"
 pool_size = 20
 ```
 
@@ -2912,7 +2988,7 @@ Every config field is also reachable as an environment variable. The convention 
 RESONATE_LEVEL=info
 RESONATE_SERVER__PORT=8001
 RESONATE_STORAGE__TYPE=postgres
-RESONATE_STORAGE__POSTGRES__URL=postgres://user:pass@host:5432/resonate
+RESONATE_STORAGE__POSTGRES__URL=postgres://:@host:5432/resonate
 RESONATE_AUTH__PUBLICKEY=/etc/resonate/auth/public.pem
 ```
 
@@ -2920,12 +2996,14 @@ This is the form used in the [official Docker Compose file](https://github.com/r
 
 ### CLI flags
 
+For the full client + server CLI surface (subcommands, scenarios, worked examples), see [CLI reference](/reference/cli). The table below covers the operator flags most commonly needed when running `resonate serve`.
+
 Most settings can also be passed as CLI flags — useful for ad-hoc overrides:
 
 ```shell
 resonate serve \
   --storage-type postgres \
-  --storage-postgres-url "postgres://user:pass@localhost:5432/resonate" \
+  --storage-postgres-url "postgres://:@localhost:5432/resonate" \
   --storage-postgres-pool-size 20
 ```
 
@@ -2988,7 +3066,7 @@ With a `resonate.toml` (recommended):
 type = "postgres"
 
 [storage.postgres]
-url = "postgres://user:pass@localhost:5432/resonate"
+url = "postgres://:@localhost:5432/resonate"
 pool_size = 20
 ```
 
@@ -2997,7 +3075,7 @@ Or with CLI flags:
 ```shell
 resonate serve \
   --storage-type postgres \
-  --storage-postgres-url "postgres://user:pass@localhost:5432/resonate" \
+  --storage-postgres-url "postgres://:@localhost:5432/resonate" \
   --storage-postgres-pool-size 20
 ```
 
@@ -3016,7 +3094,7 @@ With a `resonate.toml` (recommended):
 type = "mysql"
 
 [storage.mysql]
-url = "mysql://user:pass@localhost:3306/resonate"
+url = "mysql://:@localhost:3306/resonate"
 pool_size = 20
 ```
 
@@ -3025,7 +3103,7 @@ Or with CLI flags:
 ```shell
 resonate serve \
   --storage-type mysql \
-  --storage-mysql-url "mysql://user:pass@localhost:3306/resonate" \
+  --storage-mysql-url "mysql://:@localhost:3306/resonate" \
   --storage-mysql-pool-size 20
 ```
 
@@ -3033,7 +3111,7 @@ Or with environment variables:
 
 ```shell
 RESONATE_STORAGE__TYPE=mysql
-RESONATE_STORAGE__MYSQL__URL=mysql://user:pass@localhost:3306/resonate
+RESONATE_STORAGE__MYSQL__URL=mysql://:@localhost:3306/resonate
 RESONATE_STORAGE__MYSQL__POOL_SIZE=20
 ```
 
@@ -3198,6 +3276,23 @@ cd resonate
 cargo build --release
 ./target/release/resonate serve
 ```
+
+## Defaults
+
+The most commonly referenced server defaults:
+
+- **HTTP API port** — `8001` (`--server-port`)
+- **Bind address** — `0.0.0.0` (`--server-bind`); host advertised as `localhost`
+- **Storage backend** — `sqlite` at `resonate.db`
+- **`--tasks-lease-timeout`** — `15_000 ms`
+- **`--tasks-retry-timeout`** — `30_000 ms` (lower to `500 ms` for chained / recursive workflows)
+- **Prometheus metrics port** — `9090` (`0` disables)
+- **Log level** — `info`
+- **Postgres / MySQL pool size** — `10`
+- **`--transports-http-push-enabled` / `--transports-http-poll-enabled`** — `true`
+- **`--transports-gcps-enabled` / `--transports-bash-exec-enabled`** — `false`
+
+These mirror the operator surface above; the canonical cross-component reference (including SDK init, `ctx.run`, retry policy, and env-var defaults) is the [Defaults reference](/reference/defaults).
 
 ## Ports
 
@@ -3994,6 +4089,50 @@ Ready to use example apps:
 - [Durable Counter with Supabase Edge Functions | TypeScript](https://github.com/resonatehq-examples/example-countdown-supabase-ts)
 - [Deep Research Agent with Supabase Edge Functions | TypeScript](https://github.com/resonatehq-examples/example-openai-deep-research-agent-supabase-ts)
 
+## Serverless-specific constraints
+
+Serverless workers run inside platform-imposed invocation timeouts. Resonate's acquired-task lease (`ttl`) interacts with that timeout: the lease is the window the server gives the worker to make progress on a task before it considers the task abandoned and reassigns it. Workflows that accumulate many promises in a single root will eventually fail to replay within the lease, even if individual steps are fast.
+
+### Platform timeouts
+
+| Platform | Max invocation timeout | Notes |
+|---|---|---|
+| AWS Lambda | 15 min | Check `@resonatehq/aws` for default `ttl` |
+| Google Cloud Functions Gen 2 | 9 min (540s) | `@resonatehq/gcp` defaults `ttl` to 5 min — bump to 10 min so the lease always exceeds the function timeout |
+| Google Cloud Run | 60 min | Check `@resonatehq/gcp` for default `ttl` |
+| Cloudflare Workers | varies (CPU-time vs wall-clock differ by plan) | See [Cloudflare Workers limits](https://developers.cloudflare.com/workers/platform/limits/) |
+| Supabase Edge Functions | varies | See [Supabase Edge Functions limits](https://supabase.com/docs/guides/functions/limits) |
+
+
+A workflow that loops forever inside one root promise — `while(true) { doWork() }` — accumulates child promises with every iteration. After thousands of iterations (10k+ in practice), replay duration exceeds the acquired-task lease, the server emits error code `1199 — Task is not acquired` and reassigns the task mid-execution, and cadence collapses. The longer the workflow runs, the worse it gets.
+
+
+### The fix: recursive tail call with `ctx.detached`
+
+Have the per-iteration function play exactly *one* iteration, and as its **last yield**, spawn the next iteration as a brand-new root via `ctx.detached`. The current invocation returns; the next invocation starts with a fresh origin id and an empty history.
+
+```typescript
+function* playGame(ctx: Context, n: number) {
+  // ...play exactly one game (ctx.run, ctx.sleep, etc.)...
+  yield* ctx.detached(playGame, n + 1); // ✅ last yield, fresh root, bounded replay
+}
+```
+
+The split must happen *inside* the per-iteration function. A parent loop that calls `ctx.detached` repeatedly — `for (;;) yield* ctx.detached(work, n)` — still records each call in the parent's history, reproducing the bug on the parent. See [Bound the promise count of a single execution](/develop/constraints#bound-the-promise-count-of-a-single-execution) for the full explanation.
+
+### Configuring `ttl`
+
+The shim `Resonate` constructor accepts a `ttl` option (milliseconds):
+
+```typescript
+const resonate = new Resonate({ ttl: 10 * 60 * 1000 }); // 10 min
+```
+
+`ttl` should exceed the platform's max invocation timeout. The lease tells the server how long to wait before assuming the worker is dead. If `ttl` is shorter than the platform timeout, the server may reassign the task to a fresh invocation while the original is still legitimately running, leading to mid-execution task reassignment (error code 1199) and duplicate work.
+
+**See also:**
+- [Bound the promise count of a single execution](/develop/constraints#bound-the-promise-count-of-a-single-execution)
+
 ---
 
 ---
@@ -4428,13 +4567,14 @@ title: Constraints and gotchas
 
 Resonate enables you to write distributed applications that survive failures and restarts, but this power comes with a few important rules you need to follow. This page explains what those rules are and, more importantly, **why they exist**.
 
-## The three rules
+## The four rules
 
 When writing durable functions with Resonate, you must follow these constraints:
 
 1. **Functions must be deterministic** - Same inputs always produce the same outputs
 2. **Functions must be idempotent** - Safe to retry multiple times
 3. **Activations cannot outlive the process** - Long-running work needs Resonate primitives
+4. **Bound the promise count of a single execution** - Replay cost scales with accumulated child promises
 
 Let's explore each one.
 
@@ -4696,6 +4836,18 @@ This means if you use Resonate's APIs correctly, **you don't have to manually ch
 When you call operations through `ctx.run()` or `ctx.rpc()`, Resonate generates promise IDs that are the same across retries. This gives you automatic idempotency without manual deduplication logic.
 
 
+### What `ctx.run` retries by default
+
+When you call `ctx.run(fn)` without supplying a `retryPolicy`, the SDK applies:
+
+- **TypeScript** — `Exponential()` for regular `async` functions, `Never()` for generator functions. `Exponential()` defaults: `delay = 1000 ms`, `factor = 2`, `maxDelay = 30 000 ms`, `maxRetries = Number.MAX_SAFE_INTEGER`.
+- **Python** — `Exponential()` for regular functions, `Never()` for generator functions. `Exponential()` defaults: `delay = 1 s`, `factor = 2`, `max_delay = 30 s`, `max_retries = sys.maxsize`.
+- **Rust** — no per-invocation retry policy yet; retries are governed by the server's `--tasks-retry-timeout` flag.
+
+This means a `ctx.run(fn)` call that keeps failing will keep retrying with exponential backoff, capped at 30 seconds between attempts, effectively forever — until the surrounding invocation's `timeout` fires.
+
+See the [Defaults reference](/reference/defaults) for the full per-SDK table.
+
 ---
 
 ## Activations cannot outlive the process
@@ -4820,6 +4972,60 @@ For work that takes hours, days, or weeks, use `ctx.sleep()` or Durable Promises
 
 ---
 
+## Bound the promise count of a single execution
+
+### What does this mean?
+
+Replay duration grows with the count of executed promises in a single root invocation. On cold-start, every prior step is replayed before the next can proceed.
+
+Each `ctx.run()`, `ctx.rpc()`, `ctx.sleep()`, or other Context call inside a root invocation adds one promise to that root's history. When the worker restarts (deploy, scale-down, crash, task reassignment), Resonate replays the function from the beginning, walking every recorded promise to reconstruct state. The more promises accumulated under a single root, the longer replay takes.
+
+### When this becomes a problem
+
+Workflows that loop indefinitely or accumulate many child promises within a single root.
+
+On serverless platforms with fixed acquired-task leases (e.g., `@resonatehq/gcp` default `ttl` = 5 min), replay duration eventually exceeds the lease, the server reassigns the task mid-execution (error code `1199 — Task is not acquired`), and cadence collapses.
+
+❌ **Single root accumulates children forever**
+
+```typescript
+function* playGame(ctx: Context, n: number) {
+  while (true) {                                  // ⚠️ one durable invocation forever
+    // ...play one game (ctx.run, ctx.sleep, etc.)...
+    // every yield adds a child promise to this root's history;
+    // after thousands of iterations, replay > task lease
+  }
+}
+```
+
+### The solution: Recursive tail call with `ctx.detached`
+
+Have the per-iteration function play exactly *one* iteration, and as its **last yield**, spawn the next iteration as a brand-new root via `ctx.detached`. The current invocation returns; the next invocation starts with a fresh origin id and an empty history.
+
+✅ **Each invocation = one iteration, replay scope bounded**
+
+```typescript
+function* playGame(ctx: Context, n: number) {
+  // ...play exactly one game (ctx.run, ctx.sleep, etc.)...
+  yield* ctx.detached(playGame, n + 1); // ✅ last yield, fresh root, bounded replay
+}
+```
+
+
+A parent loop that calls `ctx.detached` repeatedly — `for (;;) yield* ctx.detached(work, n)` — still records each call in the parent's history, reproducing the same accumulation problem on the parent. The recursive-tail shape (per-iteration function spawns its own successor as the last yield, then returns) is what bounds replay scope.
+
+
+The same pattern applies to any forever-running workflow: poll loops, monitoring agents, recurring jobs, demo loops. The per-iteration function plays one iteration, then `yield* ctx.detached(self, next)` as its final yield.
+
+
+If a workflow loops indefinitely or accumulates many child promises, split iterations with `ctx.detached()`. Each iteration gets a fresh root and a bounded replay scope, regardless of how long the overall workflow runs.
+
+
+**See also:**
+- [Serverless-specific constraints](/deploy/serverless-workers#serverless-specific-constraints)
+
+---
+
 ## Summary
 
 | Constraint | Why it exists | Solution |
@@ -4827,6 +5033,7 @@ For work that takes hours, days, or weeks, use `ctx.sleep()` or Durable Promises
 | **Deterministic** | Functions are replayed on restart - must produce same results | Use `ctx.math.random()`, `ctx.date.now()`, `ctx.run()` |
 | **Idempotent** | Functions are retried on failure - must be safe to repeat | Use idempotency keys, upserts, deduplication checks |
 | **Process lifetime** | Activations end when process ends - can't outlive it | Use `ctx.sleep()`, Durable Promises for long-running work |
+| **Bounded promise count** | Replay walks all prior promises - cost scales linearly | Use `ctx.detached()` for forever-loop iterations |
 
 Following these rules ensures your distributed application survives process crashes and restarts, retries safely without duplicating work, and handles long-running workflows spanning hours or days.
 
@@ -5269,6 +5476,50 @@ resonate.promises.reject(
 )
 ```
 
+### `.start()` and `.stop()`
+
+The Python SDK uses background threads for the bridge, message source, and heartbeat. `.start()` boots them; `.stop()` signals them to exit.
+
+```py
+resonate.start()  # explicit start (also auto-runs on first .run() / .rpc())
+resonate.stop()   # graceful shutdown
+```
+
+`.stop()` is synchronous (no `await` — Python's SDK is thread-based, not async). It signals the background threads to exit. The threads are daemon threads, so the interpreter will exit when only daemon threads remain.
+
+
+The default `Poller` message source uses a blocking long-poll HTTP read. Its `stop()` sets a shutdown flag, but the underlying `iter_lines` call only checks that flag between messages — so `.stop()` may not return until the next message arrives or the connection's read timeout fires. Workers exit cleanly on `SIGINT`/`SIGTERM` because the threads are daemonized; the same is true on a script reaching end-of-`main`.
+
+
+**When to call `.stop()`.** Call it from any process that should exit after its work finishes — demo scripts, one-shot jobs, examples, CI tasks. Without it, you rely on daemon-thread exit at interpreter shutdown, which is less graceful than a clean stop.
+
+```py title="main.py"
+from resonate import Resonate
+
+resonate = Resonate()
+resonate.register(greet)
+
+result = resonate.run("greet-1", "greet", "world")
+print(result)
+
+# Graceful shutdown.
+resonate.stop()
+```
+
+
+Calling `.stop()` on a worker (an RPC service, a Kafka consumer, an MCP server, or any other long-lived process) tears down the channels the worker uses to receive and hold work:
+
+- The message source (poller) stops — the worker stops receiving dispatched tasks.
+- The heartbeat thread stops — the server-side TTL on in-flight tasks expires, and the server reassigns them.
+- The bridge thread joins — in-flight commands are not processed.
+
+The process keeps running but silently stops processing work. Workers should stay up; let process termination (SIGINT / SIGTERM) end the lifecycle.
+
+
+**Between debug runs, stop the previous client.** If you keep starting fresh workers in the same process group without stopping the previous one, the old workers keep heartbeating and still hold task leases — they will pick up new dispatches and produce surprising routing. Call `.stop()` in a shutdown hook so leases release cleanly.
+
+After calling `.stop()`, the client should not be used for further operations — construct a new `Resonate` instance instead.
+
 ## Context APIs
 
 **How to use the Resonate Context object in the Python SDK.**
@@ -5509,6 +5760,23 @@ def foo(ctx, arg):
 ### `.options()`
 
 Many of Context's methods support options on the call you are making.
+
+## Defaults
+
+The Python SDK ships with these key defaults. Times are in **seconds**.
+
+- **`Resonate()`** — `group = "default"`, `ttl = 10 s`, `log_level = logging.INFO`. URL falls back to `RESONATE_URL`, then `RESONATE_HOST`/`RESONATE_PORT`; otherwise local mode.
+- **`workers`** — defaults to `min(32, workers or (os.cpu_count() or 1))` execution threads.
+- **`ctx.run` / `Options`** — `durable = True`, `timeout = 31_536_000 s (1 year)`, `target = "default"`, `version = 0`, `tags = {}`, `non_retryable_exceptions = ()`, `idempotency_key = lambda id: id`.
+- **`retry_policy`** for `ctx.run` — resolves to `Exponential()` for regular functions, `Never()` for generator functions.
+- **`Exponential()` defaults** — `delay = 1`, `factor = 2`, `max_delay = 30`, `max_retries = sys.maxsize` (all times in seconds).
+- **`Constant()` / `Linear()` defaults** — `delay = 1`, `max_retries = sys.maxsize`.
+
+
+The Python SDK uses seconds for `ttl`, `timeout`, and retry-policy delays. The TypeScript SDK uses milliseconds. The numbers do not transfer directly between the two.
+
+
+For the full table, per-SDK comparison, and source citations, see the [Defaults reference](/reference/defaults).
 
 ---
 
@@ -5819,11 +6087,41 @@ resonate.promises.cancel("promise-id", json!(null)).await?;
 
 ### `.stop()`
 
-Graceful shutdown. Stops background tasks (heartbeat, subscriptions).
+Gracefully shuts down a Resonate Client. Closes the connection to the Resonate Server, stops the heartbeat loop, and aborts the subscription refresh task.
 
 ```rust
 resonate.stop().await?;
 ```
+
+**When to call it.** Call `.stop()` from any process that should exit after its work finishes — demo binaries, one-shot jobs, examples, CI tasks. Without it, the background tasks keep the Tokio runtime alive and the process hangs after `main` returns.
+
+```rust title="src/main.rs"
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::local();
+    resonate.register(greet).unwrap();
+
+    let result: String = resonate.run("greet-1", greet, "world").await.unwrap();
+    println!("{result}");
+
+    // Required for the process to exit.
+    resonate.stop().await.unwrap();
+}
+```
+
+
+Calling `.stop()` on a worker (an RPC service, a Kafka consumer, an MCP server, or any other long-lived process) tears down the channels the worker uses to receive and hold work:
+
+- The connection to the Resonate Server closes — the worker stops receiving dispatched tasks.
+- The heartbeat loop stops — the server-side TTL on in-flight tasks expires, and the server reassigns them.
+- The subscription refresh task is aborted — listeners on awaited promises are no longer re-registered.
+
+The worker keeps running but silently stops processing work. Workers should stay up; let process termination (SIGINT / SIGTERM) end the lifecycle.
+
+
+**Between debug runs, stop the previous client.** If you keep starting fresh workers in the same process group without stopping the previous one, the old workers keep heartbeating and still hold task leases — they will pick up new dispatches and produce surprising routing. Call `.stop()` in a shutdown hook so leases release cleanly.
+
+After calling `.stop()`, the client should not be used for further operations — construct a new `Resonate` instance instead.
 
 ## Context APIs
 
@@ -5946,6 +6244,20 @@ async fn my_workflow(ctx: &Context) -> Result<()> {
     Ok(())
 }
 ```
+
+## Defaults
+
+The Rust SDK ships with these key defaults:
+
+- **`Resonate::local()`** — `pid = "default"`, `group = "default"`, `ttl = u64::MAX` (no expiry, local mode).
+- **`Resonate::new(ResonateConfig::default())`** — `ttl = 60_000 ms` (remote mode). URL falls back to `RESONATE_URL`, then `RESONATE_HOST` + `RESONATE_SCHEME` ("http") + `RESONATE_PORT` ("8001").
+- **`Options::default()`** — `target = "default"`, `timeout = Duration::from_secs(86_400)` (24 h), `version = 0`, `tags = HashMap::new()`.
+
+
+The Rust `Options` struct does **not** carry a `retry_policy` field. Retry behaviour for Rust workers is governed server-side by the `--tasks-retry-timeout` flag (default `30_000 ms`). This is a known asymmetry with the TypeScript and Python SDKs, both of which support per-`ctx.run` retry policies.
+
+
+For the full table, per-SDK comparison, and source citations, see the [Defaults reference](/reference/defaults).
 
 ---
 
@@ -6090,17 +6402,40 @@ A Resonate Client receives messages by making HTTP Long Polling requests to a Re
 The messages tell the client/sdk what to work on next.
 
 You can customize the transport by which the client receives messages using a transport plugin.
-For example, here is how to configure it with a [Kafka message transport plugin](https://github.com/resonatehq/resonate-transport-kafka-ts).
+See [Message transports](/deploy/message-transports) for the transports the current server ships.
 
-```ts title="index.ts"
-const transport = new Kafka({ brokers: ["localhost:9092"] });
-await transport.start();
+### Consuming Kafka with Resonate
 
-const resonate = new Resonate({ transport });
+**Example: Kafka worker.** Kafka is the most common message-broker integration ask, so we ship a complete reference implementation. The pattern below works for any message broker — substitute your client library, keep the `resonate.beginRun(messageId, "workflow", ...)` shape.
+
+There is no native Kafka transport in the current server. The supported pattern is a normal Kafka consumer that dispatches a Resonate workflow per message — a stable per-message identifier becomes the durable promise ID, so duplicate deliveries reconnect to the in-flight execution rather than starting over.
+
+```ts title="src/consumer.ts"
+const kafka = new Kafka({ brokers: ["localhost:9092"] });
+const consumer = kafka.consumer({ groupId: "workers" });
+
+await consumer.connect();
+await consumer.subscribe({ topic: "records_to_process", fromBeginning: true });
+
+await consumer.run({
+  eachMessage: async ({ topic, partition, message }) => {
+    // topic-partition-offset uniquely identifies the message even when no key is set
+    const messageId = `${topic}-${partition}-${message.offset}`;
+    // messageId is the durable promise id — duplicate invocations dedupe.
+    await resonate.beginRun(messageId, "workflow", messageId, message.offset);
+  },
+});
 ```
 
-The underlying protocols enable a wide range of potential message transports including SQS, Pub/Sub, RabbitMQ, NATS, and more.
-See [Message transports](/deploy/message-transports) for a complete list.
+If your producer sets a stable message key (or your payload carries a domain ID), that's an equally valid promise ID — pick whichever uniquely identifies the logical message.
+
+The full example, with the workflow definition and a runnable Redpanda compose file, lives at [resonatehq-examples/example-kafka-worker-ts](https://github.com/resonatehq-examples/example-kafka-worker-ts) — see also the [Kafka worker example page](/get-started/examples/kafka-worker) for a side-by-side TypeScript / Python / Rust walkthrough.
+
+→ Full guide: [Kafka integration](/deploy/kafka)
+
+
+Native `kafka://` transport is specified in the [Message Passing Protocol](/spec/execution-model/message-passing#address-schemes) and on the roadmap. This page will gain a transport-plugin section once it ships.
+
 
 ### Environment Variables
 
@@ -6432,6 +6767,49 @@ Example:
 await resonate.promises.cancel("promise-id");
 ```
 
+### `.stop()`
+
+Gracefully shuts down a Resonate Client. Closes the long-polling connection to the Resonate Server, stops the heartbeat loop, and clears the subscription refresh interval.
+
+```ts
+await resonate.stop();
+```
+
+`.stop()` returns a `Promise<void>` and **must be awaited**.
+
+**When to call it.** Call `.stop()` from any process that should exit after its work finishes — demo scripts, one-shot jobs, examples, CI tasks. Without it, the client keeps the Node.js event loop alive via the long-poll connection and the subscription refresh interval, and the process hangs after `main()` returns.
+
+```ts title="src/index.ts"
+async function main() {
+  const resonate = new Resonate();
+  resonate.register("greet", (ctx, name) => `Hello, ${name}!`);
+
+  const result = await resonate.run("greet-1", "greet", "world");
+  console.log(result);
+
+  // Required for the process to exit.
+  await resonate.stop();
+}
+
+main();
+```
+
+
+Calling `.stop()` on a worker (an RPC service, a Kafka consumer, an MCP server, or any other long-lived process) tears down the very channels the worker uses to receive and hold work:
+
+- The long-polling connection to the Resonate Server closes — the worker stops receiving dispatched tasks.
+- The heartbeat loop stops — the server-side TTL on in-flight tasks expires, and the server reassigns them.
+- The subscription refresh interval stops — listeners on awaited promises are no longer re-registered.
+
+The worker keeps running but silently stops processing work. Workers should stay up; let process termination (SIGINT / SIGTERM) end the lifecycle.
+
+
+**Common pitfalls.**
+
+- **Don't reuse the client after `.stop()`.** The transport is closed and the refresh interval is gone. Subsequent calls do not throw, but they will not behave correctly. Construct a new `Resonate` instance instead.
+- **Always `await` the call.** The unawaited form (`resonate.stop();`) starts the shutdown and discards the returned promise. Node drains the microtasks before exit, so a script that has nothing after the stop call still exits, but any code that follows — another `await`, a second `resonate.run()`, a `process.exit(0)` — runs against an in-flight teardown. Tests in the SDK uniformly use `await resonate.stop()`; match that.
+- **Between debug runs, stop the previous client.** If you keep starting fresh workers in the same process group without stopping the previous one, the old workers still hold task leases and will pick up new work, producing surprising routing.
+
 ## Context APIs
 
 **How to use the Resonate Context object in the TypeScript SDK.**
@@ -6751,6 +7129,19 @@ resonate.register("foo", function* (ctx: Context) {
   // Code after this call will be executed as normal
 });
 ```
+
+## Defaults
+
+The TypeScript SDK ships with these key defaults. All values are in **milliseconds** unless noted.
+
+- **`new Resonate()`** — `group = "default"`, `ttl = 60_000 ms`, `logLevel = "warn"`. URL falls back to `RESONATE_URL`; when both are unset, a local in-memory network is used.
+- **`HttpNetwork`** — request `timeout = 10_000 ms` (overridable via `RESONATE_TIMEOUT`), URL fallback `"http://localhost:8001"`.
+- **`ctx.run` / `Options`** — `timeout = 86_400_000 ms (24 h)`, `target = "default"`, `version = 0`, `tags = {}`, `nonRetryableErrors = []`.
+- **`retryPolicy`** for `ctx.run` — `Exponential()` for regular `async` functions, `Never()` for generator functions.
+- **`Exponential()` defaults** — `delay = 1_000 ms`, `factor = 2`, `maxDelay = 30_000 ms`, `maxRetries = Number.MAX_SAFE_INTEGER`.
+- **`Constant()` / `Linear()` defaults** — `delay = 1_000 ms`, `maxRetries = Number.MAX_SAFE_INTEGER`.
+
+For the full table, per-SDK comparison, and source citations, see the [Defaults reference](/reference/defaults).
 
 ---
 
@@ -8065,11 +8456,11 @@ And each instance needs to be able to send and receive messages from a Resonate 
 
 The protocol used to pass these messages is called [Async RPC](https://www.async-rpc.io/), and it is completely agnostic to the transport.
 
-For example, Resonate can pass all its messages over HTTP APIs, or it can pass all its messages over Kafka queues, or some workers might receive on one transport and send on another.
+For example, Resonate can pass all its messages over HTTP APIs, or over GCP Pub/Sub topics, or some workers might receive on one transport and send on another. Kafka transport is [planned](/deploy/message-transports#planned) for a future release.
 
 The Async RPC protocol is designed to enable reliable and scalable communication between distributed processes, no matter the transport.
 
-Resonate already has several transport plugins available and more are being developed.
+Resonate already ships several transport plugins and more are being developed — see [Message transports](/deploy/message-transports) for the current set.
 
 Additionally, thanks to the protocol, Resonate offers built-in service discovery and load balancing.
 
@@ -8122,11 +8513,11 @@ When we say "agent-native," we mean: an autonomous coding agent should be able t
 
 Most durable execution platforms ship a single general-purpose server: hand-written code that has to handle every possible stack, every possible transport, every possible storage backend. Generality has a tax — every workflow pays for abstractions it doesn't use, in state transitions, network requests, and operational chatter.
 
-Resonate takes a different path. The ecosystem is built on **open-source, pluggable components** — transports, storage backends, wire formats — that you can assemble to match your stack. On top of that, we generate **stack-specific components** for customers who need a server tailored to their exact infrastructure. Kafka or HTTP for transport, Postgres or DynamoDB for state, gRPC or REST for the wire — we generate a complete Resonate server that includes only what your stack requires. Minimal state transitions, minimal network chatter, nothing wasted.
+Resonate takes a different path. The ecosystem is built on **open-source, pluggable components** — transports, storage backends, wire formats — that you can assemble to match your stack. On top of that, we generate **stack-specific components** for customers who need a server tailored to their exact infrastructure. HTTP push, HTTP poll, or GCP Pub/Sub for transport today — Kafka and SQS [are planned](/deploy/message-transports#planned) — Postgres or DynamoDB for state, gRPC or REST for the wire — we generate a complete Resonate server that includes only what your stack requires. Minimal state transitions, minimal network chatter, nothing wasted.
 
 This is not AI-generated slop. The underlying [Async RPC protocol](https://www.async-rpc.io) is a fully formal JSON Schema specification — a machine-verifiable contract that constrains what "correct" means. AI is used throughout our development and testing processes, guided by these specs and protocols, to produce highly optimized software. The protocol is the contract; the implementation is generated against it, verified by [Deterministic Simulation Testing](#quality-is-not-optional), and delivered as production-grade source code.
 
-### 3. Absurdly cheap
+### 3. Cost-efficient by design
 
 Generated components plus serverless-native deployment produces a cost story that is not incremental — it is categorical.
 
@@ -8149,6 +8540,305 @@ The new server is also linearizable. Combined with DST, this is the foundation o
 ## Open everything
 
 The [Async RPC protocol](https://www.async-rpc.io), the [Distributed Async Await specification](/spec), and the open-source Resonate server are all fully open. Adopting Resonate means adopting a protocol, not a vendor. Everything you need to fork or build your own is available to you.
+
+---
+
+---
+url: /get-started/claude-code
+title: Durable bash
+---
+
+Resonate ships an MCP tool, `resonate-bash`, that turns any shell script into a durable, asynchronous task. You point Claude Code at a local Resonate server, and Claude gains the ability to hand off a script and be notified when it terminates — without holding the wait in its context window.
+
+This page walks through what `resonate-bash` is good at and how to set it up.
+
+## What `resonate-bash` is good at
+
+The polling loop runs in the shell, not in the model. The model is not invoked during the wait. That's the property that makes the rest worthwhile.
+
+### Long-running polling loops
+
+Waiting for an external system to reach a state — a CI run finishes, a deploy goes live, DNS propagates, an image-generation job returns, a Tensorlake sandbox completes, a BigQuery export job lands.
+
+```bash title="Wait for a GitHub Actions run to finish"
+until gh run view 12345 --json status -q .status | grep -q completed; do
+  sleep 60
+done
+```
+
+Submitted to `resonate-bash` with a 1-hour timeout, that loop runs in the shell on the resonate host. Claude is notified the moment the run completes.
+
+### Operations that need to outlive the session
+
+Promises live on the Resonate server, not in the calling Claude Code session. If the laptop closes, the host hiccups, or you start a new conversation tomorrow, the work continues. A later session can look up the promise ID and read the result with the same MCP server.
+
+### Named, queryable state
+
+Promise IDs are first-class. Prefix them by project and date (`ci-watch-2026-05-21`, `dns-propagation-2026-05-21`) and filter `promise-search` later by the `tags` parameter to audit what fired across days.
+
+### Fire-and-watch coordination with external systems
+
+Most CI tools, deploy platforms, image-generation APIs, and data-export jobs expose a status endpoint but no webhook. `resonate-bash` is the right shape for that: submit the work, poll in the shell, get notified on completion. Tensorlake, Vectorizer.ai, Recraft, Midjourney, and any "submit job, poll status" service fit this mold cleanly.
+
+### Composable with the rest of the promise API
+
+The same promise IDs work with `promise-create`, `promise-listen`, and `promise-settle`. A one-off durable script can be promoted into a multi-step workflow later without re-architecture.
+
+
+Always write idempotent scripts. For "trigger external action then poll" patterns, structure as `check-then-trigger + poll` so a restart does not double-fire.
+
+
+---
+
+## Prerequisites
+
+- macOS (Apple Silicon or Intel) with Homebrew, or a Linux host with the `resonate` binary on `$PATH`.
+- Claude Code installed.
+- (Optional, for the Tensorlake target) a Tensorlake API key from [tensorlake.ai](https://tensorlake.ai).
+
+
+The examples below assume `/opt/homebrew/bin/resonate` (Apple Silicon Homebrew). On Intel Mac use `/usr/local/bin/resonate`; on Linux use whichever path your installer chose.
+
+
+---
+
+## 1. Install the Resonate binary
+
+```shell
+brew install resonatehq/tap/resonate
+resonate --version   # expect 0.9.7 or newer
+```
+
+A single binary serves as both the server (`resonate dev` / `resonate serve`) and the MCP shim Claude talks to (`resonate mcp`).
+
+---
+
+## 2. Run the Resonate server with the bash transport enabled
+
+Start with the foreground option to confirm everything works, then switch to the launchd option for a persistent install.
+
+
+This guide uses `8888` to avoid colliding with `resonate dev`'s default port `8001` (which you may already be running for other work). Pick whatever you want — just keep the port consistent across the server, the plist, and the MCP `--server` URL in step 3.
+
+
+
+
+
+
+In-memory storage; stops on Ctrl-C. Good for confirming the wiring.
+
+```shell
+# Only needed if you'll target bash://tensorlake/...
+export TENSORLAKE_API_KEY="tl_apiKey_REPLACE_ME"
+
+resonate dev \
+  --server-port 8888 \
+  --transports-bash-exec-enabled true
+```
+
+
+`--transports-bash-exec-enabled` requires `true` or `false`. A bare flag will error with `a value is required for '--transports-bash-exec-enabled '`.
+
+
+Verify in another shell:
+
+```shell
+curl -s http://localhost:8888/health   # → 200 OK
+```
+
+
+
+
+
+Persistent install that auto-starts at login.
+
+Write `~/Library/LaunchAgents/io.resonatehq.resonate.dev.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.resonatehq.resonate.dev</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/resonate</string>
+        <string>dev</string>
+        <string>--server-port</string>
+        <string>8888</string>
+        <string>--transports-bash-exec-enabled</string>
+        <string>true</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/resonate-dev.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/resonate-dev.log</string>
+</dict>
+</plist>
+```
+
+If you target `bash://tensorlake/...`, add an `EnvironmentVariables` block to the `<dict>` above so the API key is visible to the resonate process (not just your shell):
+
+```xml
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>TENSORLAKE_API_KEY</key>
+        <string>tl_apiKey_REPLACE_ME</string>
+    </dict>
+```
+
+Load it:
+
+```shell
+launchctl load ~/Library/LaunchAgents/io.resonatehq.resonate.dev.plist
+launchctl list | grep resonate          # expect PID, exit code 0
+curl -s http://localhost:8888/health    # → 200 OK
+```
+
+**Restart cheat-sheet:**
+
+| When | Command |
+|---|---|
+| Changed the binary or want a clean restart | `launchctl kickstart -k gui/$(id -u)/io.resonatehq.resonate.dev` |
+| Changed `EnvironmentVariables` or `ProgramArguments` in the plist | `launchctl unload <plist> && launchctl load <plist>` (kickstart will **not** pick up new env vars) |
+
+Logs: `tail -f /tmp/resonate-dev.log`.
+
+
+The plist stores any API keys in plaintext under your home directory. For a hardened setup, fetch keys from Keychain in a wrapper script and exec `resonate` from there.
+
+
+
+
+
+
+---
+
+## 3. Wire Claude Code to the Resonate MCP server
+
+Edit `~/.claude.json` and add a `resonate` entry under `mcpServers`. Merge with any existing MCP entries — don't overwrite the file.
+
+```json
+{
+  "mcpServers": {
+    "resonate": {
+      "type": "stdio",
+      "command": "/opt/homebrew/bin/resonate",
+      "args": ["mcp", "--server", "http://localhost:8888"],
+      "env": {}
+    }
+  }
+}
+```
+
+---
+
+## 4. Enable the Claude Code preview channel
+
+The `mcp__resonate__resonate-bash` tool ships behind a Claude Code preview channel. Update your `claude` alias in `~/.zshrc` (or `~/.bashrc`):
+
+```shell
+alias claude='claude --dangerously-load-development-channels server:resonate'
+```
+
+Reload the shell:
+
+```shell
+source ~/.zshrc
+```
+
+---
+
+## 5. Verify
+
+Open a fresh `claude` session and run:
+
+```text
+/mcp
+```
+
+`resonate` should be listed and connected. If it isn't, see [Troubleshooting](#troubleshooting).
+
+Then exercise the tool with a real durable promise:
+
+> Please watch my desktop for a file `Resonate.md` to appear, with resonate.
+
+Claude should call `mcp__resonate__resonate-bash` with a poll-until-exists script. `touch ~/Desktop/Resonate.md` in another shell — Claude will be notified the moment the promise resolves.
+
+Useful follow-up prompts:
+
+> How did you do that? Show me the promise. And show me the script.
+
+> What else can you use resonate for? Give me three examples.
+
+> Run `echo hello from $RESONATE_PROMISE_ID` on tensorlake.
+
+---
+
+## Tool reference
+
+### Parameters
+
+| Parameter | Required | Default | Description |
+|---|---|---|---|
+| `script` | yes | — | Inline bash script. Will be base64-encoded into `param.data` for you. |
+| `target` | no | `bash://` | Where the script runs. See [target addresses](#target-addresses). |
+| `timeout_ms` | no | 5 min | Promise deadline relative to now. |
+| `id` | no | `bash-<millis>-<nanos>` | Deterministic promise id for idempotency. |
+| `tags` | no | — | JSON object merged into promise tags (`resonate:target` is set automatically). |
+
+The tool registers a listener and resolves via channel notification when the script terminates, returning `{exit_code, stdout, stderr}`.
+
+### Target addresses
+
+| Address | Where it runs | Notes |
+|---|---|---|
+| `bash://` | Local shell on the resonate host | Default if `target` is omitted |
+| `bash://docker/<image>` | `docker run --rm <image> bash -c <script>` | Image required; the resonate host must have Docker |
+| `bash://tensorlake/<image>` | Tensorlake Sandboxes API | `<image>` optional — empty path uses Tensorlake's default sandbox. Requires `TENSORLAKE_API_KEY` on the resonate process |
+
+### Env vars injected into every script
+
+| Variable | Meaning |
+|---|---|
+| `RESONATE_PROMISE_ID` | The promise/task id |
+| `RESONATE_PROMISE_CREATED_AT` | ms since epoch — **stable across retries** |
+| `RESONATE_PROMISE_TIMEOUT_AT` | ms since epoch — **stable across retries** |
+
+Loop **until `$RESONATE_PROMISE_TIMEOUT_AT`**, not for a fixed duration. That keeps a restart-from-top retry idempotent.
+
+### Failure semantics
+
+- **Script exits non-zero** → workflow failure; the promise rejects with the exit info.
+- **Script killed** (local signal, Docker exit 137 / 143, Tensorlake `signaled`) → treated as **infrastructure failure**: the lease expires and the message is redispatched to a fresh worker. Don't rely on signals to short-circuit a workflow.
+- **Crash/restart** → the script restarts from the top. Idempotent scripts only.
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `/mcp` doesn't show `resonate` | MCP entry missing from `~/.claude.json`, or resonate server isn't running | `curl http://localhost:8888/health`; check the JSON entry |
+| `mcp__resonate__resonate-bash` tool absent in Claude | Missing `--dangerously-load-development-channels server:resonate` flag | Re-check the alias; restart `claude` |
+| Promise resolves with `TENSORLAKE_API_KEY env var not set` | Env var not in resonate process env | For launchd: `unload` then `load` (kickstart won't pick up new env). Verify with `ps eww $(launchctl list \| awk '/resonate/{print $1}') \| tr ' ' '\n' \| grep TENSORLAKE` |
+| Promises stuck `pending` forever | Bash exec transport not enabled | Confirm `--transports-bash-exec-enabled` is in the resonate launch args |
+| Tensorlake sandbox creation hangs | Sandbox readiness timeout (120s) exceeded; bad image name | Check `/tmp/resonate-dev.log` for `tensorlake create` errors |
+
+### Tensorlake-specific gotchas
+
+- Sandbox lifetime is hardcoded server-side to 600s. Promises with longer timeouts will see a fresh sandbox per retry.
+- `TENSORLAKE_API_KEY` is read directly from the resonate process env via `std::env::var` — not from `RESONATE_*` config. It must be visible to the **resonate process**, not just your interactive shell.
 
 ---
 
@@ -8206,7 +8896,7 @@ See `resonate dev --help` for options.
 ```shell title="Start with PostgreSQL"
 resonate serve \
   --storage-type postgres \
-  --storage-postgres-url "postgres://resonate:secret@localhost:5432/resonate"
+  --storage-postgres-url "postgres://:@localhost:5432/resonate"
 ```
 
 See `resonate serve --help` for all flags, or [Run a server](/deploy/run-server) for the full configuration story (`resonate.toml` + env vars + flags).
@@ -8291,7 +8981,7 @@ The Resonate server is configured by layering, in this order: defaults → `reso
 resonate serve \
   --auth-publickey /etc/resonate/auth/public.pem \
   --storage-type postgres \
-  --storage-postgres-url "postgres://resonate:secret@localhost:5432/resonate"
+  --storage-postgres-url "postgres://:@localhost:5432/resonate"
 ```
 
 The same configuration as a [`resonate.toml`](/deploy/run-server#resonatetoml):
@@ -8304,7 +8994,7 @@ publickey = "/etc/resonate/auth/public.pem"
 type = "postgres"
 
 [storage.postgres]
-url = "postgres://resonate:secret@localhost:5432/resonate"
+url = "postgres://:@localhost:5432/resonate"
 ```
 
 Run `resonate serve --help` for all available flags.
@@ -9893,7 +10583,7 @@ const result = await resonate.rpc(
   resonate.options({ target: "poll://any@workers" }),
 );
 console.log(result);
-resonate.stop();
+await resonate.stop();
 ```
 
 
@@ -10326,7 +11016,7 @@ const fooR = resonate.register("foo", foo);
 
 const result = await fooR.run("greeting-workflow", "World");
 console.log(result);
-resonate.stop();
+await resonate.stop();
 ```
 
 
@@ -11272,7 +11962,7 @@ await resonate.beginRpc(
   { id, computeCost },
   resonate.options({ target: "poll://any@workers" }),
 );
-resonate.stop();
+await resonate.stop();
 ```
 
 
@@ -11997,7 +12687,7 @@ const result = await resonate.rpc(
   resonate.options({ target: "poll://any@factorial-workers" }),
 );
 console.log(`Factorial of ${n} is ${result}`);
-resonate.stop();
+await resonate.stop();
 ```
 
 
@@ -12188,7 +12878,7 @@ await resonate.schedule(
   123,              // userId argument
 );
 console.log("Schedule created. Start the worker to process executions.");
-resonate.stop();
+await resonate.stop();
 ```
 
 
@@ -12893,7 +13583,7 @@ Resonate is built on three pillars:
 
 - **Agent-native** — The SDK, docs, tool definitions, and operational surface are designed for agent consumption, not just human developers. CLIs over dashboards. Skill files over screenshots. Agents are the new developers, and Resonate is the platform they reach for.
 - **Generated & optimized** — Open-source pluggable components plus stack-specific generated servers. AI constrained by formal specs and protocols — not slop, but highly optimized software. Exactly what your stack needs, nothing more.
-- **Absurdly cheap** — Serverless-native architecture means you pay only for active execution. Workloads that cost ~$80K/year on hosted alternatives can run for under $100/year on Resonate. Orders of magnitude, not percentages.
+- **Cost-efficient by design** — Serverless-native architecture means you pay only for active execution. Workloads that cost ~$80K/year on hosted alternatives can run for under $100/year on Resonate. Orders of magnitude, not percentages.
 
 Build agents, workflows, pipelines, and services without thinking about retries or recovery — in a few lines of code.
 
@@ -12921,6 +13611,828 @@ function* agent(context: Context, prompt: string) {
   }
 }
 ```
+
+---
+
+---
+url: /reference/cli
+title: CLI reference
+---
+
+This page is the **single source of truth** for the `resonate` CLI. Every command, subcommand, and flag below is sourced from a specific file and line in [`resonatehq/resonate`](https://github.com/resonatehq/resonate); if the binary changes, this page is wrong until it is updated.
+
+For default values (server flags, SDK init, retry policies), see [Defaults reference](/reference/defaults).
+
+## Quick reference
+
+The top-level subcommands defined in [`resonate/src/main.rs:43`](https://github.com/resonatehq/resonate/blob/main/src/main.rs#L43).
+
+| Command | What it does | Typical use |
+|---|---|---|
+| [`resonate dev`](#resonate-dev) | Start the server with **in-memory SQLite** (ephemeral) | Local development, examples, smoke tests |
+| [`resonate serve`](#resonate-serve) | Start the server with **persistent storage** | Production, staging, anything you don't want to lose on restart |
+| [`resonate invoke`](#resonate-invoke) | Call a registered durable function by name | Trigger a workflow from the shell; smoke-test a worker |
+| [`resonate promises`](#resonate-promises) | CRUD + search on durable promises | Inspect or settle promises directly; recovery work; debugging |
+| [`resonate tasks`](#resonate-tasks) | Claim, fence, heartbeat, fulfill tasks | Build a custom worker outside the SDKs; inspect stuck tasks |
+| [`resonate schedules`](#resonate-schedules) | CRUD + search on cron-driven schedules | Register / inspect / delete recurring jobs |
+| [`resonate tree`](#resonate-tree) | Print a call-graph tree rooted at a promise ID | Debug what a workflow actually did at runtime |
+| [`resonate mcp`](#resonate-mcp) | Start the MCP server (stdio transport) | Give Claude Code or another MCP client direct access to a Resonate server |
+
+`promise`, `task`, `schedule` are accepted as singular aliases for `promises`, `tasks`, `schedules` — they map to the same handlers ([`resonate/src/main.rs:50,53,56`](https://github.com/resonatehq/resonate/blob/main/src/main.rs#L50-L56)).
+
+## Global flags
+
+These two flags are accepted on every **client** subcommand (promises, tasks, schedules, invoke, tree, mcp). They're defined on `GlobalArgs` in [`resonate/src/cli.rs:512-526`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L512-L526).
+
+| Flag | Short | Default | What it does |
+|---|---|---|---|
+| `--server` | `-S` | `http://localhost:8001` | URL of the Resonate server to talk to |
+| `--token` | `-T` | unset | JWT bearer token; required when the server has auth enabled |
+
+```shell
+# Talk to a remote server with auth
+resonate -S https://resonate.example.com -T "$RESONATE_TOKEN" promises get my-promise
+```
+
+The defaults are wired so a freshly-started `resonate dev` on the same host needs no flags at all.
+
+## Duration syntax
+
+Several flags take a duration string. The parser is `parse_duration` at [`resonate/src/cli.rs:390-428`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L390-L428).
+
+Accepted units: `ms`, `s`, `m`, `h`, `d`. Compound durations are summed left to right.
+
+| Input | Resolves to |
+|---|---|
+| `100ms` | 100 ms |
+| `30s` | 30 000 ms |
+| `1m` | 60 000 ms |
+| `1h` | 3 600 000 ms |
+| `1d` | 86 400 000 ms |
+| `1h30m` | 5 400 000 ms |
+| `1d2h3m4s5ms` | 93 784 005 ms |
+
+A bare integer like `42` (no unit) is **rejected**. `0s` is **rejected**; pass `0` or `""` if you mean zero.
+
+## `resonate dev`
+
+Start the Resonate server with in-memory SQLite. The database is wiped on restart.
+
+**When you'd use it.** Local development, running examples, smoke-testing a worker before pointing it at a real server, CI jobs that don't need persistence.
+
+```shell
+resonate dev
+# Resonate Server listening on 0.0.0.0:8001
+```
+
+Source: [`resonate/src/cli.rs:361-377`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L361-L377). `--storage-sqlite-path` defaults to `:memory:` for `dev` (vs `resonate.db` for `serve`); every other flag is shared with `serve`.
+
+Override the path to keep state across `dev` restarts:
+
+```shell
+resonate dev --storage-sqlite-path ./dev.db
+```
+
+For the complete list of flags and their defaults, see [Defaults reference › Server defaults](/reference/defaults#server-defaults).
+
+## `resonate serve`
+
+Start the Resonate server with persistent storage. SQLite (file-backed), PostgreSQL, or MySQL.
+
+**When you'd use it.** Anything beyond development. Production, staging, demo deployments, anything where losing state on restart is unacceptable.
+
+```shell
+# SQLite file in the current dir (default)
+resonate serve
+
+# Postgres
+resonate serve \
+  --storage-type postgres \
+  --storage-postgres-url "postgres://:@localhost:5432/resonate"
+
+# MySQL
+resonate serve \
+  --storage-type mysql \
+  --storage-mysql-url "mysql://:@localhost:3306/resonate"
+```
+
+Source: [`resonate/src/cli.rs:338-356`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L338-L356). Loading order: built-in defaults → optional `resonate.toml` → environment variables → CLI flags ([`resonate/src/cli.rs:10-13`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L10-L13)).
+
+For the complete flag list, defaults, and the environment-variable equivalents, see:
+
+- [Defaults reference › Server defaults](/reference/defaults#server-defaults) — every flag and its default, cited file:line
+- [Run a server › Configuration](/deploy/run-server#configuration) — operator-facing guide with `resonate.toml`, env vars, and recipe-style examples
+
+
+The default `--tasks-retry-timeout` is `30000` ms ([`resonate/src/config.rs:253`](https://github.com/resonatehq/resonate/blob/main/src/config.rs#L253)). For most deployments, set this to `500` (milliseconds) to keep suspend/wake cycles fast on chained or recursive workflows.
+
+
+## `resonate invoke`
+
+Call a registered durable function by name. This creates a promise with the right tags so a worker (subscribed to the target) picks it up and runs the function durably.
+
+**When you'd use it.** Trigger a workflow from the shell. Smoke-test that a worker is correctly registered. Kick off a one-off run that you don't want to write a tiny client program for.
+
+```shell
+resonate invoke my-run-001 \
+  --func chargeCustomer \
+  --arg cust_42 \
+  --arg '{"amount": 1999, "currency": "USD"}' \
+  --timeout 1h
+```
+
+Source: [`resonate/src/cli.rs:987-1088`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L987-L1088).
+
+| Flag | Default | What it does |
+|---|---|---|
+| `<id>` (positional) | — | Promise ID. Must be unique across the server |
+| `-f`, `--func` | — | Registered function name to invoke |
+| `--arg` | — | Argument; repeatable. Each value parses as JSON; falls back to a plain string if JSON parsing fails ([`cli.rs:1043-1050`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L1043-L1050)) |
+| `--json-args` | — | Alternative to `--arg`: a single JSON array of all arguments |
+| `--version` | `1` | Function version |
+| `-t`, `--timeout` | `1h` | Promise timeout (duration syntax above) |
+| `--target` | `poll://any@default` | Where to deliver. `poll://any@<group>` routes to any worker in the dispatch group |
+| `--delay` | unset | Delay before delivery (duration syntax) |
+
+**Targets in one minute.** `poll://any@<group>` is the addressable identifier for "any worker in dispatch group `<group>`." The default group is `default` — matching the SDK init default ([Defaults reference › Cross-SDK parity](/reference/defaults#cross-sdk-parity)). If your worker subscribed to a different group, you need to say so:
+
+```shell
+resonate invoke factorial-001 \
+  --func factorial --arg 10 \
+  --target "poll://any@factorial-workers"
+```
+
+**Delayed delivery.** Useful for "run this in 5 seconds" smoke tests and for scheduling-like patterns without registering a real schedule:
+
+```shell
+resonate invoke heartbeat-001 --func heartbeat --delay 30s
+```
+
+## `resonate promises`
+
+Direct CRUD + search on durable promises. The CLI alias `resonate promise <subcommand>` works identically ([`resonate/src/main.rs:50`](https://github.com/resonatehq/resonate/blob/main/src/main.rs#L50)).
+
+**When you'd use it.** Inspect what's in the server. Settle a promise from the outside (manual recovery). Walk a list of promises with a tag filter. Build a recovery tool around the same operations the SDKs use.
+
+Subcommands ([`resonate/src/cli.rs:539-613`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L539-L613)):
+
+| Subcommand | What it does | Maps to protocol kind |
+|---|---|---|
+| `get <id>` | Fetch one promise | `promise.get` |
+| `create <id> --timeout <d>` | Create a pending promise (optionally with `--param`, `--tags`) | `promise.create` |
+| `resolve <id> [--value JSON]` | Resolve a pending promise | `promise.settle` |
+| `reject <id> [--value JSON]` | Reject a pending promise | `promise.settle` |
+| `cancel <id> [--value JSON]` | Cancel a pending promise (final state `rejected_canceled`) | `promise.settle` |
+| `search [--state X] [--tags JSON] [--limit N] [--cursor C]` | Page through promises | `promise.search` |
+| `register-callback <awaited> <awaiter>` | Hook one promise's completion to another | `promise.register_callback` |
+| `register-listener <awaited> <address>` | Hook one promise's completion to a webhook or poll address | `promise.register_listener` |
+
+### `resonate promises get`
+
+```shell
+resonate promises get my-run-001
+```
+
+### `resonate promises create`
+
+```shell
+resonate promises create my-run-002 \
+  --timeout 1h \
+  --param '{"headers": {}, "data": "hello"}' \
+  --tags '{"env": "test"}'
+```
+
+`--param` and `--tags` are parsed as JSON ([`cli.rs:495-498`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L495-L498)). The `data` field inside `--param` is automatically base64-encoded ([`cli.rs:500-508`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L500-L508)) — pass it as a regular JSON value, the CLI handles encoding.
+
+### `resonate promises resolve | reject | cancel`
+
+All three settle a pending promise; they differ only in the final state ([`cli.rs:642-652`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L642-L652)).
+
+```shell
+resonate promises resolve my-run-001 --value '{"headers": {}, "data": "ok"}'
+resonate promises reject  my-run-002 --value '{"headers": {}, "data": "boom"}'
+resonate promises cancel  my-run-003
+```
+
+### `resonate promises search`
+
+`--state` accepts: `pending`, `resolved`, `rejected`, `rejected_canceled`, `rejected_timedout` ([`cli.rs:586-587`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L586-L587)). Default `--limit` is `100`.
+
+```shell
+# All pending promises tagged with env=prod
+resonate promises search \
+  --state pending \
+  --tags '{"env": "prod"}' \
+  --limit 50
+
+# Page two using the returned cursor
+resonate promises search --state pending --cursor "<cursor-from-previous-response>"
+```
+
+### `resonate promises register-callback` / `register-listener`
+
+These wire one promise's completion to another effect.
+
+```shell
+# When promise A resolves, the server walks promise B's listeners next
+resonate promises register-callback promise-A promise-B
+
+# When promise A resolves, the server POSTs to the URL
+resonate promises register-listener promise-A "http://callback.example.com/hook"
+
+# Or to an SSE poll address
+resonate promises register-listener promise-A "poll://worker-1@default"
+```
+
+## `resonate tasks`
+
+Direct task lifecycle operations. The CLI alias `resonate task <subcommand>` works identically ([`resonate/src/main.rs:53`](https://github.com/resonatehq/resonate/blob/main/src/main.rs#L53)).
+
+**When you'd use it.** Build a worker outside the official SDKs. Inspect stuck tasks during incident response. Manually claim and complete a task that needs operator intervention. Most users will never call these directly — the SDKs do.
+
+Subcommands ([`resonate/src/cli.rs:727-840`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L727-L840)):
+
+| Subcommand | What it does | Maps to protocol kind |
+|---|---|---|
+| `get <id>` | Fetch one task | `task.get` |
+| `create <id> --pid P --ttl D --timeout D` | Atomically create promise + acquired task | `task.create` |
+| `claim <id> --pid P --version V --ttl D` | Acquire a pending task (worker entry point) | `task.acquire` |
+| `fence <id> --version V --action JSON` | Execute a fenced inner action under task ownership | `task.fence` |
+| `heartbeat --pid P --tasks JSON` | Renew leases for a batch of tasks | `task.heartbeat` |
+| `suspend <id> --version V --actions JSON` | Suspend a task while awaiting other promises | `task.suspend` |
+| `complete <id> --version V --action JSON` | Fulfill a task (settle its promise) | `task.fulfill` |
+| `release <id> --version V` | Release an acquired task back to pending | `task.release` |
+| `halt <id>` | Halt a task | `task.halt` |
+| `continue <id>` | Resume a halted task | `task.continue` |
+| `search [--state X] [--limit N] [--cursor C]` | Page through tasks | `task.search` |
+
+`--version` carries optimistic concurrency. If the version on the server has moved, the call is rejected — that's how the server prevents two workers from both believing they own the same task.
+
+### `resonate tasks claim`
+
+The worker entry point. Acquire a pending task with a TTL.
+
+```shell
+resonate tasks claim task-abc \
+  --pid worker-1 \
+  --version 1 \
+  --ttl 15s
+```
+
+The TTL is the task lease. While you hold the lease, periodic heartbeats keep it from expiring; the default server lease timeout is `15000` ms ([`resonate/src/config.rs:250`](https://github.com/resonatehq/resonate/blob/main/src/config.rs#L250)).
+
+### `resonate tasks heartbeat`
+
+Renew leases for any number of tasks the worker currently holds.
+
+```shell
+resonate tasks heartbeat \
+  --pid worker-1 \
+  --tasks '[{"id":"task-abc","version":3},{"id":"task-xyz","version":1}]'
+```
+
+### `resonate tasks complete`
+
+Settle the task's promise and mark the task done. `--action` is the inner protocol envelope describing how to settle.
+
+```shell
+resonate tasks complete task-abc \
+  --version 4 \
+  --action '{"kind":"promise.settle","data":{"id":"task-abc","state":"resolved","value":{"headers":{},"data":"result"}}}'
+```
+
+### `resonate tasks search`
+
+```shell
+resonate tasks search --state claimed --limit 20
+```
+
+## `resonate schedules`
+
+Cron-driven recurring promise creation. The CLI alias `resonate schedule <subcommand>` works identically ([`resonate/src/main.rs:56`](https://github.com/resonatehq/resonate/blob/main/src/main.rs#L56)).
+
+**When you'd use it.** Register a recurring job. Inspect or delete an existing schedule. Audit what's running on a server.
+
+Subcommands ([`resonate/src/cli.rs:1101-1145`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L1101-L1145)):
+
+| Subcommand | What it does |
+|---|---|
+| `get <id>` | Fetch one schedule |
+| `create <id> --cron <expr> --promise-id <tpl> --promise-timeout <d>` | Register a new schedule |
+| `delete <id>` | Delete a schedule |
+| `search [--tags JSON] [--limit N] [--cursor C]` | Page through schedules (default `--limit 10`) |
+
+### `resonate schedules create`
+
+`--cron` accepts a standard 5-field cron expression. `--promise-id` is a **template**; `{{.timestamp}}` is substituted with the firing time so each run gets a unique promise ID.
+
+```shell
+resonate schedules create nightly-rollup \
+  --cron "0 2 * * *" \
+  --promise-id "nightly-{{.timestamp}}" \
+  --promise-timeout 1h \
+  --promise-param '{"headers": {}, "data": "{}"}' \
+  --promise-tags '{"resonate:target": "poll://any@default"}'
+```
+
+The `resonate:target` tag is what routes each fired promise to a worker — same convention as `resonate invoke --target`.
+
+### `resonate schedules delete`
+
+```shell
+resonate schedules delete nightly-rollup
+```
+
+## `resonate tree`
+
+Print the call-graph tree rooted at a promise ID. The tree walks every promise tagged with `resonate:origin=<root>` and prints them with their parent links and final states.
+
+**When you'd use it.** Debugging. You ran a workflow, something behaved oddly, you want to see what actually happened — every `ctx.run`, every `ctx.rpc`, every sleep, every retry — as a single picture.
+
+```shell
+resonate tree my-run-001
+```
+
+```text
+my-run-001 🟢 (rpc chargeCustomer)
+├── my-run-001.step-1 🟢 (run validateInput)
+├── my-run-001.step-2 🟢 (run fetchAccount)
+├── my-run-001.sleep-1 🟢 (sleep)
+└── my-run-001.step-3 🔴 (run submitCharge)
+```
+
+Source: [`resonate/src/cli.rs:1219-1321`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L1219-L1321). State icons:
+
+| Icon | Meaning |
+|---|---|
+| 🟡 | `pending` |
+| 🟢 | `resolved` |
+| 🔴 | `rejected` / `rejected_canceled` / `rejected_timedout` |
+
+Detail in parentheses shows the operation: `(rpc <func>)` for `ctx.rpc`, `(run <func>)` for `ctx.run`, `(sleep)` for `ctx.sleep`. Derived from the `resonate:scope` and `resonate:timer` tags ([`cli.rs:1324-1347`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L1324-L1347)).
+
+## `resonate mcp`
+
+Start an MCP (Model Context Protocol) server over stdio. The server proxies a Resonate server, exposing it as MCP tools so Claude Code (or any MCP client) can read and write promises directly.
+
+**When you'd use it.** Pipe Resonate into an AI agent. The standard pattern is to register `resonate mcp` as an MCP server in Claude Code, then the agent can `promise-create`, `promise-get`, `promise-search` against your dev or prod server.
+
+```shell
+# Start it. Tracing goes to stderr; stdout is reserved for MCP framing.
+resonate mcp --server http://localhost:8001
+```
+
+To wire it into Claude Code, see [Claude Code › Resonate MCP](/get-started/claude-code).
+
+The tools the MCP server exposes (defined in [`resonate/src/mcp/mod.rs:186-260`](https://github.com/resonatehq/resonate/blob/main/src/mcp/mod.rs#L186-L260)):
+
+| Tool | What it does |
+|---|---|
+| `promise-create` | Create a durable promise |
+| `promise-get` | Fetch a promise |
+| `promise-settle` | Resolve / reject / cancel a promise |
+| `promise-search` | Search promises by state and tags |
+| `promise-listen` | Block until a promise settles, then return the value |
+| `resonate-bash` | Durable shell execution via the bash exec transport (requires the server to be running with `--transports-bash-exec-enabled true`) |
+
+Like all client subcommands, it accepts `-S` / `--server` and `-T` / `--token` ([`resonate/src/cli.rs:381-385`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L381-L385)).
+
+## Common scenarios
+
+A few cross-cutting recipes that combine the commands above.
+
+### Start a dev server and invoke a function
+
+```shell
+# Terminal 1
+resonate dev
+
+# Terminal 2 — your worker (TS, Py, Rs — anything subscribed to the default group)
+node my-worker.js
+
+# Terminal 3 — kick it off
+resonate invoke run-001 --func myFunction --arg 42
+```
+
+### Inspect a workflow that looks stuck
+
+```shell
+# Get a top-down view of the call graph
+resonate tree my-run-001
+
+# Drill into a specific step
+resonate promises get my-run-001.step-3
+
+# Look at the tasks for the same root
+resonate tasks search --state claimed --limit 20
+```
+
+### Cancel a workflow in flight
+
+```shell
+resonate promises cancel my-run-001
+```
+
+The cancel propagates: any child promise tagged `resonate:origin=my-run-001` that has a registered callback to a now-canceled parent will be settled `rejected_canceled` when the engine next walks the callback graph.
+
+### Register a recurring job
+
+```shell
+# Every hour on the hour
+resonate schedules create hourly-cleanup \
+  --cron "0 * * * *" \
+  --promise-id "cleanup-{{.timestamp}}" \
+  --promise-timeout 30m \
+  --promise-tags '{"resonate:target": "poll://any@cleanup-workers"}'
+
+# Confirm
+resonate schedules get hourly-cleanup
+```
+
+### Wire a Resonate server into Claude Code
+
+```shell
+# In Claude Code's MCP config
+claude mcp add resonate -- resonate mcp --server http://localhost:8001
+```
+
+After that, Claude Code has `promise-create`, `promise-get`, `promise-search`, `promise-listen`, `promise-settle`, and `resonate-bash` as tools. See [Claude Code › Resonate MCP](/get-started/claude-code) for the full setup.
+
+### Pipe output through `jq`
+
+Every command prints pretty JSON to stdout ([`resonate/src/cli.rs:486-488`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L486-L488)); errors go to stderr with exit code 1 ([`cli.rs:490-493`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L490-L493)). So scripting is straightforward:
+
+```shell
+# List the IDs of all pending promises
+resonate promises search --state pending --limit 1000 | jq -r '.promises[].id'
+
+# Find the most-recently created schedule
+resonate schedules search --limit 100 | jq '.schedules | max_by(.createdAt)'
+```
+
+## Environment variables
+
+The CLI itself reads no env vars — every flag is explicit. But the **server** (when started via `resonate serve` / `resonate dev`) reads `RESONATE___` for every config field. See:
+
+- [Defaults reference › Environment variables](/reference/defaults#environment-variables) — SDK + shared env vars
+- [Run a server › Environment variables](/deploy/run-server#environment-variables) — server-side `RESONATE_*` map
+
+## See also
+
+- [Defaults reference](/reference/defaults) — every default value, cited file:line, across server and SDKs
+- [Run a server](/deploy/run-server) — operator-facing deployment guide
+- [Claude Code › Resonate MCP](/get-started/claude-code) — wiring `resonate mcp` into an agent
+- [`resonatehq/resonate` › src/cli.rs](https://github.com/resonatehq/resonate/blob/main/src/cli.rs) — canonical CLI source
+- [`resonatehq/resonate` › src/main.rs](https://github.com/resonatehq/resonate/blob/main/src/main.rs) — top-level subcommand wiring
+
+---
+
+---
+url: /reference/defaults
+title: Defaults reference
+---
+
+This page is the **single source of truth** for default values across the Resonate server and SDKs. Every value below is sourced from a specific file and line in the canonical source repositories; if a default changes in source, this page is wrong until it is updated.
+
+If you only want to know "what does `ctx.run` retry by default?" — see [ctx.run / per-call options](#ctxrun--per-call-options) and [Retry policies](#retry-policies).
+
+For the commands these flags belong to (`resonate serve`, `resonate dev`, `resonate invoke`, etc.) and worked usage examples, see [CLI reference](/reference/cli).
+
+---
+
+## Server defaults
+
+The Resonate server is a Rust binary. Its source lives at [`resonatehq/resonate`](https://github.com/resonatehq/resonate); every default below is sourced from `src/config.rs`. The CLI flag name is the kebab-case path through the config struct (e.g. `tasks.lease_timeout` → `--tasks-lease-timeout`); the equivalent environment variable uses double-underscore nesting (e.g. `RESONATE_TASKS__LEASE_TIMEOUT`). Loading order: built-in defaults → optional `resonate.toml` → env vars.
+
+### HTTP server
+
+| Setting | Default | Source |
+|---|---|---|
+| `--server-host` | `"localhost"` | `resonate/src/config.rs:99` |
+| `--server-port` | `8001` | `resonate/src/config.rs:102` |
+| `--server-bind` | `"0.0.0.0"` | `resonate/src/config.rs:105` |
+| `--server-shutdown-timeout` | `10000` ms | `resonate/src/config.rs:108` |
+| `--server-url` | unset (falls back to `http://{host}:{port}` in response headers) | `resonate/src/config.rs:91` |
+| `--server-cors-allow-origins` | empty (CORS disabled) | `resonate/src/config.rs:67` |
+| `--level` | `"info"` | `resonate/src/config.rs:60` |
+
+### Storage
+
+| Setting | Default | Source |
+|---|---|---|
+| `--storage-type` | `"sqlite"` | `resonate/src/config.rs:148` |
+| `--storage-sqlite-path` | `"resonate.db"` | `resonate/src/config.rs:159` |
+| `--storage-postgres-url` | unset | `resonate/src/config.rs:174` |
+| `--storage-postgres-pool-size` | `10` | `resonate/src/config.rs:182` |
+| `--storage-mysql-url` | unset | `resonate/src/config.rs:197` |
+| `--storage-mysql-pool-size` | `10` | `resonate/src/config.rs:182` (shared `default_pool_size`) |
+
+### Tasks + background scans
+
+| Setting | Default | Source |
+|---|---|---|
+| `--tasks-lease-timeout` | `15000` ms | `resonate/src/config.rs:250` |
+| `--tasks-retry-timeout` | `30000` ms | `resonate/src/config.rs:253` — most deployments should lower this to `500` ms; see the [tip on Run a server](/deploy/run-server#configuration) |
+| `--timeouts-poll-interval` | `1000` ms | `resonate/src/config.rs:273` |
+| `--messages-poll-interval` | `100` ms | `resonate/src/config.rs:296` |
+| `--messages-batch-size` | `100` | `resonate/src/config.rs:299` |
+
+### Transports
+
+| Setting | Default | Source |
+|---|---|---|
+| `--transports-http-push-enabled` | `true` | `resonate/src/config.rs:399` |
+| `--transports-http-push-concurrency` | `16` | `resonate/src/config.rs:387` |
+| `--transports-http-push-connect-timeout` | `10000` ms | `resonate/src/config.rs:390` |
+| `--transports-http-push-request-timeout` | `180000` ms | `resonate/src/config.rs:393` |
+| `--transports-http-push-auth-mode` | `"none"` | `resonate/src/config.rs:462` (`HttpPushAuthMode::None`) |
+| `--transports-http-push-auth-header` | `"Authorization"` | `resonate/src/config.rs:442` |
+| `--transports-http-poll-enabled` | `true` | `resonate/src/config.rs:494` |
+| `--transports-http-poll-max-connections` | `1000` | `resonate/src/config.rs:485` |
+| `--transports-http-poll-buffer-size` | `100` | `resonate/src/config.rs:488` |
+| `--transports-gcps-enabled` | `false` | `resonate/src/config.rs:351` |
+| `--transports-bash-exec-enabled` | `false` | `resonate/src/config.rs:342` |
+
+### Observability
+
+| Setting | Default | Source |
+|---|---|---|
+| `--observability-metrics-port` | `9090` (set to `0` to disable) | `resonate/src/config.rs:513` |
+| `--observability-otlp-endpoint` | `"localhost:4317"` | `resonate/src/config.rs:516` |
+
+---
+
+## SDK init defaults
+
+The SDK init defaults are the values you get from calling `new Resonate()` (TypeScript), `Resonate()` (Python), or `Resonate::local()` / `Resonate::new(ResonateConfig::default())` (Rust) with no arguments.
+
+### TypeScript
+
+| Option | Default | Source |
+|---|---|---|
+| `url` | resolved from `RESONATE_URL` env, otherwise local in-memory network | `resonate-sdk-ts/src/resonate.ts:147` |
+| `group` | `"default"` | `resonate-sdk-ts/src/resonate.ts:103` |
+| `pid` | random UUID | `resonate-sdk-ts/src/resonate.ts:149` |
+| `ttl` | `1 * util.MIN` = **60,000 ms** | `resonate-sdk-ts/src/resonate.ts:105` (constant at `src/util.ts:25`) |
+| `verbose` | `false` | `resonate-sdk-ts/src/resonate.ts:108` |
+| `logLevel` | `"warn"` (fallback when `verbose=false`) | `resonate-sdk-ts/src/resonate.ts:137` |
+| `prefix` | resolved from `RESONATE_PREFIX`, else empty | `resonate-sdk-ts/src/resonate.ts:132` |
+| HTTP request timeout (`HttpNetwork`) | `RESONATE_TIMEOUT` env var if set, else `10 * util.SEC` = **10,000 ms** | `resonate-sdk-ts/src/network/http.ts:60-62` |
+| HTTP URL fallback | `"http://localhost:8001"` | `resonate-sdk-ts/src/network/http.ts:58` |
+
+There is no `workers` / `concurrency` parameter in the TypeScript SDK — task execution runs on the Node/Bun event loop with no SDK-side cap.
+
+See [TypeScript SDK Defaults](/develop/typescript#defaults) for surface-scoped framing.
+
+### Python
+
+| Option | Default | Source |
+|---|---|---|
+| `url` | resolved from `RESONATE_URL`, else `RESONATE_HOST` + `RESONATE_PORT`, else local | `resonate-sdk-py/resonate/resonate.py:173-181` |
+| `group` | `"default"` | `resonate-sdk-py/resonate/resonate.py:99` |
+| `pid` | `uuid.uuid4().hex` | `resonate-sdk-py/resonate/resonate.py:161` |
+| `ttl` | `10` (seconds) | `resonate-sdk-py/resonate/resonate.py:101` |
+| `log_level` | `logging.INFO` | `resonate-sdk-py/resonate/resonate.py:102` |
+| `workers` | `min(32, workers or (os.cpu_count() or 1))` | `resonate-sdk-py/resonate/processor.py:16` |
+| `RESONATE_SCHEME` fallback | `"http"` | `resonate-sdk-py/resonate/resonate.py:179` |
+| `RESONATE_PORT` fallback | `"8001"` | `resonate-sdk-py/resonate/resonate.py:180` |
+
+
+Python `ttl=10` is **10 seconds**. TypeScript `ttl=60000` is **60 seconds**. They are not identical defaults in either value or unit.
+
+
+See [Python SDK Defaults](/develop/python#defaults) for surface-scoped framing.
+
+### Rust
+
+| Option | Default | Source |
+|---|---|---|
+| `url` | resolved from `RESONATE_URL`, else `RESONATE_HOST`/`RESONATE_SCHEME`/`RESONATE_PORT` | `resonate-sdk-rs/resonate/src/resonate.rs:164-171` |
+| `RESONATE_SCHEME` fallback | `"http"` | `resonate-sdk-rs/resonate/src/resonate.rs:168` |
+| `RESONATE_PORT` fallback | `"8001"` | `resonate-sdk-rs/resonate/src/resonate.rs:169` |
+| `group` | `"default"` (in `local_with`) | `resonate-sdk-rs/resonate/src/resonate.rs:121` |
+| `pid` | `"default"` (in `local_with`); from network in remote mode | `resonate-sdk-rs/resonate/src/resonate.rs:120,191` |
+| `ttl` | `60_000` ms (remote) / `u64::MAX` (local) | `resonate-sdk-rs/resonate/src/resonate.rs:151,127` |
+| `prefix` | resolved from `RESONATE_PREFIX`, else empty | `resonate-sdk-rs/resonate/src/resonate.rs:154-156` |
+
+The Rust SDK has no `workers` parameter — function execution runs on the user-supplied Tokio runtime.
+
+See [Rust SDK Defaults](/develop/rust#defaults) for surface-scoped framing.
+
+---
+
+## ctx.run / per-call options
+
+These are the defaults applied to a single `ctx.run(...)`, `ctx.rpc(...)`, or top-level `resonate.run(...)` call when no per-call options are passed.
+
+### TypeScript
+
+The TypeScript `Options` class sets the following defaults in its constructor:
+
+| Field | Default | Source |
+|---|---|---|
+| `id` | `undefined` (auto-generated by the runtime) | `resonate-sdk-ts/src/options.ts:48` |
+| `retryPolicy` | `undefined` at the options layer; **resolved to `new Exponential()` for regular functions, `new Never()` for generator functions** when `ctx.run` / `ctx.rpc` executes | `resonate-sdk-ts/src/options.ts:49`, resolution at `resonate-sdk-ts/src/context.ts:397,432` |
+| `tags` | `{}` | `resonate-sdk-ts/src/options.ts:50` |
+| `target` | `"default"` | `resonate-sdk-ts/src/options.ts:51` |
+| `timeout` | `24 * util.HOUR` = **86,400,000 ms (24 h)** | `resonate-sdk-ts/src/options.ts:52` (constants at `src/util.ts:24-26`) |
+| `version` | `0` | `resonate-sdk-ts/src/options.ts:53` |
+| `nonRetryableErrors` | `[]` | `resonate-sdk-ts/src/options.ts:54` |
+
+So the practical answer to "what is the default retry behaviour of `ctx.run` in the TypeScript SDK?" is: **`Exponential()` with its own defaults** (see below) for regular `async` functions, and **`Never()`** for generator functions.
+
+See [TypeScript SDK Defaults](/develop/typescript#defaults) for surface-scoped framing.
+
+### Python
+
+The Python `Options` dataclass:
+
+| Field | Default | Source |
+|---|---|---|
+| `durable` | `True` | `resonate-sdk-py/resonate/options.py:18` |
+| `encoder` | `None` | `resonate-sdk-py/resonate/options.py:19` |
+| `id` | `None` (auto-generated) | `resonate-sdk-py/resonate/options.py:20` |
+| `idempotency_key` | `lambda id: id` (identity) | `resonate-sdk-py/resonate/options.py:21` |
+| `non_retryable_exceptions` | `()` | `resonate-sdk-py/resonate/options.py:22` |
+| `retry_policy` | `lambda f: Never() if isgeneratorfunction(f) else Exponential()` | `resonate-sdk-py/resonate/options.py:23` |
+| `target` | `"default"` | `resonate-sdk-py/resonate/options.py:24` |
+| `tags` | `{}` | `resonate-sdk-py/resonate/options.py:25` |
+| `timeout` | `31_536_000` = **1 year, in seconds** | `resonate-sdk-py/resonate/options.py:26` |
+| `version` | `0` | `resonate-sdk-py/resonate/options.py:27` |
+
+See [Python SDK Defaults](/develop/python#defaults) for surface-scoped framing.
+
+### Rust
+
+The Rust `Options` struct currently exposes only structural fields:
+
+| Field | Default | Source |
+|---|---|---|
+| `tags` | `HashMap::new()` (empty) | `resonate-sdk-rs/resonate/src/options.rs:20` |
+| `target` | `"default"` | `resonate-sdk-rs/resonate/src/options.rs:21` |
+| `timeout` | `Duration::from_secs(86_400)` = **24 h** | `resonate-sdk-rs/resonate/src/options.rs:22` |
+| `version` | `0` | `resonate-sdk-rs/resonate/src/options.rs:23` |
+
+
+The Rust SDK `Options` struct does **not** carry a `retry_policy` field — retry behaviour is governed by the server's task-retry contract, not by a per-invocation policy. This is a known asymmetry with the TypeScript and Python SDKs and is tracked separately.
+
+
+See [Rust SDK Defaults](/develop/rust#defaults) for surface-scoped framing.
+
+---
+
+## Retry policies
+
+Retry policies are constructible by users and supplied via the per-call options. The four built-in policies share the same shape across TypeScript and Python with one important difference: **TypeScript times are in milliseconds, Python times are in seconds.**
+
+### Exponential
+
+| Parameter | TypeScript default | Python default |
+|---|---|---|
+| `delay` | `1000` (ms) — `resonate-sdk-ts/src/retries.ts:53` | `1` (sec) — `resonate-sdk-py/resonate/retry_policies/exponential.py:11` |
+| `factor` | `2` — `resonate-sdk-ts/src/retries.ts:54` | `2` — `resonate-sdk-py/resonate/retry_policies/exponential.py:13` |
+| `maxRetries` / `max_retries` | `Number.MAX_SAFE_INTEGER` — `resonate-sdk-ts/src/retries.ts:55` | `sys.maxsize` — `resonate-sdk-py/resonate/retry_policies/exponential.py:12` |
+| `maxDelay` / `max_delay` | `30000` (ms) — `resonate-sdk-ts/src/retries.ts:56` | `30` (sec) — `resonate-sdk-py/resonate/retry_policies/exponential.py:14` |
+
+Both SDKs use the formula `min(delay * factor^attempt, maxDelay)` for the n-th retry, with attempt 0 returning 0.
+
+### Constant
+
+| Parameter | TypeScript default | Python default |
+|---|---|---|
+| `delay` | `1000` (ms) — `resonate-sdk-ts/src/retries.ts:16` | `1` (sec) — `resonate-sdk-py/resonate/retry_policies/constant.py:11` |
+| `maxRetries` / `max_retries` | `Number.MAX_SAFE_INTEGER` — `resonate-sdk-ts/src/retries.ts:16` | `sys.maxsize` — `resonate-sdk-py/resonate/retry_policies/constant.py:12` |
+
+### Linear
+
+| Parameter | TypeScript default | Python default |
+|---|---|---|
+| `delay` | `1000` (ms) — `resonate-sdk-ts/src/retries.ts:93` | `1` (sec) — `resonate-sdk-py/resonate/retry_policies/linear.py:11` |
+| `maxRetries` / `max_retries` | `Number.MAX_SAFE_INTEGER` — `resonate-sdk-ts/src/retries.ts:93` | `sys.maxsize` — `resonate-sdk-py/resonate/retry_policies/linear.py:12` |
+
+The n-th retry delay is `delay * attempt` in both SDKs.
+
+### Never
+
+`Never` takes no parameters in either SDK. It returns `0` on attempt 0 and `null` / `None` for all later attempts.
+
+- TypeScript — `resonate-sdk-ts/src/retries.ts:118-135`
+- Python — `resonate-sdk-py/resonate/retry_policies/never.py`
+
+### Rust
+
+The Rust SDK does not yet ship `Exponential` / `Constant` / `Linear` / `Never` retry-policy types — there is no per-invocation retry policy on the Rust `Options` struct (see the callout above). Retry behaviour for Rust workers is determined server-side via `--tasks-retry-timeout`.
+
+---
+
+## Cross-SDK parity
+
+| Concept | TypeScript | Python | Rust |
+|---|---|---|---|
+| Init `group` | `"default"` | `"default"` | `"default"` |
+| Init `ttl` | `60_000` ms | `10` sec | `60_000` ms (remote) / `u64::MAX` (local) |
+| Init time unit | milliseconds | seconds | milliseconds (ttl) / `Duration` (timeout) |
+| Per-call `timeout` | 24 h | 1 year | 24 h |
+| Per-call `target` | `"default"` | `"default"` | `"default"` |
+| Per-call `tags` | `{}` | `{}` | empty `HashMap` |
+| Per-call `version` | `0` | `0` | `0` |
+| Default retry policy (regular fn) | `Exponential()` | `Exponential()` | not configurable per-call |
+| Default retry policy (generator fn) | `Never()` | `Never()` | n/a |
+| Retry-policy time unit | milliseconds | seconds | n/a |
+| `Exponential` `maxDelay` | `30_000` ms | `30` sec | n/a |
+| Concurrency cap | none | `min(32, workers or os.cpu_count() or 1)` | none (Tokio runtime) |
+
+**Asymmetries to call out:**
+
+- **Per-call `timeout`.** TypeScript and Rust default to **24 h**; Python defaults to **1 year**. Same field, very different envelope.
+- **`ttl`.** TypeScript and Rust use **milliseconds**; Python uses **seconds**. Same name, different unit.
+- **Retry-policy time units.** TypeScript retry policies are configured in **milliseconds**; Python retry policies are configured in **seconds**. The behaviour curve is identical; the numbers are not.
+- **Per-call retry policy.** Available in TypeScript and Python; **not yet on the Rust `Options` struct**. Rust retries are governed by the server's `--tasks-retry-timeout` flag.
+- **Worker concurrency cap.** Only Python imposes one (`min(32, ...)`). TypeScript and Rust lean on the host event-loop / runtime.
+
+---
+
+## Environment variables
+
+The SDKs share a common set of `RESONATE_*` environment variables. Defaults below are the fallbacks applied when both the constructor argument and the env var are unset.
+
+| Env var | Default | Sources |
+|---|---|---|
+| `RESONATE_URL` | unset → local in-memory mode | TS: `resonate-sdk-ts/src/resonate.ts:147`; Py: `resonate-sdk-py/resonate/resonate.py:175`; Rs: `resonate-sdk-rs/resonate/src/resonate.rs:165` |
+| `RESONATE_HOST` | unset | TS: not consumed; Py: `resonate-sdk-py/resonate/resonate.py:177`; Rs: `resonate-sdk-rs/resonate/src/resonate.rs:167` |
+| `RESONATE_SCHEME` | `"http"` | Py: `resonate-sdk-py/resonate/resonate.py:179`; Rs: `resonate-sdk-rs/resonate/src/resonate.rs:168` |
+| `RESONATE_PORT` | `"8001"` | Py: `resonate-sdk-py/resonate/resonate.py:180`; Rs: `resonate-sdk-rs/resonate/src/resonate.rs:169` |
+| `RESONATE_TOKEN` | unset | TS: `resonate-sdk-ts/src/network/http.ts:67`; Py: `resonate-sdk-py/resonate/resonate.py:184`; Rs: `resonate-sdk-rs/resonate/src/resonate.rs:175` |
+| `RESONATE_USERNAME` | unset (Python only) | Py: `resonate-sdk-py/resonate/resonate.py:187` |
+| `RESONATE_PASSWORD` | `""` (Python only) | Py: `resonate-sdk-py/resonate/resonate.py:189` |
+| `RESONATE_PREFIX` | unset → empty prefix | TS: `resonate-sdk-ts/src/resonate.ts:132`; Rs: `resonate-sdk-rs/resonate/src/resonate.rs:155` |
+| `RESONATE_TIMEOUT` | `10000` ms (TS HTTP only) | TS: `resonate-sdk-ts/src/network/http.ts:60-62` |
+| `RESONATE_URL` HTTP fallback | `"http://localhost:8001"` (TS `HttpNetwork` constructor) | `resonate-sdk-ts/src/network/http.ts:58` |
+
+Server-side `RESONATE_*` environment variables (storage, auth, transports) follow the `RESONATE___` convention. See [Run a server › Environment variables](/deploy/run-server#environment-variables) for the complete list — those defaults track the server flag table above.
+
+---
+
+---
+url: /reference
+title: Reference
+---
+
+<img src="/images/banner-reference-dark.png" alt="Reference section" className="hidden dark:block" />
+<img src="/images/banner-reference-light.png" alt="Reference section" className="block dark:hidden" />
+
+The reference section is the **single source of truth** for the facts that don't change with the page you're reading — default values across the server and SDKs, and the surface of the `resonate` CLI.
+
+Both pages cite every value back to a specific file and line in the canonical source repositories. If a default or a flag changes in source, the page is wrong until it is updated.
+
+## What's here
+
+### [Defaults reference](/reference/defaults)
+
+Every default value, in one place, cited file:line:
+
+- **Server defaults** — every flag of `resonate serve` / `resonate dev`, sourced from [`resonatehq/resonate`](https://github.com/resonatehq/resonate) `src/config.rs`
+- **SDK init defaults** — TypeScript, Python, Rust constructor defaults (`url`, `group`, `pid`, `ttl`, `logLevel`, workers)
+- **`ctx.run` / per-call options** — default `timeout`, `target`, `version`, `tags`, retry policy resolution
+- **Retry policies** — `Exponential`, `Constant`, `Linear`, `Never` — defaults per SDK
+- **Cross-SDK parity table** — where TS, Python, and Rust agree and where they don't (timeouts, ttls, retry-policy time units)
+- **Environment variables** — every `RESONATE_*` variable the SDKs read
+
+Use it when you need to know "what does X default to?" and want a citation, not a paraphrase.
+
+### [CLI reference](/reference/cli)
+
+Every `resonate` subcommand, with scenarios and worked examples:
+
+- **`resonate dev` / `resonate serve`** — start the server (in-memory vs persistent)
+- **`resonate invoke`** — trigger a registered function from the shell
+- **`resonate promises`** — direct CRUD + search on durable promises
+- **`resonate tasks`** — task lifecycle for custom workers and operator recovery
+- **`resonate schedules`** — cron-driven recurring jobs
+- **`resonate tree`** — call-graph visualisation rooted at a promise ID (debugging)
+- **`resonate mcp`** — start the MCP server (stdio) so Claude Code or any MCP client can drive Resonate directly
+- **Common scenarios** — start a dev server and invoke a function, inspect a stuck workflow, cancel in flight, register a recurring job, wire into Claude Code
+
+Use it when you need to know "what command do I run for X?" and want a working example.
+
+## How to use the reference pages
+
+The two pages are sister surfaces:
+
+- **Defaults** answers "*what* is the default for X?" — read it when you need a value.
+- **CLI** answers "*how* do I run X?" — read it when you need a command.
+
+If a CLI flag's default surprises you, the CLI page links to the matching row on the defaults page. If a default value's owner isn't obvious, the defaults page links to the command that exposes it.
+
+## For agents
+
+Both pages are designed to be Echo-indexed and MCP-friendly:
+
+- Every value and command is cited file:line, so a follow-up "show me the source" question resolves cleanly
+- Scenarios are written as runnable commands, so an agent that finishes reading can hand the user a working example
+- Cross-references between sibling pages are explicit, so a question about "the default `--tasks-retry-timeout`" routes correctly even if it lands on the wrong page first
+
+If you're building an agent against a Resonate server, the [`resonate mcp`](/reference/cli#resonate-mcp) subcommand is the entry point: it exposes the most-used promise operations as MCP tools that wrap the same surface this section documents.
 
 ---
 
@@ -13213,7 +14725,7 @@ The version is the optimistic concurrency control (OCC) token: every mutating ta
 
 ## The settlement chain
 
-Every promise settlement — whether triggered by `promise.settle`, `task.fulfill`, `task.fence`, or a server-driven timeout — follows the same path. Settlement is a **chain**: a linear sequence of causality where each link is a different kind of effect.
+Every promise settlement — whether triggered by `promise.settle`, `task.fulfill`, `task.fence`, or a server-driven timeout — proceeds through the same three stages, each producing a distinct kind of effect. We call this the **settlement chain** because the stages form a linear causal order:
 
 ```text
 settle → resume → execute
@@ -13458,6 +14970,10 @@ A process that claims [Tasks](#task) from the [Server](#server), executes the as
 url: /spec
 title: Specification
 ---
+
+<img src="/images/banner-spec-dark.png" alt="Specification section" className="hidden dark:block" />
+<img src="/images/banner-spec-light.png" alt="Specification section" className="block dark:hidden" />
+
 
 Distributed Async Await is a collection of protocols, sub-specifications (definitions), and models. This section is the canonical home for the formal specification — for working code that implements it, see the [TypeScript](/develop/typescript), [Python](/develop/python), and [Rust](/develop/rust) SDKs.
 
