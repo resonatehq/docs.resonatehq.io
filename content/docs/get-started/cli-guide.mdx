@@ -56,7 +56,7 @@ See `resonate dev --help` for options.
 ```shell title="Start with PostgreSQL"
 resonate serve \
   --storage-type postgres \
-  --storage-postgres-url "postgres://resonate:secret@localhost:5432/resonate"
+  --storage-postgres-url "postgres://<USER>:<PASSWORD>@localhost:5432/resonate"
 ```
 
 See `resonate serve --help` for all flags, or [Run a server](/deploy/run-server) for the full configuration story (`resonate.toml` + env vars + flags).
@@ -141,7 +141,7 @@ The Resonate server is configured by layering, in this order: defaults → `reso
 resonate serve \
   --auth-publickey /etc/resonate/auth/public.pem \
   --storage-type postgres \
-  --storage-postgres-url "postgres://resonate:secret@localhost:5432/resonate"
+  --storage-postgres-url "postgres://<USER>:<PASSWORD>@localhost:5432/resonate"
 ```
 
 The same configuration as a [`resonate.toml`](/deploy/run-server#resonatetoml):
@@ -154,7 +154,7 @@ publickey = "/etc/resonate/auth/public.pem"
 type = "postgres"
 
 [storage.postgres]
-url = "postgres://resonate:secret@localhost:5432/resonate"
+url = "postgres://<USER>:<PASSWORD>@localhost:5432/resonate"
 ```
 
 Run `resonate serve --help` for all available flags.

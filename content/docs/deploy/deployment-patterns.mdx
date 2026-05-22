@@ -42,7 +42,7 @@ services:
     environment:
       RESONATE_SERVER__BIND: "0.0.0.0"
       RESONATE_STORAGE__TYPE: postgres
-      RESONATE_STORAGE__POSTGRES__URL: postgres://resonate:secret@postgres:5432/resonate
+      RESONATE_STORAGE__POSTGRES__URL: postgres://<USER>:<PASSWORD>@postgres:5432/resonate
     depends_on:
       postgres:
         condition: service_healthy
