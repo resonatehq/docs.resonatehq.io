@@ -1,0 +1,61 @@
+---
+title: Reference
+description: Canonical, source-cited reference for Resonate defaults and the resonate CLI.
+keywords:
+  - reference
+  - defaults
+  - cli
+---
+
+The reference section is the **single source of truth** for the facts that don't change with the page you're reading — default values across the server and SDKs, and the surface of the `resonate` CLI.
+
+Both pages cite every value back to a specific file and line in the canonical source repositories. If a default or a flag changes in source, the page is wrong until it is updated.
+
+## What's here
+
+### [Defaults reference](/reference/defaults)
+
+Every default value, in one place, cited file:line:
+
+- **Server defaults** — every flag of `resonate serve` / `resonate dev`, sourced from [`resonatehq/resonate`](https://github.com/resonatehq/resonate) `src/config.rs`
+- **SDK init defaults** — TypeScript, Python, Rust constructor defaults (`url`, `group`, `pid`, `ttl`, `logLevel`, workers)
+- **`ctx.run` / per-call options** — default `timeout`, `target`, `version`, `tags`, retry policy resolution
+- **Retry policies** — `Exponential`, `Constant`, `Linear`, `Never` — defaults per SDK
+- **Cross-SDK parity table** — where TS, Python, and Rust agree and where they don't (timeouts, ttls, retry-policy time units)
+- **Environment variables** — every `RESONATE_*` variable the SDKs read
+
+Use it when you need to know "what does X default to?" and want a citation, not a paraphrase.
+
+### [CLI reference](/reference/cli)
+
+Every `resonate` subcommand, with scenarios and worked examples:
+
+- **`resonate dev` / `resonate serve`** — start the server (in-memory vs persistent)
+- **`resonate invoke`** — trigger a registered function from the shell
+- **`resonate promises`** — direct CRUD + search on durable promises
+- **`resonate tasks`** — task lifecycle for custom workers and operator recovery
+- **`resonate schedules`** — cron-driven recurring jobs
+- **`resonate tree`** — call-graph visualisation rooted at a promise ID (debugging)
+- **`resonate mcp`** — start the MCP server (stdio) so Claude Code or any MCP client can drive Resonate directly
+- **Common scenarios** — start a dev server and invoke a function, inspect a stuck workflow, cancel in flight, register a recurring job, wire into Claude Code
+
+Use it when you need to know "what command do I run for X?" and want a working example.
+
+## How to use the reference pages
+
+The two pages are sister surfaces:
+
+- **Defaults** answers "*what* is the default for X?" — read it when you need a value.
+- **CLI** answers "*how* do I run X?" — read it when you need a command.
+
+If a CLI flag's default surprises you, the CLI page links to the matching row on the defaults page. If a default value's owner isn't obvious, the defaults page links to the command that exposes it.
+
+## For agents
+
+Both pages are designed to be Echo-indexed and MCP-friendly:
+
+- Every value and command is cited file:line, so a follow-up "show me the source" question resolves cleanly
+- Scenarios are written as runnable commands, so an agent that finishes reading can hand the user a working example
+- Cross-references between sibling pages are explicit, so a question about "the default `--tasks-retry-timeout`" routes correctly even if it lands on the wrong page first
+
+If you're building an agent against a Resonate server, the [`resonate mcp`](/reference/cli#resonate-mcp) subcommand is the entry point: it exposes the most-used promise operations as MCP tools that wrap the same surface this section documents.
