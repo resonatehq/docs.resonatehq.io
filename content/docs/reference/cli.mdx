@@ -1,0 +1,479 @@
+---
+title: CLI reference
+description: Canonical reference for every Resonate CLI command — server, promise, task, schedule, invoke, tree, MCP — with usage scenarios and worked examples.
+keywords:
+  - reference
+  - cli
+  - resonate cli
+  - promises
+  - tasks
+  - schedules
+  - invoke
+  - mcp
+---
+
+This page is the **single source of truth** for the `resonate` CLI. Every command, subcommand, and flag below is sourced from a specific file and line in [`resonatehq/resonate`](https://github.com/resonatehq/resonate); if the binary changes, this page is wrong until it is updated.
+
+For default values (server flags, SDK init, retry policies), see [Defaults reference](/reference/defaults).
+
+## Quick reference
+
+The top-level subcommands defined in [`resonate/src/main.rs:43`](https://github.com/resonatehq/resonate/blob/main/src/main.rs#L43).
+
+| Command | What it does | Typical use |
+|---|---|---|
+| [`resonate dev`](#resonate-dev) | Start the server with **in-memory SQLite** (ephemeral) | Local development, examples, smoke tests |
+| [`resonate serve`](#resonate-serve) | Start the server with **persistent storage** | Production, staging, anything you don't want to lose on restart |
+| [`resonate invoke`](#resonate-invoke) | Call a registered durable function by name | Trigger a workflow from the shell; smoke-test a worker |
+| [`resonate promises`](#resonate-promises) | CRUD + search on durable promises | Inspect or settle promises directly; recovery work; debugging |
+| [`resonate tasks`](#resonate-tasks) | Claim, fence, heartbeat, fulfill tasks | Build a custom worker outside the SDKs; inspect stuck tasks |
+| [`resonate schedules`](#resonate-schedules) | CRUD + search on cron-driven schedules | Register / inspect / delete recurring jobs |
+| [`resonate tree`](#resonate-tree) | Print a call-graph tree rooted at a promise ID | Debug what a workflow actually did at runtime |
+| [`resonate mcp`](#resonate-mcp) | Start the MCP server (stdio transport) | Give Claude Code or another MCP client direct access to a Resonate server |
+
+`promise`, `task`, `schedule` are accepted as singular aliases for `promises`, `tasks`, `schedules` — they map to the same handlers ([`resonate/src/main.rs:50,53,56`](https://github.com/resonatehq/resonate/blob/main/src/main.rs#L50-L56)).
+
+## Global flags
+
+These two flags are accepted on every **client** subcommand (promises, tasks, schedules, invoke, tree, mcp). They're defined on `GlobalArgs` in [`resonate/src/cli.rs:512-526`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L512-L526).
+
+| Flag | Short | Default | What it does |
+|---|---|---|---|
+| `--server` | `-S` | `http://localhost:8001` | URL of the Resonate server to talk to |
+| `--token` | `-T` | unset | JWT bearer token; required when the server has auth enabled |
+
+```shell
+# Talk to a remote server with auth
+resonate -S https://resonate.example.com -T "$RESONATE_TOKEN" promises get my-promise
+```
+
+The defaults are wired so a freshly-started `resonate dev` on the same host needs no flags at all.
+
+## Duration syntax
+
+Several flags take a duration string. The parser is `parse_duration` at [`resonate/src/cli.rs:390-428`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L390-L428).
+
+Accepted units: `ms`, `s`, `m`, `h`, `d`. Compound durations are summed left to right.
+
+| Input | Resolves to |
+|---|---|
+| `100ms` | 100 ms |
+| `30s` | 30 000 ms |
+| `1m` | 60 000 ms |
+| `1h` | 3 600 000 ms |
+| `1d` | 86 400 000 ms |
+| `1h30m` | 5 400 000 ms |
+| `1d2h3m4s5ms` | 93 784 005 ms |
+
+A bare integer like `42` (no unit) is **rejected**. `0s` is **rejected**; pass `0` or `""` if you mean zero.
+
+## `resonate dev`
+
+Start the Resonate server with in-memory SQLite. The database is wiped on restart.
+
+**When you'd use it.** Local development, running examples, smoke-testing a worker before pointing it at a real server, CI jobs that don't need persistence.
+
+```shell
+resonate dev
+# Resonate Server listening on 0.0.0.0:8001
+```
+
+Source: [`resonate/src/cli.rs:361-377`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L361-L377). `--storage-sqlite-path` defaults to `:memory:` for `dev` (vs `resonate.db` for `serve`); every other flag is shared with `serve`.
+
+Override the path to keep state across `dev` restarts:
+
+```shell
+resonate dev --storage-sqlite-path ./dev.db
+```
+
+For the complete list of flags and their defaults, see [Defaults reference › Server defaults](/reference/defaults#server-defaults).
+
+## `resonate serve`
+
+Start the Resonate server with persistent storage. SQLite (file-backed), PostgreSQL, or MySQL.
+
+**When you'd use it.** Anything beyond development. Production, staging, demo deployments, anything where losing state on restart is unacceptable.
+
+```shell
+# SQLite file in the current dir (default)
+resonate serve
+
+# Postgres
+resonate serve \
+  --storage-type postgres \
+  --storage-postgres-url "postgres://<USER>:<PASSWORD>@localhost:5432/resonate"
+
+# MySQL
+resonate serve \
+  --storage-type mysql \
+  --storage-mysql-url "mysql://<USER>:<PASSWORD>@localhost:3306/resonate"
+```
+
+Source: [`resonate/src/cli.rs:338-356`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L338-L356). Loading order: built-in defaults → optional `resonate.toml` → environment variables → CLI flags ([`resonate/src/cli.rs:10-13`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L10-L13)).
+
+For the complete flag list, defaults, and the environment-variable equivalents, see:
+
+- [Defaults reference › Server defaults](/reference/defaults#server-defaults) — every flag and its default, cited file:line
+- [Run a server › Configuration](/deploy/run-server#configuration) — operator-facing guide with `resonate.toml`, env vars, and recipe-style examples
+
+<Callout type="tip" title="Lower --tasks-retry-timeout in production">
+The default `--tasks-retry-timeout` is `30000` ms ([`resonate/src/config.rs:253`](https://github.com/resonatehq/resonate/blob/main/src/config.rs#L253)). For most deployments, set this to `500` (milliseconds) to keep suspend/wake cycles fast on chained or recursive workflows.
+</Callout>
+
+## `resonate invoke`
+
+Call a registered durable function by name. This creates a promise with the right tags so a worker (subscribed to the target) picks it up and runs the function durably.
+
+**When you'd use it.** Trigger a workflow from the shell. Smoke-test that a worker is correctly registered. Kick off a one-off run that you don't want to write a tiny client program for.
+
+```shell
+resonate invoke my-run-001 \
+  --func chargeCustomer \
+  --arg cust_42 \
+  --arg '{"amount": 1999, "currency": "USD"}' \
+  --timeout 1h
+```
+
+Source: [`resonate/src/cli.rs:987-1088`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L987-L1088).
+
+| Flag | Default | What it does |
+|---|---|---|
+| `<id>` (positional) | — | Promise ID. Must be unique across the server |
+| `-f`, `--func` | — | Registered function name to invoke |
+| `--arg` | — | Argument; repeatable. Each value parses as JSON; falls back to a plain string if JSON parsing fails ([`cli.rs:1043-1050`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L1043-L1050)) |
+| `--json-args` | — | Alternative to `--arg`: a single JSON array of all arguments |
+| `--version` | `1` | Function version |
+| `-t`, `--timeout` | `1h` | Promise timeout (duration syntax above) |
+| `--target` | `poll://any@default` | Where to deliver. `poll://any@<group>` routes to any worker in the dispatch group |
+| `--delay` | unset | Delay before delivery (duration syntax) |
+
+**Targets in one minute.** `poll://any@<group>` is the addressable identifier for "any worker in dispatch group `<group>`." The default group is `default` — matching the SDK init default ([Defaults reference › Cross-SDK parity](/reference/defaults#cross-sdk-parity)). If your worker subscribed to a different group, you need to say so:
+
+```shell
+resonate invoke factorial-001 \
+  --func factorial --arg 10 \
+  --target "poll://any@factorial-workers"
+```
+
+**Delayed delivery.** Useful for "run this in 5 seconds" smoke tests and for scheduling-like patterns without registering a real schedule:
+
+```shell
+resonate invoke heartbeat-001 --func heartbeat --delay 30s
+```
+
+## `resonate promises`
+
+Direct CRUD + search on durable promises. The CLI alias `resonate promise <subcommand>` works identically ([`resonate/src/main.rs:50`](https://github.com/resonatehq/resonate/blob/main/src/main.rs#L50)).
+
+**When you'd use it.** Inspect what's in the server. Settle a promise from the outside (manual recovery). Walk a list of promises with a tag filter. Build a recovery tool around the same operations the SDKs use.
+
+Subcommands ([`resonate/src/cli.rs:539-613`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L539-L613)):
+
+| Subcommand | What it does | Maps to protocol kind |
+|---|---|---|
+| `get <id>` | Fetch one promise | `promise.get` |
+| `create <id> --timeout <d>` | Create a pending promise (optionally with `--param`, `--tags`) | `promise.create` |
+| `resolve <id> [--value JSON]` | Resolve a pending promise | `promise.settle` |
+| `reject <id> [--value JSON]` | Reject a pending promise | `promise.settle` |
+| `cancel <id> [--value JSON]` | Cancel a pending promise (final state `rejected_canceled`) | `promise.settle` |
+| `search [--state X] [--tags JSON] [--limit N] [--cursor C]` | Page through promises | `promise.search` |
+| `register-callback <awaited> <awaiter>` | Hook one promise's completion to another | `promise.register_callback` |
+| `register-listener <awaited> <address>` | Hook one promise's completion to a webhook or poll address | `promise.register_listener` |
+
+### `resonate promises get`
+
+```shell
+resonate promises get my-run-001
+```
+
+### `resonate promises create`
+
+```shell
+resonate promises create my-run-002 \
+  --timeout 1h \
+  --param '{"headers": {}, "data": "hello"}' \
+  --tags '{"env": "test"}'
+```
+
+`--param` and `--tags` are parsed as JSON ([`cli.rs:495-498`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L495-L498)). The `data` field inside `--param` is automatically base64-encoded ([`cli.rs:500-508`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L500-L508)) — pass it as a regular JSON value, the CLI handles encoding.
+
+### `resonate promises resolve | reject | cancel`
+
+All three settle a pending promise; they differ only in the final state ([`cli.rs:642-652`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L642-L652)).
+
+```shell
+resonate promises resolve my-run-001 --value '{"headers": {}, "data": "ok"}'
+resonate promises reject  my-run-002 --value '{"headers": {}, "data": "boom"}'
+resonate promises cancel  my-run-003
+```
+
+### `resonate promises search`
+
+`--state` accepts: `pending`, `resolved`, `rejected`, `rejected_canceled`, `rejected_timedout` ([`cli.rs:586-587`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L586-L587)). Default `--limit` is `100`.
+
+```shell
+# All pending promises tagged with env=prod
+resonate promises search \
+  --state pending \
+  --tags '{"env": "prod"}' \
+  --limit 50
+
+# Page two using the returned cursor
+resonate promises search --state pending --cursor "<cursor-from-previous-response>"
+```
+
+### `resonate promises register-callback` / `register-listener`
+
+These wire one promise's completion to another effect.
+
+```shell
+# When promise A resolves, the server walks promise B's listeners next
+resonate promises register-callback promise-A promise-B
+
+# When promise A resolves, the server POSTs to the URL
+resonate promises register-listener promise-A "http://callback.example.com/hook"
+
+# Or to an SSE poll address
+resonate promises register-listener promise-A "poll://worker-1@default"
+```
+
+## `resonate tasks`
+
+Direct task lifecycle operations. The CLI alias `resonate task <subcommand>` works identically ([`resonate/src/main.rs:53`](https://github.com/resonatehq/resonate/blob/main/src/main.rs#L53)).
+
+**When you'd use it.** Build a worker outside the official SDKs. Inspect stuck tasks during incident response. Manually claim and complete a task that needs operator intervention. Most users will never call these directly — the SDKs do.
+
+Subcommands ([`resonate/src/cli.rs:727-840`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L727-L840)):
+
+| Subcommand | What it does | Maps to protocol kind |
+|---|---|---|
+| `get <id>` | Fetch one task | `task.get` |
+| `create <id> --pid P --ttl D --timeout D` | Atomically create promise + acquired task | `task.create` |
+| `claim <id> --pid P --version V --ttl D` | Acquire a pending task (worker entry point) | `task.acquire` |
+| `fence <id> --version V --action JSON` | Execute a fenced inner action under task ownership | `task.fence` |
+| `heartbeat --pid P --tasks JSON` | Renew leases for a batch of tasks | `task.heartbeat` |
+| `suspend <id> --version V --actions JSON` | Suspend a task while awaiting other promises | `task.suspend` |
+| `complete <id> --version V --action JSON` | Fulfill a task (settle its promise) | `task.fulfill` |
+| `release <id> --version V` | Release an acquired task back to pending | `task.release` |
+| `halt <id>` | Halt a task | `task.halt` |
+| `continue <id>` | Resume a halted task | `task.continue` |
+| `search [--state X] [--limit N] [--cursor C]` | Page through tasks | `task.search` |
+
+`--version` carries optimistic concurrency. If the version on the server has moved, the call is rejected — that's how the server prevents two workers from both believing they own the same task.
+
+### `resonate tasks claim`
+
+The worker entry point. Acquire a pending task with a TTL.
+
+```shell
+resonate tasks claim task-abc \
+  --pid worker-1 \
+  --version 1 \
+  --ttl 15s
+```
+
+The TTL is the task lease. While you hold the lease, periodic heartbeats keep it from expiring; the default server lease timeout is `15000` ms ([`resonate/src/config.rs:250`](https://github.com/resonatehq/resonate/blob/main/src/config.rs#L250)).
+
+### `resonate tasks heartbeat`
+
+Renew leases for any number of tasks the worker currently holds.
+
+```shell
+resonate tasks heartbeat \
+  --pid worker-1 \
+  --tasks '[{"id":"task-abc","version":3},{"id":"task-xyz","version":1}]'
+```
+
+### `resonate tasks complete`
+
+Settle the task's promise and mark the task done. `--action` is the inner protocol envelope describing how to settle.
+
+```shell
+resonate tasks complete task-abc \
+  --version 4 \
+  --action '{"kind":"promise.settle","data":{"id":"task-abc","state":"resolved","value":{"headers":{},"data":"result"}}}'
+```
+
+### `resonate tasks search`
+
+```shell
+resonate tasks search --state claimed --limit 20
+```
+
+## `resonate schedules`
+
+Cron-driven recurring promise creation. The CLI alias `resonate schedule <subcommand>` works identically ([`resonate/src/main.rs:56`](https://github.com/resonatehq/resonate/blob/main/src/main.rs#L56)).
+
+**When you'd use it.** Register a recurring job. Inspect or delete an existing schedule. Audit what's running on a server.
+
+Subcommands ([`resonate/src/cli.rs:1101-1145`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L1101-L1145)):
+
+| Subcommand | What it does |
+|---|---|
+| `get <id>` | Fetch one schedule |
+| `create <id> --cron <expr> --promise-id <tpl> --promise-timeout <d>` | Register a new schedule |
+| `delete <id>` | Delete a schedule |
+| `search [--tags JSON] [--limit N] [--cursor C]` | Page through schedules (default `--limit 10`) |
+
+### `resonate schedules create`
+
+`--cron` accepts a standard 5-field cron expression. `--promise-id` is a **template**; `{{.timestamp}}` is substituted with the firing time so each run gets a unique promise ID.
+
+```shell
+resonate schedules create nightly-rollup \
+  --cron "0 2 * * *" \
+  --promise-id "nightly-{{.timestamp}}" \
+  --promise-timeout 1h \
+  --promise-param '{"headers": {}, "data": "{}"}' \
+  --promise-tags '{"resonate:target": "poll://any@default"}'
+```
+
+The `resonate:target` tag is what routes each fired promise to a worker — same convention as `resonate invoke --target`.
+
+### `resonate schedules delete`
+
+```shell
+resonate schedules delete nightly-rollup
+```
+
+## `resonate tree`
+
+Print the call-graph tree rooted at a promise ID. The tree walks every promise tagged with `resonate:origin=<root>` and prints them with their parent links and final states.
+
+**When you'd use it.** Debugging. You ran a workflow, something behaved oddly, you want to see what actually happened — every `ctx.run`, every `ctx.rpc`, every sleep, every retry — as a single picture.
+
+```shell
+resonate tree my-run-001
+```
+
+```text
+my-run-001 🟢 (rpc chargeCustomer)
+├── my-run-001.step-1 🟢 (run validateInput)
+├── my-run-001.step-2 🟢 (run fetchAccount)
+├── my-run-001.sleep-1 🟢 (sleep)
+└── my-run-001.step-3 🔴 (run submitCharge)
+```
+
+Source: [`resonate/src/cli.rs:1219-1321`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L1219-L1321). State icons:
+
+| Icon | Meaning |
+|---|---|
+| 🟡 | `pending` |
+| 🟢 | `resolved` |
+| 🔴 | `rejected` / `rejected_canceled` / `rejected_timedout` |
+
+Detail in parentheses shows the operation: `(rpc <func>)` for `ctx.rpc`, `(run <func>)` for `ctx.run`, `(sleep)` for `ctx.sleep`. Derived from the `resonate:scope` and `resonate:timer` tags ([`cli.rs:1324-1347`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L1324-L1347)).
+
+## `resonate mcp`
+
+Start an MCP (Model Context Protocol) server over stdio. The server proxies a Resonate server, exposing it as MCP tools so Claude Code (or any MCP client) can read and write promises directly.
+
+**When you'd use it.** Pipe Resonate into an AI agent. The standard pattern is to register `resonate mcp` as an MCP server in Claude Code, then the agent can `promise-create`, `promise-get`, `promise-search` against your dev or prod server.
+
+```shell
+# Start it. Tracing goes to stderr; stdout is reserved for MCP framing.
+resonate mcp --server http://localhost:8001
+```
+
+To wire it into Claude Code, see [Claude Code › Resonate MCP](/get-started/claude-code).
+
+The tools the MCP server exposes (defined in [`resonate/src/mcp/mod.rs:186-260`](https://github.com/resonatehq/resonate/blob/main/src/mcp/mod.rs#L186-L260)):
+
+| Tool | What it does |
+|---|---|
+| `promise-create` | Create a durable promise |
+| `promise-get` | Fetch a promise |
+| `promise-settle` | Resolve / reject / cancel a promise |
+| `promise-search` | Search promises by state and tags |
+| `promise-listen` | Block until a promise settles, then return the value |
+| `resonate-bash` | Durable shell execution via the bash exec transport (requires the server to be running with `--transports-bash-exec-enabled true`) |
+
+Like all client subcommands, it accepts `-S` / `--server` and `-T` / `--token` ([`resonate/src/cli.rs:381-385`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L381-L385)).
+
+## Common scenarios
+
+A few cross-cutting recipes that combine the commands above.
+
+### Start a dev server and invoke a function
+
+```shell
+# Terminal 1
+resonate dev
+
+# Terminal 2 — your worker (TS, Py, Rs — anything subscribed to the default group)
+node my-worker.js
+
+# Terminal 3 — kick it off
+resonate invoke run-001 --func myFunction --arg 42
+```
+
+### Inspect a workflow that looks stuck
+
+```shell
+# Get a top-down view of the call graph
+resonate tree my-run-001
+
+# Drill into a specific step
+resonate promises get my-run-001.step-3
+
+# Look at the tasks for the same root
+resonate tasks search --state claimed --limit 20
+```
+
+### Cancel a workflow in flight
+
+```shell
+resonate promises cancel my-run-001
+```
+
+The cancel propagates: any child promise tagged `resonate:origin=my-run-001` that has a registered callback to a now-canceled parent will be settled `rejected_canceled` when the engine next walks the callback graph.
+
+### Register a recurring job
+
+```shell
+# Every hour on the hour
+resonate schedules create hourly-cleanup \
+  --cron "0 * * * *" \
+  --promise-id "cleanup-{{.timestamp}}" \
+  --promise-timeout 30m \
+  --promise-tags '{"resonate:target": "poll://any@cleanup-workers"}'
+
+# Confirm
+resonate schedules get hourly-cleanup
+```
+
+### Wire a Resonate server into Claude Code
+
+```shell
+# In Claude Code's MCP config
+claude mcp add resonate -- resonate mcp --server http://localhost:8001
+```
+
+After that, Claude Code has `promise-create`, `promise-get`, `promise-search`, `promise-listen`, `promise-settle`, and `resonate-bash` as tools. See [Claude Code › Resonate MCP](/get-started/claude-code) for the full setup.
+
+### Pipe output through `jq`
+
+Every command prints pretty JSON to stdout ([`resonate/src/cli.rs:486-488`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L486-L488)); errors go to stderr with exit code 1 ([`cli.rs:490-493`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L490-L493)). So scripting is straightforward:
+
+```shell
+# List the IDs of all pending promises
+resonate promises search --state pending --limit 1000 | jq -r '.promises[].id'
+
+# Find the most-recently created schedule
+resonate schedules search --limit 100 | jq '.schedules | max_by(.createdAt)'
+```
+
+## Environment variables
+
+The CLI itself reads no env vars — every flag is explicit. But the **server** (when started via `resonate serve` / `resonate dev`) reads `RESONATE_<SECTION>__<FIELD>` for every config field. See:
+
+- [Defaults reference › Environment variables](/reference/defaults#environment-variables) — SDK + shared env vars
+- [Run a server › Environment variables](/deploy/run-server#environment-variables) — server-side `RESONATE_*` map
+
+## See also
+
+- [Defaults reference](/reference/defaults) — every default value, cited file:line, across server and SDKs
+- [Run a server](/deploy/run-server) — operator-facing deployment guide
+- [Claude Code › Resonate MCP](/get-started/claude-code) — wiring `resonate mcp` into an agent
+- [`resonatehq/resonate` › src/cli.rs](https://github.com/resonatehq/resonate/blob/main/src/cli.rs) — canonical CLI source
+- [`resonatehq/resonate` › src/main.rs](https://github.com/resonatehq/resonate/blob/main/src/main.rs) — top-level subcommand wiring
