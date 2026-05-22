@@ -1,3 +1,9 @@
 {
-  "title": "Get started"
+  "title": "Get started",
+  "pages": [
+    "quickstart",
+    "cli-guide",
+    "claude-code",
+    "examples"
+  ]
 }
