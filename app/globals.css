@@ -133,6 +133,7 @@
 
   .docs-content td {
     @apply font-serif py-2 pr-4;
+    @apply text-bright-gray-700 dark:text-primary;
     @apply border-b border-bright-gray-100 dark:border-primary/10;
   }
 
