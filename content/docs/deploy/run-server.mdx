@@ -47,10 +47,10 @@ Both default ports can be changed.
 ## Run with Docker
 
 The Resonate Server is published as an official image on Docker Hub at [`resonatehqio/resonate`](https://hub.docker.com/r/resonatehqio/resonate).
-Tags track the server release versions (e.g. `v0.9.5`) plus a rolling `latest`.
+Tags track the server release versions (e.g. `v0.9.7`) plus a rolling `latest`.
 
 ```shell title="Run the Resonate Server in Docker"
-docker run --rm -p 8001:8001 -p 9090:9090 resonatehqio/resonate:v0.9.5
+docker run --rm -p 8001:8001 -p 9090:9090 resonatehqio/resonate:v0.9.7
 ```
 
 `resonate serve` is the default command. Override only when you need to change behavior:
@@ -59,7 +59,7 @@ docker run --rm -p 8001:8001 -p 9090:9090 resonatehqio/resonate:v0.9.5
 docker run --rm -p 8001:8001 -p 9090:9090 \
   -e RESONATE_STORAGE__TYPE=postgres \
   -e RESONATE_STORAGE__POSTGRES__URL="postgres://<USER>:<PASSWORD>@host:5432/resonate" \
-  resonatehqio/resonate:v0.9.5
+  resonatehqio/resonate:v0.9.7
 ```
 
 The image exposes both `8001` (HTTP API) and `9090` (Prometheus metrics).
@@ -266,7 +266,7 @@ A minimal Docker Compose stack that boots the server against a MySQL service:
 ```yaml title="docker-compose.yml — MySQL"
 services:
   resonate-server:
-    image: resonatehqio/resonate:v0.9.5
+    image: resonatehqio/resonate:v0.9.7
     ports:
       - "8001:8001"
       - "9090:9090"
@@ -306,7 +306,7 @@ Cloud Run can pull the official image directly:
 
 ```shell
 gcloud run deploy resonate-server \
-  --image=resonatehqio/resonate:v0.9.5 \
+  --image=resonatehqio/resonate:v0.9.7 \
   --region=<your-region> \
   --port=8001 \
   --allow-unauthenticated \
@@ -352,7 +352,7 @@ spec:
     spec:
       containers:
         - name: resonate
-          image: resonatehqio/resonate:v0.9.5
+          image: resonatehqio/resonate:v0.9.7
           env:
             - name: RESONATE_SERVER__BIND
               value: "0.0.0.0"

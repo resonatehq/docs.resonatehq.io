@@ -20,7 +20,7 @@ Troubleshooting steps are categorized by error code ranges:
 
 ## Server request errors
 
-These are the errors you may encounter when making requests to Resonate Server v0.9.5.
+These are the errors you may encounter when making requests to Resonate Server v0.9.7.
 Request errors signify problems with the request itself — retrying the same request will not resolve the issue.
 
 **Range: HTTP 4XX**
@@ -118,7 +118,7 @@ Raised when a store operation against the Resonate Server (or the in-process loc
 - `100.40399` — state-machine transition error
 - `100.0` — transport-level failure (request timed out, failed to connect, unknown exception)
 
-The current Rust server (v0.9.5) does not emit these structured sub-codes — it returns standard HTTP status codes (see [Server request errors](#server-request-errors) above). When the Python SDK adds Rust-server compatibility, this section will be updated.
+The current Rust server (v0.9.7) does not emit these structured sub-codes — it returns standard HTTP status codes (see [Server request errors](#server-request-errors) above). When the Python SDK adds Rust-server compatibility, this section will be updated.
 
 ### `ResonateCanceledError` (code `200`)
 
@@ -1097,7 +1097,7 @@ services:
       retries: 5
 
   resonate-server:
-    image: resonatehqio/resonate:v0.9.5
+    image: resonatehqio/resonate:v0.9.7
     ports:
       - "8001:8001"
       - "9090:9090"
@@ -1167,7 +1167,7 @@ spec:
     spec:
       containers:
         - name: server
-          image: resonatehqio/resonate:v0.9.5
+          image: resonatehqio/resonate:v0.9.7
           ports:
             - containerPort: 8001
               name: http
@@ -1987,7 +1987,7 @@ In production, collect logs from all servers and workers into a centralized syst
 ```yaml
 services:
   resonate-server:
-    image: resonatehqio/resonate:v0.9.5
+    image: resonatehqio/resonate:v0.9.7
     logging:
       driver: "json-file"
       options:
@@ -2010,7 +2010,7 @@ metadata:
 spec:
   containers:
   - name: server
-    image: resonatehqio/resonate:v0.9.5
+    image: resonatehqio/resonate:v0.9.7
 ```
 
 Or use Fluent Bit / Fluentd as a DaemonSet to forward logs to your aggregation system.
@@ -2202,14 +2202,14 @@ url: /deploy/message-transports
 title: Message transports
 ---
 
-The Resonate Server delivers task messages to workers over a configurable set of transports. As of v0.9.5, four transports ship in the server binary:
+The Resonate Server delivers task messages to workers over a configurable set of transports. As of v0.9.7, four transports ship in the server binary:
 
 | Transport | Address scheme | Enable flag | Default |
 |---|---|---|---|
 | HTTP push | `http://` / `https://` | `--transports-http-push-enabled` | `true` |
 | HTTP poll (SSE) | (used by SDK clients that long-poll the server) | `--transports-http-poll-enabled` | `true` |
 | GCP Pub/Sub | `gcps://` | `--transports-gcps-enabled` | `false` |
-| Bash exec | `bash:///` | `--transports-bash-exec-enabled` | `false` |
+| Bash exec | `bash://` | `--transports-bash-exec-enabled` | `false` |
 
 Each transport can be turned on or off independently. The full CLI flag list is on the [Run a server](/deploy/run-server#cli-flags) page; the equivalent `resonate.toml` keys live under `[transports.<name>]`.
 
@@ -2249,7 +2249,7 @@ Authentication uses Application Default Credentials (ADC) — make sure the serv
 
 ## Bash exec
 
-The bash exec transport runs a shell command on the server host for each delivered task. It's intended for local-process workers, lightweight wrappers around CLI tools, and self-hosted single-host deployments where running a separate worker process is overkill.
+The bash exec transport runs an inline shell script for each delivered task. It's intended for local-process workers, lightweight wrappers around CLI tools, agent sandboxes, and self-hosted single-host deployments where running a separate worker process is overkill.
 
 The transport is **disabled by default**. Enable it explicitly:
 
@@ -2262,50 +2262,48 @@ Or in `resonate.toml`:
 ```toml
 [transports.bash_exec]
 enabled = true
-# Required for named scripts; not required for inline scripts.
-root_dir = "/etc/resonate/scripts"
-# Working directory for named-script execution. One of:
-#   "<root>"   — CWD is set to root_dir (default)
-#   "<script>" — CWD is set to the script's parent directory
-#   any path   — CWD is set to that literal path
-working_dir = "<root>"
 ```
 
+Or via env var: `RESONATE_TRANSPORTS__BASH_EXEC__ENABLED=true`.
 
-The bash exec transport runs arbitrary shell commands as the user running the server. Only enable it on hosts where every promise creator is trusted, and prefer named scripts (with `root_dir` set to a non-writable directory) over inline scripts in production.
+Enabling is the only configuration the transport takes — there are no script-directory or working-directory settings.
 
 
-### Address forms
+The bash exec transport runs arbitrary shell scripts. The **local** backend runs them as the user running the server, so only enable it on hosts where every promise creator is trusted. The **docker** and **tensorlake** backends isolate execution in a container or remote sandbox.
 
-A task address controls how bash exec runs the command:
 
-| Address | Mode | What runs |
+### Backends
+
+The script body is always **inline** — it travels in the promise's `param.data` (base64-encoded). The task address selects which backend runs it:
+
+| Address | Backend | What runs |
 |---|---|---|
-| `bash:///` | Inline | The script body is `param.data` on the promise (base64-encoded) |
-| `bash:///relative/path.sh` | Named script | The file at `<root_dir>/relative/path.sh` is invoked with arguments from `param.data` |
+| `bash://` | Local | `bash -c "<script>"` on the server host |
+| `bash://docker/<image>` | Docker | `docker run --rm <image> bash -c "<script>"` (requires the `docker` CLI on the server host) |
+| `bash://tensorlake/<image>` | Tensorlake | the script in a [Tensorlake](https://tensorlake.ai) sandbox; requires `TENSORLAKE_API_KEY` in the server's environment. An empty `<image>` uses Tensorlake's default sandbox |
 
-In both modes the server sets `RESONATE_PROMISE_ID` in the script's environment so the script can correlate logs, metrics, or follow-on calls back to the originating promise.
+Named scripts (a filesystem path after the scheme, e.g. `bash:///path/to/script.sh`) are **not supported** — `bash://` carries no path, and the local backend rejects an address that includes one.
 
 ### Inline scripts
 
-For inline scripts, set the promise's `param.data` to the base64-encoded script body:
+Set the promise's `param.data` to the base64-encoded script body:
 
 ```bash
 echo -n 'echo "hello from $RESONATE_PROMISE_ID"' | base64
 # ZWNobyAiaGVsbG8gZnJvbSAkUkVTT05BVEVfUFJPTUlTRV9JRCI=
 ```
 
-Then create a task targeting `bash:///` with that base64 as `param.data`. The server invokes `bash -c "<decoded script>"`.
+Then create a task targeting `bash://` (or `bash://docker/<image>` / `bash://tensorlake/<image>`) with that base64 as `param.data`.
 
-### Named scripts
+### Script environment
 
-Set `bash_exec.root_dir` in config, place an executable script at e.g. `<root_dir>/build/release.sh`, and target `bash:///build/release.sh`. Pass arguments by setting `param.data` to a JSON array of strings:
+The server sets three variables in the script's environment. All three are **stable across retries**, so a re-delivered task reproduces the same values:
 
-```json
-["v1.2.3", "production"]
-```
-
-The server invokes `bash <root_dir>/build/release.sh v1.2.3 production` with `RESONATE_PROMISE_ID` in the environment.
+| Variable | Value |
+|---|---|
+| `RESONATE_PROMISE_ID` | the originating promise id (correlate logs, metrics, or follow-on calls) |
+| `RESONATE_PROMISE_CREATED_AT` | promise creation time, epoch milliseconds |
+| `RESONATE_PROMISE_TIMEOUT_AT` | promise timeout, epoch milliseconds |
 
 ### Settle behavior
 
@@ -2314,9 +2312,13 @@ The promise is settled from the script's exit status:
 - **Exit `0`** — the promise resolves with the script's `stdout` (trimmed of trailing whitespace) as the resolved value.
 - **Exit non-zero** — the promise rejects. The rejection reason is the script's `stderr` if non-empty, otherwise the literal string `exit code N`.
 
-A failure to spawn `bash`, a missing named script, or malformed `param.data` (e.g. non-array JSON for a named script) all cause the promise to reject with a descriptive reason.
+A failure to spawn the backend — for example `docker` not on `PATH`, or a missing `TENSORLAKE_API_KEY` — rejects the promise with a descriptive reason.
 
-While the script runs, the server refreshes the task lease at one third of `tasks.lease_timeout` so long-running scripts don't lose their lease.
+If the script is **killed by a signal** (a local kill, a docker OOM, or an exceeded Tensorlake sandbox lifetime), the run is treated as an infrastructure failure rather than a workflow failure: the task is dropped, the lease expires, and the message is re-dispatched to a fresh worker.
+
+While the script runs, the server refreshes the task lease so long-running scripts don't lose it.
+
+For the `resonate-bash` MCP tool, which drives this transport from Claude Code, see [Durable bash](/get-started/claude-code).
 
 ## Planned
 
@@ -2456,7 +2458,7 @@ Open http://localhost:9091 to query metrics and build dashboards.
 version: '3.8'
 services:
   resonate-server:
-    image: resonatehqio/resonate:v0.9.5
+    image: resonatehqio/resonate:v0.9.7
     ports:
       - "8001:8001"
       - "9090:9090"  # Metrics endpoint
@@ -2903,10 +2905,10 @@ Both default ports can be changed.
 ## Run with Docker
 
 The Resonate Server is published as an official image on Docker Hub at [`resonatehqio/resonate`](https://hub.docker.com/r/resonatehqio/resonate).
-Tags track the server release versions (e.g. `v0.9.5`) plus a rolling `latest`.
+Tags track the server release versions (e.g. `v0.9.7`) plus a rolling `latest`.
 
 ```shell title="Run the Resonate Server in Docker"
-docker run --rm -p 8001:8001 -p 9090:9090 resonatehqio/resonate:v0.9.5
+docker run --rm -p 8001:8001 -p 9090:9090 resonatehqio/resonate:v0.9.7
 ```
 
 `resonate serve` is the default command. Override only when you need to change behavior:
@@ -2915,7 +2917,7 @@ docker run --rm -p 8001:8001 -p 9090:9090 resonatehqio/resonate:v0.9.5
 docker run --rm -p 8001:8001 -p 9090:9090 \
   -e RESONATE_STORAGE__TYPE=postgres \
   -e RESONATE_STORAGE__POSTGRES__URL="postgres://:@host:5432/resonate" \
-  resonatehqio/resonate:v0.9.5
+  resonatehqio/resonate:v0.9.7
 ```
 
 The image exposes both `8001` (HTTP API) and `9090` (Prometheus metrics).
@@ -3122,7 +3124,7 @@ A minimal Docker Compose stack that boots the server against a MySQL service:
 ```yaml title="docker-compose.yml — MySQL"
 services:
   resonate-server:
-    image: resonatehqio/resonate:v0.9.5
+    image: resonatehqio/resonate:v0.9.7
     ports:
       - "8001:8001"
       - "9090:9090"
@@ -3162,7 +3164,7 @@ Cloud Run can pull the official image directly:
 
 ```shell
 gcloud run deploy resonate-server \
-  --image=resonatehqio/resonate:v0.9.5 \
+  --image=resonatehqio/resonate:v0.9.7 \
   --region=<your-region> \
   --port=8001 \
   --allow-unauthenticated \
@@ -3208,7 +3210,7 @@ spec:
     spec:
       containers:
         - name: resonate
-          image: resonatehqio/resonate:v0.9.5
+          image: resonatehqio/resonate:v0.9.7
           env:
             - name: RESONATE_SERVER__BIND
               value: "0.0.0.0"
@@ -5785,7 +5787,7 @@ url: /develop/rust
 title: Rust SDK skills
 ---
 
-The Rust SDK is at 0.4.0 and in active development. APIs may change between releases. It is not yet published on crates.io.
+The Rust SDK is at 0.4.0 and in active development. APIs may change between releases.
 
 
 Whether you are a human or an AI agent, this skill guide will help you develop applications using the Resonate Rust SDK.
@@ -5801,14 +5803,19 @@ If you have a use case in mind, but haven't built with Resonate before, we recom
 
 **How to install the Resonate Rust SDK into your project.**
 
-The Rust SDK is not yet published on crates.io.
-Add it as a git dependency in your `Cargo.toml`:
+The Rust SDK is published on crates.io as `resonate-sdk`. Add it to your `Cargo.toml`:
 
 ```toml title="Cargo.toml"
 [dependencies]
-resonate = { package = "resonate-sdk", git = "https://github.com/resonatehq/resonate-sdk-rs", branch = "main" }
+resonate = { package = "resonate-sdk", version = "0.4" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
+```
+
+To track the latest unreleased changes instead, depend on the `main` branch directly:
+
+```toml
+resonate = { package = "resonate-sdk", git = "https://github.com/resonatehq/resonate-sdk-rs", branch = "main" }
 ```
 
 Once added, you can import the Resonate prelude and start using the SDK:
@@ -6266,7 +6273,7 @@ url: /develop/typescript
 title: TypeScript SDK skills
 ---
 
-This page reflects `@resonatehq/sdk` v0.10.1 (current on npm). APIs are subject to change in future releases.
+This page reflects `@resonatehq/sdk` v0.10.2 (current on npm). APIs are subject to change in future releases.
 
 
 **Requires Node.js 22 or later.**
@@ -7497,7 +7504,7 @@ url: /evaluate/coming-from/dbos
 title: Coming from DBOS
 ---
 
-This page reflects `@resonatehq/sdk` v0.10.1 (current on npm) and `resonate-sdk` v0.6.7 for Python.
+This page reflects `@resonatehq/sdk` v0.10.2 (current on npm) and `resonate-sdk` v0.6.7 for Python.
 
 
 **Are you coming from DBOS?**
@@ -7760,7 +7767,7 @@ url: /evaluate/coming-from/restate
 title: Coming from Restate
 ---
 
-This page reflects `@resonatehq/sdk` v0.10.1 (current on npm) and `resonate-sdk` v0.6.7 for Python.
+This page reflects `@resonatehq/sdk` v0.10.2 (current on npm) and `resonate-sdk` v0.6.7 for Python.
 
 
 **Are you coming from experience with Restate?**
@@ -8126,7 +8133,7 @@ url: /evaluate/coming-from/temporal
 title: Coming from Temporal
 ---
 
-This page reflects `@resonatehq/sdk` v0.10.1 (current on npm) and `resonate-sdk` v0.6.7 for Python.
+This page reflects `@resonatehq/sdk` v0.10.2 (current on npm) and `resonate-sdk` v0.6.7 for Python.
 
 
 **Are you coming from Temporal?**
@@ -8793,7 +8800,7 @@ Useful follow-up prompts:
 |---|---|---|---|
 | `script` | yes | — | Inline bash script. Will be base64-encoded into `param.data` for you. |
 | `target` | no | `bash://` | Where the script runs. See [target addresses](#target-addresses). |
-| `timeout_ms` | no | 5 min | Promise deadline relative to now. |
+| `timeoutMs` | no | 5 min | Promise deadline relative to now (milliseconds). |
 | `id` | no | `bash-<millis>-<nanos>` | Deterministic promise id for idempotency. |
 | `tags` | no | — | JSON object merged into promise tags (`resonate:target` is set automatically). |
 
@@ -9324,7 +9331,7 @@ title: Async HTTP APIs
 A FastAPI gateway converts every inbound request into a durable workflow, returns a promise ID immediately, and exposes a `/wait` endpoint clients poll for completion.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
 
 
 
@@ -9658,7 +9665,7 @@ title: Async RPC
 A gateway calls service A, which calls service B, which calls service C. Each step uses Resonate's remote function invocation APIs, so the entire chain is durable — a crash on any service resumes the call without re-running prior steps.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server.
 
 
 
@@ -9894,7 +9901,7 @@ title: Deep research agent
 A research agent receives a broad topic, asks an LLM to break it into 2–3 subtopics, and recursively dispatches each subtopic to itself. Every LLM call and every recursive subagent is a durable promise — kill the worker mid-research, the tree resumes from the last unanswered branch.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
 
 
 
@@ -10134,7 +10141,7 @@ title: Cloud Run workers
 A countdown workflow running as a single Google Cloud Function. The function sleeps between notifications via `ctx.sleep`, terminating the container while suspended. Resonate fires the function back up at the right time and the workflow continues from the next iteration — long-running logic on short-lived compute.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.1 + `@resonatehq/gcp` for the Cloud Functions adapter. Python and Rust adapters are forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.2 + `@resonatehq/gcp` for the Cloud Functions adapter. Python and Rust adapters are forthcoming.
 
 
 
@@ -10239,7 +10246,7 @@ title: Lambda workers
 A Lambda function behind API Gateway acts as a stateless trigger. `POST /process-document` fires a durable Resonate workflow and returns `202` immediately. The workflow itself — download, OCR, LLM analysis, storage, notification — runs on a Resonate worker that doesn't share Lambda's 15-minute ceiling.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
 
 
 
@@ -10473,7 +10480,7 @@ title: Durable sleep
 A workflow yields `ctx.sleep` and the runtime suspends it. Hours, days, or weeks later the worker wakes the workflow up exactly where it stopped — no cron, no scheduler, no external state.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
 
 
 
@@ -10738,7 +10745,7 @@ title: Fan-out / fan-in
 A workflow spawns four notification channels (email, SMS, Slack, push) in parallel and joins their results. Total wall time approaches the slowest channel, not the sum. If one channel fails and retries, the others stay checkpointed — they don't re-send.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
 
 
 
@@ -10969,7 +10976,7 @@ title: Hello world
 The smallest example that exercises the durable execution loop. A registered workflow function calls two leaf functions through `ctx.run`, and Resonate checkpoints each return value.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x. Rust: 0.4.0, in active development.
 
 
 
@@ -11187,7 +11194,7 @@ title: Human-in-the-loop
 A workflow blocks on a durable promise, prints a callback URL, and resumes the moment a human resolves it — from any process, any machine, any time.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development — pulled as a git dependency from `resonate-sdk-rs` until it ships on crates.io.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development — published on crates.io as `resonate-sdk`; this example pulls it as a git dependency from `resonate-sdk-rs` to track `main`.
 
 
 
@@ -11531,7 +11538,7 @@ title: Kafka worker
 A consumer pulls messages from a Kafka topic and dispatches each one through a durable Resonate workflow. Per-message state lives in durable promises, so a worker that dies mid-batch resumes cleanly without redoing completed steps.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
 
 
 
@@ -11835,7 +11842,7 @@ title: Load balancing
 Run several workers in the same group. Calls to `target: "poll://any@<group>"` get dispatched to whichever worker claims them first. When a worker dies mid-execution, Resonate reassigns the work to a survivor — no service registry, no leader election, no glue.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
 
 
 
@@ -12118,7 +12125,7 @@ title: Money transfer
 A workflow debits the source account, credits the target account, and returns confirmations. Each account update is a durable checkpoint, the transfer ID is the idempotency key, and the same ID retried in seconds, hours, or days returns the cached result instead of double-spending.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x. Rust: 0.4.0, in active development.
 
 
 
@@ -12355,7 +12362,7 @@ title: Multi-agent orchestration
 Three specialist agents — researcher, writer, reviewer — chained through an orchestrator. Each agent's output is a durable checkpoint, so a flaky LLM call mid-pipeline retries only the failing agent and the prior outputs stay cached.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
 
 
 
@@ -12553,7 +12560,7 @@ title: Recursive factorial
 A workflow that computes `n!` by calling itself with `n-1`. Each recursive call dispatches via `ctx.rpc` to whichever worker in the group claims it — recursion ends up distributed across machines without any explicit coordination, and every step is checkpointed so a worker crash mid-recursion resumes cleanly.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
 
 
 
@@ -12840,7 +12847,7 @@ title: Schedule
 Register a function to run on a cron expression and Resonate handles the rest. Every fired execution is a durable workflow — a worker that crashes mid-run hands off to a survivor, and a missed run because all workers were down still gets dispatched when one comes back.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
 
 
 
@@ -13089,7 +13096,7 @@ title: Webhook handler
 A webhook receives a payment event, kicks off a durable workflow keyed by the provider's event ID, and acknowledges immediately. Duplicate deliveries (network retries, slow ACKs) reconnect to the in-flight execution rather than re-charging the card. A crash mid-processing resumes from the next unfinished step.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.1 (current). Python: `resonate-sdk` v0.6.x. Rust example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x. Rust example repo is forthcoming.
 
 
 

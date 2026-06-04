@@ -8,14 +8,14 @@ keywords:
   - configuration
 ---
 
-The Resonate Server delivers task messages to workers over a configurable set of transports. As of v0.9.5, four transports ship in the server binary:
+The Resonate Server delivers task messages to workers over a configurable set of transports. As of v0.9.7, four transports ship in the server binary:
 
 | Transport | Address scheme | Enable flag | Default |
 |---|---|---|---|
 | HTTP push | `http://` / `https://` | `--transports-http-push-enabled` | `true` |
 | HTTP poll (SSE) | (used by SDK clients that long-poll the server) | `--transports-http-poll-enabled` | `true` |
 | GCP Pub/Sub | `gcps://` | `--transports-gcps-enabled` | `false` |
-| Bash exec | `bash:///` | `--transports-bash-exec-enabled` | `false` |
+| Bash exec | `bash://` | `--transports-bash-exec-enabled` | `false` |
 
 Each transport can be turned on or off independently. The full CLI flag list is on the [Run a server](/deploy/run-server#cli-flags) page; the equivalent `resonate.toml` keys live under `[transports.<name>]`.
 
@@ -55,7 +55,7 @@ Authentication uses Application Default Credentials (ADC) — make sure the serv
 
 ## Bash exec
 
-The bash exec transport runs a shell command on the server host for each delivered task. It's intended for local-process workers, lightweight wrappers around CLI tools, and self-hosted single-host deployments where running a separate worker process is overkill.
+The bash exec transport runs an inline shell script for each delivered task. It's intended for local-process workers, lightweight wrappers around CLI tools, agent sandboxes, and self-hosted single-host deployments where running a separate worker process is overkill.
 
 The transport is **disabled by default**. Enable it explicitly:
 
@@ -68,50 +68,48 @@ Or in `resonate.toml`:
 ```toml
 [transports.bash_exec]
 enabled = true
-# Required for named scripts; not required for inline scripts.
-root_dir = "/etc/resonate/scripts"
-# Working directory for named-script execution. One of:
-#   "<root>"   — CWD is set to root_dir (default)
-#   "<script>" — CWD is set to the script's parent directory
-#   any path   — CWD is set to that literal path
-working_dir = "<root>"
 ```
 
+Or via env var: `RESONATE_TRANSPORTS__BASH_EXEC__ENABLED=true`.
+
+Enabling is the only configuration the transport takes — there are no script-directory or working-directory settings.
+
 <Callout type="caution" title="Security">
-The bash exec transport runs arbitrary shell commands as the user running the server. Only enable it on hosts where every promise creator is trusted, and prefer named scripts (with `root_dir` set to a non-writable directory) over inline scripts in production.
+The bash exec transport runs arbitrary shell scripts. The **local** backend runs them as the user running the server, so only enable it on hosts where every promise creator is trusted. The **docker** and **tensorlake** backends isolate execution in a container or remote sandbox.
 </Callout>
 
-### Address forms
+### Backends
 
-A task address controls how bash exec runs the command:
+The script body is always **inline** — it travels in the promise's `param.data` (base64-encoded). The task address selects which backend runs it:
 
-| Address | Mode | What runs |
+| Address | Backend | What runs |
 |---|---|---|
-| `bash:///` | Inline | The script body is `param.data` on the promise (base64-encoded) |
-| `bash:///relative/path.sh` | Named script | The file at `<root_dir>/relative/path.sh` is invoked with arguments from `param.data` |
+| `bash://` | Local | `bash -c "<script>"` on the server host |
+| `bash://docker/<image>` | Docker | `docker run --rm <image> bash -c "<script>"` (requires the `docker` CLI on the server host) |
+| `bash://tensorlake/<image>` | Tensorlake | the script in a [Tensorlake](https://tensorlake.ai) sandbox; requires `TENSORLAKE_API_KEY` in the server's environment. An empty `<image>` uses Tensorlake's default sandbox |
 
-In both modes the server sets `RESONATE_PROMISE_ID` in the script's environment so the script can correlate logs, metrics, or follow-on calls back to the originating promise.
+Named scripts (a filesystem path after the scheme, e.g. `bash:///path/to/script.sh`) are **not supported** — `bash://` carries no path, and the local backend rejects an address that includes one.
 
 ### Inline scripts
 
-For inline scripts, set the promise's `param.data` to the base64-encoded script body:
+Set the promise's `param.data` to the base64-encoded script body:
 
 ```bash
 echo -n 'echo "hello from $RESONATE_PROMISE_ID"' | base64
 # ZWNobyAiaGVsbG8gZnJvbSAkUkVTT05BVEVfUFJPTUlTRV9JRCI=
 ```
 
-Then create a task targeting `bash:///` with that base64 as `param.data`. The server invokes `bash -c "<decoded script>"`.
+Then create a task targeting `bash://` (or `bash://docker/<image>` / `bash://tensorlake/<image>`) with that base64 as `param.data`.
 
-### Named scripts
+### Script environment
 
-Set `bash_exec.root_dir` in config, place an executable script at e.g. `<root_dir>/build/release.sh`, and target `bash:///build/release.sh`. Pass arguments by setting `param.data` to a JSON array of strings:
+The server sets three variables in the script's environment. All three are **stable across retries**, so a re-delivered task reproduces the same values:
 
-```json
-["v1.2.3", "production"]
-```
-
-The server invokes `bash <root_dir>/build/release.sh v1.2.3 production` with `RESONATE_PROMISE_ID` in the environment.
+| Variable | Value |
+|---|---|
+| `RESONATE_PROMISE_ID` | the originating promise id (correlate logs, metrics, or follow-on calls) |
+| `RESONATE_PROMISE_CREATED_AT` | promise creation time, epoch milliseconds |
+| `RESONATE_PROMISE_TIMEOUT_AT` | promise timeout, epoch milliseconds |
 
 ### Settle behavior
 
@@ -120,9 +118,13 @@ The promise is settled from the script's exit status:
 - **Exit `0`** — the promise resolves with the script's `stdout` (trimmed of trailing whitespace) as the resolved value.
 - **Exit non-zero** — the promise rejects. The rejection reason is the script's `stderr` if non-empty, otherwise the literal string `exit code N`.
 
-A failure to spawn `bash`, a missing named script, or malformed `param.data` (e.g. non-array JSON for a named script) all cause the promise to reject with a descriptive reason.
+A failure to spawn the backend — for example `docker` not on `PATH`, or a missing `TENSORLAKE_API_KEY` — rejects the promise with a descriptive reason.
 
-While the script runs, the server refreshes the task lease at one third of `tasks.lease_timeout` so long-running scripts don't lose their lease.
+If the script is **killed by a signal** (a local kill, a docker OOM, or an exceeded Tensorlake sandbox lifetime), the run is treated as an infrastructure failure rather than a workflow failure: the task is dropped, the lease expires, and the message is re-dispatched to a fresh worker.
+
+While the script runs, the server refreshes the task lease so long-running scripts don't lose it.
+
+For the `resonate-bash` MCP tool, which drives this transport from Claude Code, see [Durable bash](/get-started/claude-code).
 
 ## Planned
 

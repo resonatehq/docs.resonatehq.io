@@ -9,7 +9,7 @@ keywords:
 ---
 
 <Callout type="caution" title="Early development">
-The Rust SDK is at 0.4.0 and in active development. APIs may change between releases. It is not yet published on crates.io.
+The Rust SDK is at 0.4.0 and in active development. APIs may change between releases.
 </Callout>
 
 Whether you are a human or an AI agent, this skill guide will help you develop applications using the Resonate Rust SDK.
@@ -25,14 +25,19 @@ If you have a use case in mind, but haven't built with Resonate before, we recom
 
 **How to install the Resonate Rust SDK into your project.**
 
-The Rust SDK is not yet published on crates.io.
-Add it as a git dependency in your `Cargo.toml`:
+The Rust SDK is published on crates.io as `resonate-sdk`. Add it to your `Cargo.toml`:
 
 ```toml title="Cargo.toml"
 [dependencies]
-resonate = { package = "resonate-sdk", git = "https://github.com/resonatehq/resonate-sdk-rs", branch = "main" }
+resonate = { package = "resonate-sdk", version = "0.4" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
+```
+
+To track the latest unreleased changes instead, depend on the `main` branch directly:
+
+```toml
+resonate = { package = "resonate-sdk", git = "https://github.com/resonatehq/resonate-sdk-rs", branch = "main" }
 ```
 
 Once added, you can import the Resonate prelude and start using the SDK:

@@ -259,7 +259,7 @@ Useful follow-up prompts:
 |---|---|---|---|
 | `script` | yes | — | Inline bash script. Will be base64-encoded into `param.data` for you. |
 | `target` | no | `bash://` | Where the script runs. See [target addresses](#target-addresses). |
-| `timeout_ms` | no | 5 min | Promise deadline relative to now. |
+| `timeoutMs` | no | 5 min | Promise deadline relative to now (milliseconds). |
 | `id` | no | `bash-<millis>-<nanos>` | Deterministic promise id for idempotency. |
 | `tags` | no | — | JSON object merged into promise tags (`resonate:target` is set automatically). |
 
