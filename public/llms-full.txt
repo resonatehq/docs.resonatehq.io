@@ -2279,7 +2279,7 @@ The script body is always **inline** — it travels in the promise's `param.data
 | Address | Backend | What runs |
 |---|---|---|
 | `bash://` | Local | `bash -c "<script>"` on the server host |
-| `bash://docker/<image>` | Docker | `docker run --rm <image> bash -c "<script>"` (requires the `docker` CLI on the server host) |
+| `bash://docker/<image>` | Docker | `docker run --rm --entrypoint bash <image> -c "<script>"` (requires the `docker` CLI on the server host; the promise environment variables are passed through with `-e`) |
 | `bash://tensorlake/<image>` | Tensorlake | the script in a [Tensorlake](https://tensorlake.ai) sandbox; requires `TENSORLAKE_API_KEY` in the server's environment. An empty `<image>` uses Tensorlake's default sandbox |
 
 Named scripts (a filesystem path after the scheme, e.g. `bash:///path/to/script.sh`) are **not supported** — `bash://` carries no path, and the local backend rejects an address that includes one.
@@ -2312,7 +2312,7 @@ The promise is settled from the script's exit status:
 - **Exit `0`** — the promise resolves with the script's `stdout` (trimmed of trailing whitespace) as the resolved value.
 - **Exit non-zero** — the promise rejects. The rejection reason is the script's `stderr` if non-empty, otherwise the literal string `exit code N`.
 
-A failure to spawn the backend — for example `docker` not on `PATH`, or a missing `TENSORLAKE_API_KEY` — rejects the promise with a descriptive reason.
+A failure to spawn the backend — for example `docker` not on `PATH`, or a missing `TENSORLAKE_API_KEY` — rejects the promise with a descriptive reason, as does a `param.data` that is missing or not valid base64/UTF-8.
 
 If the script is **killed by a signal** (a local kill, a docker OOM, or an exceeded Tensorlake sandbox lifetime), the run is treated as an infrastructure failure rather than a workflow failure: the task is dropped, the lease expires, and the message is re-dispatched to a fresh worker.
 
