@@ -19,6 +19,7 @@
 - [Tracing](/deploy/tracing): OpenTelemetry tracing for Resonate applications.
 - [Upgrade server](/deploy/upgrade-server): Upgrade the Resonate server to a new version.
 - [Constraints and gotchas](/develop/constraints): Understanding the rules and limitations when building with Resonate.
+- [Go SDK skills](/develop/go): APIs that stay simple, even when your use cases aren't
 - [Develop with Resonate](/develop): Build distributed applications without the distributed systems complexity.
 - [Python SDK skills](/develop/python): APIs that stay simple, even when your use cases aren’t
 - [Rust SDK skills](/develop/rust): APIs that stay simple, even when your use cases aren't
