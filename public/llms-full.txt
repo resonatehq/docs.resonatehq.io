@@ -13942,6 +13942,18 @@ serde = { version = "1", features = ["derive"] }
 
 
 
+Requires **Go 1.22** or later.
+
+```shell
+go get github.com/resonatehq/resonate-sdk-go@latest
+```
+
+No semver tag is published yet — `@latest` resolves to the latest `main` commit. See the [Go SDK guide](/develop/go) for details.
+
+
+
+
+
 ## Write a function
 
 A countdown loop that survives restarts — minutes, hours, or days.
@@ -14042,6 +14054,73 @@ async fn main() {
 
 
 
+```go title="main.go"
+package main
+
+import (
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	resonate "github.com/resonatehq/resonate-sdk-go"
+)
+
+// CLI args arrive as a slice: `--arg 5 --arg 60` becomes args[0]=5, args[1]=60.
+func countdown(ctx *resonate.Context, args []int) (struct{}, error) {
+	count, delay := args[0], args[1]
+	for i := count; i > 0; i-- {
+		// Run a function, persist its result
+		f, err := ctx.Run(notify, i)
+		if err != nil {
+			return struct{}{}, err
+		}
+		if err := f.Await(nil); err != nil {
+			return struct{}{}, err
+		}
+		// Sleep
+		s, err := ctx.Sleep(time.Duration(delay) * time.Second)
+		if err != nil {
+			return struct{}{}, err
+		}
+		if err := s.Await(nil); err != nil {
+			return struct{}{}, err
+		}
+	}
+	fmt.Println("Done!")
+	return struct{}{}, nil
+}
+
+func notify(i int) (struct{}, error) {
+	fmt.Printf("Countdown: %d\n", i)
+	return struct{}{}, nil
+}
+
+func main() {
+	// Instantiate Resonate
+	r, err := resonate.New(resonate.Config{URL: "http://localhost:8001"})
+	if err != nil {
+		log.Fatalf("resonate.New: %v", err)
+	}
+	// Register the function
+	if _, err := resonate.Register(r, "countdown", countdown); err != nil {
+		log.Fatalf("Register: %v", err)
+	}
+	// Keep the worker alive to receive work
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	<-sig
+}
+```
+
+[Working example](https://github.com/resonatehq-examples/example-quickstart-go)
+
+
+
+
+
 ## Start the server
 
 ```shell
@@ -14072,6 +14151,14 @@ python countdown.py
 
 ```shell
 cargo run
+```
+
+
+
+
+
+```shell
+go run .
 ```
 
 
@@ -14122,6 +14209,20 @@ Done!
 
 ```shell
 cargo run
+Countdown: 5
+Countdown: 4
+Countdown: 3
+Countdown: 2
+Countdown: 1
+Done!
+```
+
+
+
+
+
+```shell
+go run .
 Countdown: 5
 Countdown: 4
 Countdown: 3
