@@ -1,3 +1,4 @@
 {
-  "title": "Develop"
+  "title": "Develop",
+  "pages": ["typescript", "python", "rust", "go", "constraints"]
 }

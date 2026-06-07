@@ -5058,7 +5058,7 @@ If you are unsure, please refer to [Why Resonate](/evaluate/why-resonate#the-thr
 
 It's important to think about the potential architecture of your application as it ties to your use case.
 This can determine which APIs and options you will use for function activations.
-If you have a use case in mind, but haven't built with Resonate before, we recommend reviewing some of the common patterns in our [example applications](/get-started/examples) — the Go examples (`example-hello-world-go`, `example-fan-out-fan-in-go`, `example-saga`-style trips, and more) live in the [`resonatehq-examples`](https://github.com/resonatehq-examples) org.
+If you have a use case in mind, but haven't built with Resonate before, we recommend reviewing some of the common patterns in our [example applications](/get-started/examples) — the Go examples (`example-hello-world-go`, `example-fan-out-fan-in-go`, `example-human-in-the-loop-go`, and more) live in the [`resonatehq-examples`](https://github.com/resonatehq-examples) org.
 
 ## Installation
 
@@ -5317,7 +5317,7 @@ h, err := greetFn.Run(ctx, "greet-1", GreetArgs{Name: "world"}, resonate.RunOpti
 | `Timeout` | Caps the root promise deadline. Zero uses `DefaultTopLevelTimeout` (24 h). |
 | `Target` | Logical routing address (the `resonate:target` tag). Empty falls back to the configured group. |
 | `Tags` | Merged into the root promise's tag set. |
-| `RetryPolicy` | Re-execution policy when the function returns an error. Nil applies `DefaultRetryPolicy`. See [Retries](#retries). |
+| `RetryPolicy` | Re-execution policy when the function returns an error. Nil applies `DefaultRetryPolicy`. Only takes effect when this worker wins the create-and-acquire race and runs the function locally; a task picked up by another worker via server push always uses `DefaultRetryPolicy`. See [Retries](#retries). |
 | `Version` | Reserved for future use — declared but not yet consumed ([issue #5](https://github.com/resonatehq/resonate-sdk-go/issues/5)). |
 
 ### `Resonate.RPC`
@@ -5732,6 +5732,7 @@ Each SDK page is self-contained with complete examples and API references. Pick 
 - [TypeScript SDK guide](/develop/typescript)
 - [Python SDK guide](/develop/python)
 - [Rust SDK guide](/develop/rust)
+- [Go SDK guide](/develop/go)
 
 ---
 
