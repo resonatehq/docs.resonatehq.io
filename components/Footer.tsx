@@ -13,8 +13,8 @@ const footerLinks = {
     { label: "GitHub", href: "https://github.com/resonatehq" },
     { label: "Journal", href: "https://journal.resonatehq.io" },
     { label: "RSVP", href: "https://resonatehq.io/rsvp" },
-    { label: "X / Twitter", href: "https://x.com/resonaborated" },
-    { label: "LinkedIn", href: "https://www.linkedin.com/company/resonatehq" },
+    { label: "X / Twitter", href: "https://x.com/resonatehqio" },
+    { label: "LinkedIn", href: "https://www.linkedin.com/company/resonatehqio" },
   ],
   company: [
     { label: "Home", href: "https://www.resonatehq.io" },
