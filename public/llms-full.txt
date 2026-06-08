@@ -5048,7 +5048,7 @@ url: /develop/go
 title: Go SDK skills
 ---
 
-The Go SDK has no semver-tagged release yet and is in active development. APIs may change before the first tag is cut. Pin a specific commit (or track `@main`) and check the [open issues](https://github.com/resonatehq/resonate-sdk-go/issues) for known gaps. The internal protocol is stable; the Go API surface is still settling.
+The Go SDK has no semver-tagged release yet and is in active development. APIs may change before the first tag is cut. Use `@latest` to track the most recent `main`, or pin a specific commit for stability, and check the [open issues](https://github.com/resonatehq/resonate-sdk-go/issues) for known gaps. The internal protocol is stable; the Go API surface is still settling.
 
 
 Whether you are a human or an AI agent, this skill guide will help you develop applications using the Resonate Go SDK.
@@ -5070,7 +5070,7 @@ The Go SDK is a standard Go module. Add it with `go get`:
 go get github.com/resonatehq/resonate-sdk-go@latest
 ```
 
-No semver tag is published yet — `@latest` resolves to a Go module pseudo-version pinned to the latest `main` commit. Pin to a specific commit if you need stability before the first tag is cut:
+No semver tag is published yet — `@latest` resolves to a Go module pseudo-version (a generated string like `v0.0.0-<timestamp>-<commit>`) pinned to the latest `main` commit. Pin to a specific commit if you need stability before the first tag is cut:
 
 ```shell
 go get github.com/resonatehq/resonate-sdk-go@<commit-sha>
@@ -5613,7 +5613,7 @@ The Go SDK ships with these key defaults:
 - **Child `ctx.Run` / `ctx.RPC` / `ctx.Promise` / `ctx.Sleep` timeout** — `DefaultChildTimeout = 24h` when the call's `Timeout` is zero (capped at the parent's remaining deadline).
 - **`DefaultRetryPolicy`** — `ExponentialRetry{MaxAttempts: 3, Base: 100ms, Max: 30s, Jitter: true}`, applied when `RetryPolicy` is nil.
 
-For the full table, per-SDK comparison, and source citations, see the [Defaults reference](/reference/defaults).
+The values above are the Go defaults. For server defaults and the TypeScript/Python/Rust comparison with source citations, see the [Defaults reference](/reference/defaults).
 
 ---
 
