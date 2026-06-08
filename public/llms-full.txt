@@ -14115,6 +14115,8 @@ func main() {
 }
 ```
 
+Go's `Register` takes a single args type, so the CLI's `--arg 5 --arg 60` arrives as `[]int{5, 60}`. Most workflows use a named struct instead — see the [Go SDK guide](/develop/go).
+
 [Working example](https://github.com/resonatehq-examples/example-quickstart-go)
 
 
