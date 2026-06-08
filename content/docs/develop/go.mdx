@@ -1,0 +1,578 @@
+---
+title: Go SDK skills
+pageTitle: Skill Guide | Go SDK
+description: APIs that stay simple, even when your use cases aren't
+keywords:
+  - go
+  - golang
+  - skill-guide
+  - resonate-sdk
+---
+
+<Callout type="caution" title="Pre-release">
+The Go SDK has no semver-tagged release yet and is in active development. APIs may change before the first tag is cut. Use `@latest` to track the most recent `main`, or pin a specific commit for stability, and check the [open issues](https://github.com/resonatehq/resonate-sdk-go/issues) for known gaps. The internal protocol is stable; the Go API surface is still settling.
+</Callout>
+
+Whether you are a human or an AI agent, this skill guide will help you develop applications using the Resonate Go SDK.
+
+This skill sheet assumes that you already know Resonate is a good fit for your use case.
+If you are unsure, please refer to [Why Resonate](/evaluate/why-resonate#the-three-pillars).
+
+It's important to think about the potential architecture of your application as it ties to your use case.
+This can determine which APIs and options you will use for function activations.
+If you have a use case in mind, but haven't built with Resonate before, we recommend reviewing some of the common patterns in our [example applications](/get-started/examples) — the Go examples (`example-hello-world-go`, `example-fan-out-fan-in-go`, `example-human-in-the-loop-go`, and more) live in the [`resonatehq-examples`](https://github.com/resonatehq-examples) org.
+
+## Installation
+
+**How to install the Resonate Go SDK into your project.**
+
+The Go SDK is a standard Go module. Add it with `go get`:
+
+```shell
+go get github.com/resonatehq/resonate-sdk-go@latest
+```
+
+No semver tag is published yet — `@latest` resolves to a Go module pseudo-version (a generated string like `v0.0.0-<timestamp>-<commit>`) pinned to the latest `main` commit. Pin to a specific commit if you need stability before the first tag is cut:
+
+```shell
+go get github.com/resonatehq/resonate-sdk-go@<commit-sha>
+```
+
+Once added, import the package (the canonical import alias is `resonate`):
+
+```go
+import resonate "github.com/resonatehq/resonate-sdk-go"
+```
+
+The in-process transport used for local development lives in a leaf subpackage:
+
+```go
+import "github.com/resonatehq/resonate-sdk-go/localnet"
+```
+
+## Initialization
+
+**How to initialize a Resonate instance.**
+
+Initializing a Resonate instance gives you the APIs needed to register, activate, and await durable functions.
+
+```go title="main.go"
+import resonate "github.com/resonatehq/resonate-sdk-go"
+
+r, err := resonate.New(resonate.Config{URL: "http://localhost:8001"})
+if err != nil {
+    log.Fatalf("resonate.New: %v", err)
+}
+defer func() { _ = r.Stop() }()
+```
+
+- A Resonate instance can connect to either an in-process local network (best for development) or a remote Resonate Server (best for production).
+- A Resonate instance is used in the Ephemeral World to register and activate functions — it cannot be used inside Durable Functions. Use the [Context APIs](#context-apis) for function activations inside Durable Functions.
+
+`resonate.New` selects its network using the following precedence:
+
+1. `Config.URL` — when set, the SDK builds a default HTTP transport pointing at this address.
+2. `Config.Network` — an explicitly constructed transport (used when `URL` is empty).
+3. `RESONATE_URL` environment variable — consulted when both `URL` and `Network` are empty.
+
+If none of the three is set, `New` returns `resonate.ErrNetworkRequired`.
+
+The full set of `Config` fields:
+
+| Field | Type | Default | Purpose |
+|---|---|---|---|
+| `URL` | `string` | _unset_ | Builds a default HTTP transport at this address. Takes precedence over `Network` and `RESONATE_URL`. |
+| `Network` | `Network` | _nil_ | An explicitly constructed transport (e.g. `localnet.NewLocal(...)` or `httpnet.NewHTTP(...)`). Used when `URL` is empty. |
+| `Heartbeat` | `Heartbeat` | `AsyncHeartbeat` at `TTL/2` | Keeps an acquired task's lease alive. Pass `resonate.NoopHeartbeat{}` for local mode. |
+| `Encryptor` | `Encryptor` | `NoopEncryptor` | Controls codec encryption at the durability boundary. |
+| `TTL` | `time.Duration` | `60s` | Per-task lease duration. |
+| `Prefix` | `string` | _empty_ | Prepended (with `:`) to every promise/task ID created by `Run`, `RPC`, or `Get`. |
+| `Token` | `string` | _unset_ | Sent as Bearer auth on every protocol request. |
+
+<Callout type="note" title="Worker groups are set on the transport, not on Config">
+There is no `Group` field on `Config`. To run under a named routing group, construct the transport explicitly and pass it as `Config.Network`:
+
+```go
+import "github.com/resonatehq/resonate-sdk-go/httpnet"
+
+r, err := resonate.New(resonate.Config{
+    Network: httpnet.NewHTTP("http://localhost:8001", httpnet.HTTPOptions{
+        Group: "worker-group-a",
+    }),
+})
+```
+
+`Config.URL` is shorthand for an `httpnet.NewHTTP(url, httpnet.HTTPOptions{})` transport, which uses the default group (`"default"`).
+</Callout>
+
+### Zero-dependency development
+
+Unlike other Durable Execution offerings, apart from installing the SDK itself, Resonate enables you to get started without any additional dependencies.
+This is because Resonate can run in a local development mode (`localnet`) that runs the server state machine in-process, using in-memory storage for promises and tasks.
+
+```go title="main.go"
+import (
+    resonate "github.com/resonatehq/resonate-sdk-go"
+    "github.com/resonatehq/resonate-sdk-go/localnet"
+)
+
+pid := "dev-worker"
+r, err := resonate.New(resonate.Config{
+    Network:   localnet.NewLocal("default", &pid),
+    Heartbeat: resonate.NoopHeartbeat{}, // localnet has no lease endpoint to heartbeat against
+})
+```
+
+<Callout type="caution" title="`localnet` requires `NoopHeartbeat{}`">
+The default `AsyncHeartbeat` issues HTTP keep-alive requests to keep a task lease alive. `localnet` has no such endpoint, so you must set `Heartbeat: resonate.NoopHeartbeat{}` when using it — otherwise the heartbeat loop errors against a transport that can't serve it.
+</Callout>
+
+Local development mode can be suitable for a while.
+However, when you want to run multiple worker processes, persist state across restarts, or share work between machines, you will need to connect to a Resonate Server.
+See the [Quickstart guide](/get-started/quickstart) or [How to run a Resonate Server](/deploy/run-server) for guidance on getting a server up and running.
+
+### Authentication
+
+The Go SDK supports token-based authentication (JWT) when connecting to a secured Resonate Server. Set `Config.Token`:
+
+```go title="main.go"
+r, err := resonate.New(resonate.Config{
+    URL:   "https://localhost:8001",
+    Token: os.Getenv("RESONATE_TOKEN"),
+})
+```
+
+<Callout type="tip" title="Token-based authentication is recommended for production. See the [Security & Authentication](/deploy/security) guide for detailed configuration, best practices, and server setup.">
+
+</Callout>
+
+### Environment variables
+
+The Go SDK's constructor inspects a single environment variable:
+
+#### `RESONATE_URL`
+
+- Provides the full base URL (scheme, host, and port) for connecting to a remote Resonate server. Used only when neither `Config.URL` nor `Config.Network` is set.
+- Default is _unset_ (no network — `New` returns `ErrNetworkRequired`).
+- Example:
+
+  ```bash
+  export RESONATE_URL="http://localhost:8001"
+  ```
+
+  ```go
+  r, err := resonate.New(resonate.Config{}) // picks up RESONATE_URL
+  ```
+
+<Callout type="note" title="Go reads only `RESONATE_URL` from the environment">
+Unlike some sibling SDKs, the Go SDK does not consult `RESONATE_HOST` / `RESONATE_PORT` / `RESONATE_SCHEME` / `RESONATE_TOKEN` / `RESONATE_PREFIX`. Token, prefix, and group are set explicitly on `Config` or the transport. The single env hook is `RESONATE_URL`.
+</Callout>
+
+## Defining durable functions
+
+**How to write a function that Resonate can run durably.**
+
+A durable function in Go is an ordinary Go function — there is no attribute or wrapper macro. Every durable function must return exactly two values, `(T, error)`, where `T` is any JSON-serializable type. There are two ways a function enters the system, and they have different signature rules.
+
+**Registered functions** — anything you pass to [`resonate.Register`](#resonateregister) (so it can be invoked by name via `RPC`, the CLI, or as a top-level `Run` entrypoint) must have the canonical signature:
+
+```go
+func(*resonate.Context, A) (R, error)
+```
+
+`Register` is generic over `A` (the args type) and `R` (the result type), so both parameters are required. Use `struct{}` for `A` when the function takes no input, and for `R` when it produces no meaningful result.
+
+```go
+import resonate "github.com/resonatehq/resonate-sdk-go"
+
+type GreetArgs struct {
+    Name string `json:"name"`
+}
+
+// Registered workflow — orchestrates sub-tasks via the Context.
+func greetWorkflow(ctx *resonate.Context, args GreetArgs) (string, error) {
+    var msg string
+    f, err := ctx.Run(formatGreeting, args.Name)
+    if err != nil {
+        return "", err
+    }
+    if err := f.Await(&msg); err != nil {
+        return "", err
+    }
+    return msg, nil
+}
+
+// A registered workflow with no input and no result.
+func cleanup(ctx *resonate.Context, _ struct{}) (struct{}, error) {
+    // ...
+    return struct{}{}, nil
+}
+```
+
+**Leaf functions invoked via `ctx.Run`** — a function you only ever hand to [`ctx.Run`](#ctxrun) (never register by name) may use a leaner shape. `ctx.Run` resolves the signature by reflection and accepts any of:
+
+| Signature | Kind |
+|---|---|
+| `func(*resonate.Context, A) (R, error)` | Takes the Context and args |
+| `func(*resonate.Context) (R, error)` | Takes the Context, no args |
+| `func(A) (R, error)` | Stateless leaf with args |
+| `func() (R, error)` | Stateless leaf, no args |
+
+```go
+// Leaf — stateless computation, no Context needed. Valid as a ctx.Run target.
+func formatGreeting(name string) (string, error) {
+    return fmt.Sprintf("hello, %s!", name), nil
+}
+```
+
+<Callout type="note" title="Args are JSON-serialized into the durable promise">
+The args value is encoded into the durable promise's payload so the workflow can resume on any worker that has the function registered. Use exported struct fields with `json` tags for anything you want carried across a crash or a remote dispatch.
+</Callout>
+
+## Client APIs
+
+The following Client APIs are used in the Ephemeral World — they cannot be used inside Durable Functions.
+
+### `resonate.Register`
+
+Register a durable function to expose it to the Resonate system.
+A registered function can then be activated by the Resonate Client, the Resonate CLI, or from inside another Durable Function via the Context APIs.
+
+`Register` is a package-level generic function (Go has no method-level generics): it takes the Resonate instance, a name, and the function, and returns a typed handle whose `Run` method carries the function's result type.
+
+```go
+greetFn, err := resonate.Register(r, "greet", greetWorkflow)
+if err != nil {
+    log.Fatalf("Register: %v", err)
+}
+```
+
+### `RegisteredFunc.Run`
+
+`Run` invokes a registered function in the **same process** and returns a typed handle.
+You can think of it as a "run right here" invocation.
+After invocation, the function is durable and will recover in another process if required.
+
+```go
+// greetFn is the *RegisteredFunc returned by resonate.Register
+h, err := greetFn.Run(ctx, "greet-1", GreetArgs{Name: "world"})
+if err != nil {
+    log.Fatalf("Run: %v", err)
+}
+
+result, err := h.Result(ctx) // typed: returns (string, error)
+```
+
+`Run` accepts an optional `resonate.RunOptions`:
+
+```go
+h, err := greetFn.Run(ctx, "greet-1", GreetArgs{Name: "world"}, resonate.RunOptions{
+    Timeout:     60 * time.Second,
+    Target:      "poll://any@workers",
+    Tags:        map[string]string{"team": "checkout"},
+    RetryPolicy: resonate.ConstantRetry{MaxAttempts: 3, Delay: time.Second},
+})
+```
+
+| `RunOptions` field | Purpose |
+|---|---|
+| `Timeout` | Caps the root promise deadline. Zero uses `DefaultTopLevelTimeout` (24 h). |
+| `Target` | Logical routing address (the `resonate:target` tag). Empty falls back to the configured group. |
+| `Tags` | Merged into the root promise's tag set. |
+| `RetryPolicy` | Re-execution policy when the function returns an error. Nil applies `DefaultRetryPolicy`. Only takes effect when this worker wins the create-and-acquire race and runs the function locally; a task picked up by another worker via server push always uses `DefaultRetryPolicy`. See [Retries](#retries). |
+| `Version` | Reserved for future use — declared but not yet consumed ([issue #5](https://github.com/resonatehq/resonate-sdk-go/issues/5)). |
+
+### `Resonate.RPC`
+
+`RPC` (Remote Procedure Call) invokes a function in a **remote process** by registered name and returns an untyped handle.
+You can think of it as a "run somewhere else" invocation.
+The target function does not need to be registered locally.
+
+```go
+h, err := r.RPC(ctx, "greet-1", "greet", GreetArgs{Name: "world"})
+if err != nil {
+    log.Fatalf("RPC: %v", err)
+}
+
+var result string
+if err := h.Result(ctx, &result); err != nil {
+    log.Fatalf("Result: %v", err)
+}
+```
+
+`RPC` accepts an optional `resonate.RPCOptions` (`Timeout`, `Target`, `Tags`, `Version`).
+
+### `Resonate.Get`
+
+Get a handle to an existing execution by its promise ID. Returns a `*resonate.ServerError` with `Code: 404` when the promise does not exist.
+
+```go
+h, err := r.Get(ctx, "greet-1")
+if err != nil {
+    log.Fatalf("Get: %v", err)
+}
+
+var result string
+if err := h.Result(ctx, &result); err != nil {
+    log.Fatalf("Result: %v", err)
+}
+```
+
+### Reading a handle's result
+
+A handle blocks until its underlying promise settles (or the passed `context.Context` is cancelled), then decodes the value.
+
+- **Typed:** `RegisteredFunc.Run` returns a `*TypedHandle[R]` whose `Result(ctx)` returns `(R, error)` directly.
+- **Untyped:** `RPC` and `Get` return a `*Handle` whose `Result(ctx, out any)` decodes into the pointer you pass.
+
+```go
+// Untyped handle into a typed value, via the generic helper:
+result, err := resonate.ResultOf[string](ctx, h)
+```
+
+A rejected promise returns the application error embedded in the rejection payload (as a `*resonate.ApplicationError`, or the deserialized concrete error where available).
+
+### `Resonate.Stop`
+
+Gracefully shuts down a Resonate instance. Closes the network connection, stops the heartbeat loop, and cancels the background subscription-refresh goroutine. Idempotent.
+
+```go
+defer func() { _ = r.Stop() }()
+```
+
+**When to call it.** Call `Stop` from any process that should exit after its work finishes — demo binaries, one-shot jobs, examples, CI tasks. Without it, the background goroutines keep the process alive after `main` would otherwise return.
+
+<Callout type="caution" title="Don't call `Stop` on a long-running worker">
+Calling `Stop` on a worker (an RPC service, a queue consumer, an MCP server, or any other long-lived process) tears down the channels the worker uses to receive and hold work:
+
+- The connection to the Resonate Server closes — the worker stops receiving dispatched tasks.
+- The heartbeat loop stops — the server-side TTL on in-flight tasks expires, and the server reassigns them.
+- The subscription-refresh goroutine is cancelled — listeners on awaited promises are no longer re-registered.
+
+The worker keeps running but silently stops processing work. Workers should stay up; let process termination (SIGINT / SIGTERM) end the lifecycle.
+</Callout>
+
+<Callout type="note" title="No `Schedule` or top-level promises sub-client yet">
+The Go SDK does not (yet) expose a `Schedule` API or a top-level promises sub-client. To create or settle a durable promise from outside a workflow — for human-in-the-loop and external-coordination patterns — create the promise from inside a workflow with [`ctx.Promise`](#ctxpromise) and settle it via the Resonate CLI (`resonate promise resolve <id>`) or the server's HTTP API. These surfaces will land as the API settles toward the first tag.
+</Callout>
+
+## Context APIs
+
+**How to use the Resonate Context inside Durable Functions.**
+
+Resonate's Context enables you to invoke sub-tasks from inside a workflow.
+This is how you extend the Call Graph and create a world of Durable Functions.
+
+Each Context method returns a `*resonate.Future` immediately (the durable promise is created synchronously); you call `Future.Await(&out)` to read the result. If the awaited promise is still pending, `Await` suspends the workflow and re-enters it when the promise settles. Because of this, **fan-out is "dispatch all, then await all"**: call `ctx.Run` / `ctx.RPC` for every branch first to create the promises, then `Await` each future.
+
+### `ctx.Run`
+
+Invoke a function in the **same process**.
+By default, calling `Await` immediately after executes sequentially — the workflow blocks until the invoked function returns.
+
+```go
+func myWorkflow(ctx *resonate.Context, input string) (string, error) {
+    f, err := ctx.Run(myLeaf, input)
+    if err != nil {
+        return "", err
+    }
+    var result string
+    if err := f.Await(&result); err != nil {
+        return "", err
+    }
+    return result, nil
+}
+```
+
+To run in parallel, dispatch every child first, then await each future:
+
+```go
+func myWorkflow(ctx *resonate.Context, inputs []string) ([]string, error) {
+    fa, err := ctx.Run(process, inputs[0])
+    if err != nil {
+        return nil, err
+    }
+    fb, err := ctx.Run(process, inputs[1])
+    if err != nil {
+        return nil, err
+    }
+
+    var a, b string
+    if err := fa.Await(&a); err != nil {
+        return nil, err
+    }
+    if err := fb.Await(&b); err != nil {
+        return nil, err
+    }
+    return []string{a, b}, nil
+}
+```
+
+<Callout type="caution" title="`ctx.Run` functions must return promptly">
+The workflow runtime joins every `ctx.Run`-spawned goroutine before it can suspend or fulfill the parent task. A function that blocks indefinitely holds the task lease open until it expires. Long-running or external-blocking work belongs in `ctx.RPC` (remote dispatch) or `ctx.Promise` (latent durable promise), not `ctx.Run`.
+</Callout>
+
+### `ctx.RPC`
+
+Invoke a function in a **remote process** by registered name.
+Await on the returned future suspends the workflow until the remote function returns.
+
+```go
+func myWorkflow(ctx *resonate.Context, input string) (string, error) {
+    f, err := ctx.RPC("remote-func", input)
+    if err != nil {
+        return "", err
+    }
+    var result string
+    if err := f.Await(&result); err != nil {
+        return "", err
+    }
+    return result, nil
+}
+```
+
+`ctx.RPC` accepts an optional `resonate.RPCOpts{Timeout, Target}`. The fan-out-then-await pattern shown for `ctx.Run` applies equally to `ctx.RPC` — see [`example-fan-out-fan-in-go`](https://github.com/resonatehq-examples/example-fan-out-fan-in-go).
+
+### `ctx.Sleep`
+
+Durable sleep. There is no limit to how long the function can sleep — hours, days, or weeks.
+The sleep survives process restarts.
+
+```go
+func reminder(ctx *resonate.Context, userID string) (struct{}, error) {
+    f, err := ctx.Sleep(1 * time.Hour)
+    if err != nil {
+        return struct{}{}, err
+    }
+    if err := f.Await(nil); err != nil { // no value to decode
+        return struct{}{}, err
+    }
+    // ... send the reminder
+    return struct{}{}, nil
+}
+```
+
+<Callout type="caution" title="Code above a durable point re-runs on resume">
+Whenever a workflow suspends and resumes (after a `Sleep`, a remote `RPC`, or a pending `Promise`), the entire workflow body runs again from the top. Durable child promises short-circuit work that already settled, but any side effect that runs *before* reaching that boundary executes again. Wrap observable side effects (DB writes, payments, emails) in their own `ctx.Run` / `ctx.RPC` so the durable promise records the result.
+</Callout>
+
+### `ctx.Promise`
+
+Create a latent durable promise resolved by an external system (a webhook, a human, another process). Hand the promise's ID to the external resolver; `Await` suspends until it settles. This is the building block for [human-in-the-loop](https://github.com/resonatehq-examples/example-human-in-the-loop-go) and [webhook](https://github.com/resonatehq-examples/example-webhook-handler-go) workflows.
+
+```go
+func approval(ctx *resonate.Context, _ struct{}) (string, error) {
+    f, err := ctx.Promise(resonate.PromiseOpts{Timeout: 24 * time.Hour})
+    if err != nil {
+        return "", err
+    }
+    // f.ID() is the promise ID — hand it to whoever resolves it
+    // (e.g. resonate promise resolve <id> --data '"approved"')
+
+    var decision string
+    if err := f.Await(&decision); err != nil {
+        return "", err
+    }
+    return decision, nil
+}
+```
+
+### `ctx.Detached`
+
+Dispatch a remote function fire-and-forget. Unlike `ctx.RPC`, the parent workflow does **not** suspend on it — `Detached` returns only the new promise's ID, and the detached execution's lifecycle is independent of the parent.
+
+```go
+func placeOrder(ctx *resonate.Context, orderID string) (struct{}, error) {
+    // Fire-and-forget: send the receipt without blocking the order workflow.
+    id, err := ctx.Detached("send-receipt", ReceiptArgs{Order: orderID})
+    if err != nil {
+        return struct{}{}, err
+    }
+    _ = id // references the detached execution; the parent does not await it
+    return struct{}{}, nil
+}
+```
+
+<Callout type="note" title="Detached IDs are not cross-SDK-portable">
+The Go SDK derives `Detached` IDs with FNV-1a; the Rust SDK uses a different hash. Do not rely on running the same workflow body on two different SDKs producing the same `Detached` IDs.
+</Callout>
+
+### Context accessors
+
+Inside a workflow, the Context provides read-only metadata:
+
+```go
+func myWorkflow(ctx *resonate.Context, _ struct{}) (struct{}, error) {
+    _ = ctx.ID()        // this execution's promise ID
+    _ = ctx.ParentID()  // parent promise ID (empty for root)
+    _ = ctx.OriginID()  // root workflow ID — stable across the whole tree
+    _ = ctx.FuncName()  // registered function name
+    _ = ctx.TimeoutAt() // promise deadline, epoch milliseconds
+    return struct{}{}, nil
+}
+```
+
+### Builder options
+
+Context entrypoints take options as a trailing struct argument (Go uses option structs rather than chained builders):
+
+| Method | Options struct | Fields |
+|---|---|---|
+| `ctx.Run` | `resonate.RunOpts` | `Timeout`, `RetryPolicy` |
+| `ctx.RPC` | `resonate.RPCOpts` | `Timeout`, `Target` |
+| `ctx.Promise` | `resonate.PromiseOpts` | `Timeout`, `Data` |
+| `ctx.Detached` | `resonate.DetachedOpts` | `Timeout`, `Target` |
+
+```go
+f, err := ctx.Run(myLeaf, "input", resonate.RunOpts{
+    Timeout:     30 * time.Second,
+    RetryPolicy: resonate.LinearRetry{MaxAttempts: 5, Base: time.Second},
+})
+```
+
+## Retries
+
+When a function passed to `ctx.Run` (or a top-level `Run`) returns an error, Resonate re-executes it according to a retry policy. Nil applies `DefaultRetryPolicy` (exponential backoff, 3 attempts). The SDK ships three policies plus a no-retry sentinel, all implementing the `resonate.RetryPolicy` interface:
+
+| Policy | Behavior |
+|---|---|
+| `resonate.ConstantRetry{MaxAttempts, Delay}` | Fixed delay between attempts. |
+| `resonate.LinearRetry{MaxAttempts, Base}` | Attempt N waits `Base * N`. |
+| `resonate.ExponentialRetry{MaxAttempts, Base, Max, Jitter}` | Doubling delay (`Base`, `2·Base`, …) capped at `Max`, with optional jitter. |
+| `resonate.NoRetry` | A single attempt (no retries). |
+
+```go
+f, err := ctx.Run(chargeCard, args, resonate.RunOpts{
+    RetryPolicy: resonate.ExponentialRetry{
+        MaxAttempts: 5,
+        Base:        100 * time.Millisecond,
+        Max:         30 * time.Second,
+        Jitter:      true,
+    },
+})
+```
+
+### Non-retryable errors
+
+To mark a specific error as terminal so the retry loop stops immediately — regardless of the policy — wrap it with `resonate.NewNonRetryable`. The wrapped error remains reachable through `errors.Is` / `errors.As` / `errors.Unwrap`.
+
+```go
+func validate(input string) (string, error) {
+    if input == "" {
+        // No amount of retrying fixes bad input — fail fast.
+        return "", resonate.NewNonRetryable(errors.New("input is required"))
+    }
+    return input, nil
+}
+```
+
+## Defaults
+
+The Go SDK ships with these key defaults:
+
+- **`resonate.New(resonate.Config{})`** — `TTL = 60s`; `AsyncHeartbeat` at `TTL/2`; `NoopEncryptor`; no prefix. Network is resolved from `URL` → `Network` → `RESONATE_URL`, else `ErrNetworkRequired`.
+- **Top-level `Run` / `RPC` timeout** — `DefaultTopLevelTimeout = 24h` when `Options.Timeout` is zero.
+- **Child `ctx.Run` / `ctx.RPC` / `ctx.Promise` / `ctx.Sleep` timeout** — `DefaultChildTimeout = 24h` when the call's `Timeout` is zero (capped at the parent's remaining deadline).
+- **`DefaultRetryPolicy`** — `ExponentialRetry{MaxAttempts: 3, Base: 100ms, Max: 30s, Jitter: true}`, applied when `RetryPolicy` is nil.
+
+The values above are the Go defaults. For server defaults and the TypeScript/Python/Rust comparison with source citations, see the [Defaults reference](/reference/defaults).
