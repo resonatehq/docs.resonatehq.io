@@ -72,6 +72,7 @@ serde = { version = "1", features = ["derive"] }
 Requires **Go 1.22** or later.
 
 ```shell
+go mod init countdown
 go get github.com/resonatehq/resonate-sdk-go@latest
 ```
 
@@ -389,7 +390,7 @@ Inspect the execution with `resonate tree` — it renders the call graph as dura
 resonate tree countdown.1
 ```
 
-Now kill the worker mid-countdown and restart. **The countdown resumes where it stopped.**
+Now kill the worker mid-countdown and restart it with the same start command (keep `resonate dev` running). Because the invocation `countdown.1` already exists, **the countdown resumes where it stopped** instead of starting over. Use a delay long enough to interrupt it mid-countdown — for example `--arg 5 --arg 60`.
 
 ## Next steps
 
