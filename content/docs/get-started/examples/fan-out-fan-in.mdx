@@ -16,7 +16,7 @@ keywords:
 A workflow spawns four notification channels (email, SMS, Slack, push) in parallel and joins their results. Total wall time approaches the slowest channel, not the sum. If one channel fails and retries, the others stay checkpointed — they don't re-send.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development. Go: pre-release — no semver tag yet, so the example pins a specific commit (see [Go SDK](/develop/go)).
 </Callout>
 
 <CloneRepoGrid>
@@ -35,6 +35,11 @@ TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x a
     description="Three-way parallel processing using ctx.run().spawn() + DurableFuture."
     link="https://github.com/resonatehq-examples/example-fan-out-fan-in-rs"
   />
+  <CloneRepoCard
+    sdk="Go SDK"
+    description="Notification fan-out across email, SMS, Slack, and push using ctx.RPC + Future.Await."
+    link="https://github.com/resonatehq-examples/example-fan-out-fan-in-go"
+  />
 </CloneRepoGrid>
 
 ## The problem
@@ -43,7 +48,7 @@ Sequential calls — even three or four — turn into the latency tax you don't 
 
 ## Resonate's solution
 
-Each branch becomes its own durable promise. Spawn them with `beginRun` (TypeScript) or `.spawn()` (Rust) — the workflow doesn't block. Then await each handle to fan in. If a single branch fails and retries, the others are already checkpointed; they don't re-execute. Crash recovery only re-runs whatever was in flight when the worker died.
+Each branch becomes its own durable promise. Spawn them with `beginRun` (TypeScript), `ctx.rfi` (Python), `.spawn()` (Rust), or `ctx.RPC` (Go) — the workflow doesn't block. Then await each handle to fan in. If a single branch fails and retries, the others are already checkpointed; they don't re-execute. Crash recovery only re-runs whatever was in flight when the worker died.
 
 ## Code walkthrough
 
@@ -56,6 +61,7 @@ The fan-out is N spawn calls. The fan-in is N awaits. The fact that each is dura
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
         {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
     ]}>
 
 <TabItem value="typescript">
@@ -163,6 +169,72 @@ async fn process_item(item: WorkItem) -> Result<WorkResult> {
 
 </TabItem>
 
+<TabItem value="go">
+
+```go title="main.go"
+type FanoutArgs struct {
+	Channels []string `json:"channels"`
+	Message  string   `json:"message"`
+}
+
+type FanoutResult struct {
+	Delivered []Delivery `json:"delivered"`
+}
+
+type SendArgs struct {
+	Channel string `json:"channel"`
+	Message string `json:"message"`
+}
+
+type Delivery struct {
+	Channel string `json:"channel"`
+	OK      bool   `json:"ok"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+// fanout dispatches one ctx.RPC call per channel without awaiting in between,
+// then awaits all of them. The dispatches happen in series in user code but
+// run concurrently on the server side; the Awaits block until every child
+// promise settles.
+func fanout(ctx *resonate.Context, args FanoutArgs) (FanoutResult, error) {
+	futures := make([]*resonate.Future, 0, len(args.Channels))
+	for _, ch := range args.Channels {
+		f, err := ctx.RPC("send", SendArgs{Channel: ch, Message: args.Message})
+		if err != nil {
+			return FanoutResult{}, err
+		}
+		futures = append(futures, f)
+	}
+
+	out := FanoutResult{Delivered: make([]Delivery, 0, len(futures))}
+	for i, f := range futures {
+		var d Delivery
+		if err := f.Await(&d); err != nil {
+			out.Delivered = append(out.Delivered, Delivery{
+				Channel: args.Channels[i],
+				OK:      false,
+				Reason:  err.Error(),
+			})
+			continue
+		}
+		out.Delivered = append(out.Delivered, d)
+	}
+	return out, nil
+}
+
+// send is the child function that "delivers" a message to one channel. In a
+// real system this would call a provider API (Twilio, SES, Slack, ...). Here
+// it just prints and returns a Delivery record.
+func send(_ *resonate.Context, args SendArgs) (Delivery, error) {
+	fmt.Printf("  [send] %-8s <- %q\n", args.Channel, args.Message)
+	return Delivery{Channel: args.Channel, OK: true}, nil
+}
+```
+
+Go's fan-out uses `ctx.RPC` — each call creates a durable child promise for the registered `send` function and returns a `*Future` without waiting for the child to finish. The second loop awaits each future to fan in; the children run concurrently as separate durable promises, dispatched by the server to any worker subscribed to `send`.
+
+</TabItem>
+
 </Tabs>
 
 The TypeScript example includes a `--crash` flag that simulates the push channel failing on its first attempt. When you run it with `--crash`, the workflow retries the push channel — but watching the logs, email/SMS/Slack don't re-send. They're each their own durable promise, already resolved.
@@ -176,6 +248,7 @@ The TypeScript example includes a `--crash` flag that simulates the push channel
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
         {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
     ]}>
 
 <TabItem value="typescript">
@@ -249,6 +322,29 @@ resonate invoke fan-out.1 \
   --func fan_out_fan_in \
   --arg '[{"id":1,"data":"a"},{"id":2,"data":"b"},{"id":3,"data":"c"}]'
 ```
+
+</TabItem>
+
+<TabItem value="go">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-fan-out-fan-in-go
+cd example-fan-out-fan-in-go
+go mod download
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — workflow"
+go run .
+# or with custom channels
+go run . -channels=email,sms,slack,push,webhook -message="ship it"
+```
+
+The single process registers both `fanout` and `send`, then invokes the workflow. The `[send]` lines arrive in non-deterministic order — that's the concurrency — while the final aggregation respects the input channel order.
 
 </TabItem>
 
