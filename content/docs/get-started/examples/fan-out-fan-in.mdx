@@ -48,7 +48,7 @@ Sequential calls — even three or four — turn into the latency tax you don't 
 
 ## Resonate's solution
 
-Each branch becomes its own durable promise. Spawn them with `beginRun` (TypeScript) or `.spawn()` (Rust) — the workflow doesn't block. Then await each handle to fan in. If a single branch fails and retries, the others are already checkpointed; they don't re-execute. Crash recovery only re-runs whatever was in flight when the worker died.
+Each branch becomes its own durable promise. Spawn them with `beginRun` (TypeScript), `ctx.rfi` (Python), `.spawn()` (Rust), or `ctx.RPC` (Go) — the workflow doesn't block. Then await each handle to fan in. If a single branch fails and retries, the others are already checkpointed; they don't re-execute. Crash recovery only re-runs whatever was in flight when the worker died.
 
 ## Code walkthrough
 
@@ -231,7 +231,7 @@ func send(_ *resonate.Context, args SendArgs) (Delivery, error) {
 }
 ```
 
-Go's fan-out uses `ctx.RPC` — each call dispatches a child to the registered `send` function and returns a `*Future` without blocking. The second loop awaits each future to fan in; the children run concurrently as goroutines on any worker subscribed to `send`.
+Go's fan-out uses `ctx.RPC` — each call creates a durable child promise for the registered `send` function and returns a `*Future` without waiting for the child to finish. The second loop awaits each future to fan in; the children run concurrently as separate durable promises, dispatched by the server to any worker subscribed to `send`.
 
 </TabItem>
 
@@ -344,7 +344,7 @@ go run .
 go run . -channels=email,sms,slack,push,webhook -message="ship it"
 ```
 
-The single process registers both `fanout` and `send`, then invokes the workflow. Watch the `[send]` lines arrive out of order — that's the concurrency — while the final aggregation respects the input channel order.
+The single process registers both `fanout` and `send`, then invokes the workflow. The `[send]` lines arrive in non-deterministic order — that's the concurrency — while the final aggregation respects the input channel order.
 
 </TabItem>
 
