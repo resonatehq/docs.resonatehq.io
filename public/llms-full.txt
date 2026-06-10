@@ -12944,10 +12944,11 @@ title: Load balancing
 Run several workers in the same group. Calls to `target: "poll://any@<group>"` get dispatched to whichever worker claims them first. When a worker dies mid-execution, Resonate reassigns the work to a survivor — no service registry, no leader election, no glue.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development. Go: pre-release — no semver tag yet, so the example pins a specific commit (see [Go SDK](/develop/go)).
 
 
 
+  
   
   
   
@@ -13049,6 +13050,49 @@ async fn main() {
 
 
 
+```go title="main.go"
+// WorkArgs carries the task identifier sent from client to worker.
+type WorkArgs struct {
+	TaskName string `json:"taskName"`
+}
+
+// computeSomething simulates a unit of work. It records which worker
+// handled the task so the client can print the distribution.
+func computeSomething(workerID string) func(_ *resonate.Context, args WorkArgs) (string, error) {
+	return func(_ *resonate.Context, args WorkArgs) (string, error) {
+		// Simulate a small amount of work.
+		time.Sleep(50 * time.Millisecond)
+		result := fmt.Sprintf("worker-%s handled %s", workerID, args.TaskName)
+		fmt.Printf("[worker-%s] handling %s → done\n", workerID, args.TaskName)
+		return result, nil
+	}
+}
+```
+
+Each worker instance is created with `httpnet.NewHTTP(url, httpnet.HTTPOptions{Group: ...})` and registers `computeSomething` under that shared group. The example spins several up inside one process — in production each would be its own process:
+
+```go title="main.go"
+		r, err := resonate.New(resonate.Config{
+			Network: httpnet.NewHTTP(*url, httpnet.HTTPOptions{
+				PID:   pid,
+				Group: *group,
+			}),
+		})
+		if err != nil {
+			log.Fatalf("resonate.New (worker-%s): %v", workerID, err)
+		}
+		workerInstances[i] = r
+
+		// Register the compute function with a closure that captures the worker ID.
+		if _, err := resonate.Register(r, "computeSomething", computeSomething(workerID)); err != nil {
+			log.Fatalf("Register (worker-%s): %v", workerID, err)
+		}
+```
+
+
+
+
+
 ### Dispatching to the group
 
 The caller picks a target with the `poll://any@<group>` schema. `any` means "whichever worker in the group claims it first."
@@ -13118,6 +13162,36 @@ async fn main() {
         .unwrap();
     resonate.stop().await;
 }
+```
+
+
+
+
+
+A separate client instance dispatches each task with `client.RPC` and a `poll://any@<group>` target — the server hands each task to whichever worker in the group claims it first. Both blocks below are excerpts from `main()`, where `*url`, `*group`, and `ctx` come from the parsed flags and request context:
+
+```go title="main.go"
+	clientPID := fmt.Sprintf("client-%d", time.Now().UnixNano())
+	client, err := resonate.New(resonate.Config{
+		Network: httpnet.NewHTTP(*url, httpnet.HTTPOptions{
+			PID:   clientPID,
+			Group: "client",
+		}),
+	})
+	if err != nil {
+		log.Fatalf("resonate.New (client): %v", err)
+	}
+	defer func() { _ = client.Stop() }()
+
+	// Build the anycast target address for the worker group.
+	target := fmt.Sprintf("poll://any@%s", *group)
+```
+
+```go title="main.go"
+		id := fmt.Sprintf("%s-%s", runID, taskName)
+		h, err := client.RPC(ctx, id, "computeSomething", WorkArgs{TaskName: taskName},
+			resonate.RPCOptions{Target: target},
+		)
 ```
 
 
@@ -13205,9 +13279,34 @@ for i in 1 2 3 4 5 6; do cargo run --bin client; done
 
 
 
+Unlike the other SDKs, the Go example runs the workers **and** the client in a single binary — there's no separate terminal per worker. `-workers` controls how many worker instances it spins up.
+
+```shell
+git clone https://github.com/resonatehq-examples/example-load-balancing-go
+cd example-load-balancing-go
+go mod download
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — workers + client (one process)"
+go run . -url=http://localhost:8001 -workers=3 -tasks=6
+```
+
+The single process starts three worker instances and a client that dispatches six tasks across the group; the `[worker-N]` log lines show the work spreading. Increase `-workers` and `-tasks` to watch the distribution change. Because the workers share this one process, the kill-a-single-worker recovery story below is the one shown by the separate-process TypeScript, Python, and Rust examples.
+
+
+
+
+
 ## Try the recovery story
 
 Start three workers and dispatch enough jobs to keep all of them busy. Kill the worker holding a long-running job. The Resonate Server detects the loss, reassigns the workflow's durable promise to one of the survivors, and the work continues. The client never sees an error — it just gets a slightly delayed result.
+
+The TypeScript, Python, and Rust examples run each worker as its own process, so you can `Ctrl-C` a single one to watch this happen. The Go example runs its workers inside one process, so it demonstrates the distribution but not single-worker recovery — [recursive factorial](/get-started/examples/recursive-factorial) shows the Go crash-recovery story with a separate worker process.
 
 ## Related
 
@@ -13662,10 +13761,11 @@ title: Recursive factorial
 A workflow that computes `n!` by calling itself with `n-1`. Each recursive call dispatches via `ctx.rpc` to whichever worker in the group claims it — recursion ends up distributed across machines without any explicit coordination, and every step is checkpointed so a worker crash mid-recursion resumes cleanly.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development. Go: pre-release — no semver tag yet, so the example pins a specific commit (see [Go SDK](/develop/go)).
 
 
 
+  
   
   
   
@@ -13774,6 +13874,65 @@ async fn main() {
 
 
 
+```go title="factorial/factorial.go"
+const Name = "Factorial"
+
+// WorkerGroup is the dispatch group the worker(s) join and the client targets
+// when calling RPC. Using a non-default group keeps clients out of the
+// task-dispatch pool — only processes that actually have Factorial registered
+// will be asked to execute it.
+const WorkerGroup = "factorial-workers"
+
+// Args is the workflow input.
+type Args struct {
+	N int `json:"n"`
+}
+
+// Workflow computes n! by recursively dispatching factorial(n-1) via ctx.RPC.
+// Each recursive call is a durable promise on the server; with multiple
+// workers running, the recursion fans out across them.
+func Workflow(ctx *resonate.Context, args Args) (int, error) {
+	if args.N <= 1 {
+		return 1, nil
+	}
+	f, err := ctx.RPC(Name, Args{N: args.N - 1})
+	if err != nil {
+		return 0, err
+	}
+	var sub int
+	if err := f.Await(&sub); err != nil {
+		return 0, err
+	}
+	return args.N * sub, nil
+}
+```
+
+The worker binary joins the group and registers the workflow:
+
+```go title="cmd/worker/main.go"
+	pid := fmt.Sprintf("factorial-worker-%d", os.Getpid())
+	r, err := resonate.New(resonate.Config{
+		Network: httpnet.NewHTTP(*url, httpnet.HTTPOptions{
+			PID:   pid,
+			Group: factorial.WorkerGroup,
+		}),
+	})
+	if err != nil {
+		log.Fatalf("resonate.New: %v", err)
+	}
+	defer func() { _ = r.Stop() }()
+
+	if _, err := resonate.Register(r, factorial.Name, factorial.Workflow); err != nil {
+		log.Fatalf("Register: %v", err)
+	}
+```
+
+The recursive `ctx.RPC(Name, …)` call takes no explicit target — inside a workflow the Go SDK resolves the dispatch group from the worker that's running it (`factorial-workers`), so the recursion stays within the group automatically.
+
+
+
+
+
 ### Kicking it off
 
 The client looks identical to any other RPC call — Resonate doesn't care that the workflow happens to recurse internally.
@@ -13841,6 +14000,29 @@ async fn main() {
     println!("Factorial of {n} is {result}");
 }
 ```
+
+
+
+
+
+```go title="cmd/client/main.go"
+	id := fmt.Sprintf("factorial-%d", *n)
+	target := fmt.Sprintf("poll://any@%s", factorial.WorkerGroup)
+
+	h, err := r.RPC(ctx, id, factorial.Name, factorial.Args{N: *n},
+		resonate.RPCOptions{Target: target})
+	if err != nil {
+		log.Fatalf("RPC: %v", err)
+	}
+
+	var result int
+	if err := h.Result(ctx, &result); err != nil {
+		log.Fatalf("Result: %v", err)
+	}
+	fmt.Printf("factorial(%d) = %d\n", *n, result)
+```
+
+This is an excerpt from `main()`, where `r` is a `*resonate.Resonate` constructed (like the worker's) with `httpnet.NewHTTP`, but joining a `factorial-client` group. The client targets `poll://any@factorial-workers` and decodes the result into an `int`. The stable `factorial-<n>` promise ID makes a second run with the same `-n` return the cached result instantly.
 
 
 
@@ -13922,6 +14104,31 @@ cargo run --bin worker
 ```shell title="Terminal 5 — client"
 cargo run --bin client -- 10
 ```
+
+
+
+
+
+```shell
+git clone https://github.com/resonatehq-examples/example-recursive-factorial-go
+cd example-recursive-factorial-go
+go mod download
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminals 2+ — one or more workers"
+go run ./cmd/worker
+```
+
+```shell title="Terminal 3 — client"
+go run ./cmd/client -n 6
+```
+
+Run several workers and watch `factorial(6)`, `factorial(5)`, `factorial(4)` … fan out across them as the recursion descends.
 
 
 

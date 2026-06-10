@@ -15,7 +15,7 @@ keywords:
 Run several workers in the same group. Calls to `target: "poll://any@<group>"` get dispatched to whichever worker claims them first. When a worker dies mid-execution, Resonate reassigns the work to a survivor — no service registry, no leader election, no glue.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development. Go: pre-release — no semver tag yet, so the example pins a specific commit (see [Go SDK](/develop/go)).
 </Callout>
 
 <CloneRepoGrid>
@@ -33,6 +33,11 @@ TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x a
     sdk="Rust SDK"
     description="Worker group with random-cost compute jobs dispatched via async RPC + spawn()."
     link="https://github.com/resonatehq-examples/example-load-balancing-rs"
+  />
+  <CloneRepoCard
+    sdk="Go SDK"
+    description="Worker group with simulated compute jobs dispatched via async RPC to a poll://any target."
+    link="https://github.com/resonatehq-examples/example-load-balancing-go"
   />
 </CloneRepoGrid>
 
@@ -61,6 +66,7 @@ Each worker process is identical except for the `group` it joins. Run as many as
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
         {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
     ]}>
 
 <TabItem value="typescript">
@@ -140,6 +146,49 @@ async fn main() {
 
 </TabItem>
 
+<TabItem value="go">
+
+```go title="main.go"
+// WorkArgs carries the task identifier sent from client to worker.
+type WorkArgs struct {
+	TaskName string `json:"taskName"`
+}
+
+// computeSomething simulates a unit of work. It records which worker
+// handled the task so the client can print the distribution.
+func computeSomething(workerID string) func(_ *resonate.Context, args WorkArgs) (string, error) {
+	return func(_ *resonate.Context, args WorkArgs) (string, error) {
+		// Simulate a small amount of work.
+		time.Sleep(50 * time.Millisecond)
+		result := fmt.Sprintf("worker-%s handled %s", workerID, args.TaskName)
+		fmt.Printf("[worker-%s] handling %s → done\n", workerID, args.TaskName)
+		return result, nil
+	}
+}
+```
+
+Each worker instance is created with `httpnet.NewHTTP(url, httpnet.HTTPOptions{Group: ...})` and registers `computeSomething` under that shared group. The example spins several up inside one process — in production each would be its own process:
+
+```go title="main.go"
+		r, err := resonate.New(resonate.Config{
+			Network: httpnet.NewHTTP(*url, httpnet.HTTPOptions{
+				PID:   pid,
+				Group: *group,
+			}),
+		})
+		if err != nil {
+			log.Fatalf("resonate.New (worker-%s): %v", workerID, err)
+		}
+		workerInstances[i] = r
+
+		// Register the compute function with a closure that captures the worker ID.
+		if _, err := resonate.Register(r, "computeSomething", computeSomething(workerID)); err != nil {
+			log.Fatalf("Register (worker-%s): %v", workerID, err)
+		}
+```
+
+</TabItem>
+
 </Tabs>
 
 ### Dispatching to the group
@@ -153,6 +202,7 @@ The caller picks a target with the `poll://any@<group>` schema. `any` means "whi
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
         {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
     ]}>
 
 <TabItem value="typescript">
@@ -225,6 +275,36 @@ async fn main() {
 
 </TabItem>
 
+<TabItem value="go">
+
+A separate client instance dispatches each task with `client.RPC` and a `poll://any@<group>` target — the server hands each task to whichever worker in the group claims it first. Both blocks below are excerpts from `main()`, where `*url`, `*group`, and `ctx` come from the parsed flags and request context:
+
+```go title="main.go"
+	clientPID := fmt.Sprintf("client-%d", time.Now().UnixNano())
+	client, err := resonate.New(resonate.Config{
+		Network: httpnet.NewHTTP(*url, httpnet.HTTPOptions{
+			PID:   clientPID,
+			Group: "client",
+		}),
+	})
+	if err != nil {
+		log.Fatalf("resonate.New (client): %v", err)
+	}
+	defer func() { _ = client.Stop() }()
+
+	// Build the anycast target address for the worker group.
+	target := fmt.Sprintf("poll://any@%s", *group)
+```
+
+```go title="main.go"
+		id := fmt.Sprintf("%s-%s", runID, taskName)
+		h, err := client.RPC(ctx, id, "computeSomething", WorkArgs{TaskName: taskName},
+			resonate.RPCOptions{Target: target},
+		)
+```
+
+</TabItem>
+
 </Tabs>
 
 ## Run it locally
@@ -238,6 +318,7 @@ Start the server, run several workers, then dispatch repeatedly from the client.
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
         {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
     ]}>
 
 <TabItem value="typescript">
@@ -313,11 +394,36 @@ for i in 1 2 3 4 5 6; do cargo run --bin client; done
 
 </TabItem>
 
+<TabItem value="go">
+
+Unlike the other SDKs, the Go example runs the workers **and** the client in a single binary — there's no separate terminal per worker. `-workers` controls how many worker instances it spins up.
+
+```shell
+git clone https://github.com/resonatehq-examples/example-load-balancing-go
+cd example-load-balancing-go
+go mod download
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminal 2 — workers + client (one process)"
+go run . -url=http://localhost:8001 -workers=3 -tasks=6
+```
+
+The single process starts three worker instances and a client that dispatches six tasks across the group; the `[worker-N]` log lines show the work spreading. Increase `-workers` and `-tasks` to watch the distribution change. Because the workers share this one process, the kill-a-single-worker recovery story below is the one shown by the separate-process TypeScript, Python, and Rust examples.
+
+</TabItem>
+
 </Tabs>
 
 ## Try the recovery story
 
 Start three workers and dispatch enough jobs to keep all of them busy. Kill the worker holding a long-running job. The Resonate Server detects the loss, reassigns the workflow's durable promise to one of the survivors, and the work continues. The client never sees an error — it just gets a slightly delayed result.
+
+The TypeScript, Python, and Rust examples run each worker as its own process, so you can `Ctrl-C` a single one to watch this happen. The Go example runs its workers inside one process, so it demonstrates the distribution but not single-worker recovery — [recursive factorial](/get-started/examples/recursive-factorial) shows the Go crash-recovery story with a separate worker process.
 
 ## Related
 
