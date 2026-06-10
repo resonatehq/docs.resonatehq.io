@@ -362,7 +362,7 @@ func foo(ctx *resonate.Context, _ struct{}) (string, error) {
 ```shell
 # The Go SDK has no high-level promises sub-client yet (pre-release), so
 # resolve the latent promise from outside via the Resonate CLI or server API:
-resonate promises resolve <promise-id> --value '{"data": "approved"}'
+resonate promises resolve <promise-id> --value '{"headers": {}, "data": "approved"}'
 ```
 
     </TabItem>

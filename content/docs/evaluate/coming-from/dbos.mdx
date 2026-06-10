@@ -362,7 +362,7 @@ func foo(ctx *resonate.Context, _ struct{}) (string, error) {
 ```shell
 # The Go SDK has no high-level promises sub-client yet (pre-release), so
 # resolve the latent promise from outside via the Resonate CLI or server API:
-resonate promises resolve <promise-id> --value '{"data": "approved"}'
+resonate promises resolve <promise-id> --value '{"headers": {}, "data": "approved"}'
 ```
 
     </TabItem>
@@ -507,5 +507,5 @@ h, _ := r.RPC(context.Background(), promiseID, "function_name", params,
 The meaningful difference is in crash recovery.
 Resonate automatically recovers and resumes in-progress functions/workflows in another Worker, as part of its open-source core.
 
-With DBOS, automatic recovery of in-progress workflows across instances relies on DBOS Conductor (a separate service, with its full feature set on a paid tier).
+With DBOS, automatic recovery of in-progress workflows across instances relies on DBOS Conductor, a separate service with tiered plans.
 Without Conductor, recovery in a distributed deployment is coordinated manually, and a single-node deployment recovers its own workflows when that process restarts.
