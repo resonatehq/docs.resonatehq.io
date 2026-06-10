@@ -7,7 +7,7 @@ keywords:
 ---
 
 <Callout type="info" title="SDK version">
-This page reflects `@resonatehq/sdk` v0.10.2 (current on npm) and `resonate-sdk` v0.6.7 for Python.
+This page reflects `@resonatehq/sdk` v0.10.2 (TypeScript, current on npm), `resonate-sdk` v0.6.7 (Python), `resonate-sdk` v0.4.0 (Rust, on crates.io), and the Resonate Go SDK (pre-release — no semver tag yet; tracks `main`).
 </Callout>
 
 **Are you coming from Temporal?**
@@ -43,6 +43,8 @@ How might you implement it in Temporal?
     values={[
         {label: 'Python', value: 'python'},
         {label: 'TypeScript', value: 'typescript'},
+        {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
     ]}
 >
 
@@ -91,6 +93,73 @@ async function main() {
 
     </TabItem>
 
+    <TabItem value="rust">
+
+See it in action: [example-recursive-factorial-rs](https://github.com/resonatehq-examples/example-recursive-factorial-rs)
+
+```rust
+#[resonate::function]
+async fn factorial(ctx: &Context, n: u64) -> Result<u64> {
+    if n <= 1 {
+        return Ok(1);
+    }
+    let result = ctx.run(factorial, n - 1).await?;
+
+    Ok(n * result)
+}
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::local();
+    resonate.register(factorial).unwrap();
+
+    let result: u64 = resonate.run("factorial-5", factorial, 5).await.unwrap();
+    println!("{result}");
+
+    resonate.stop().await.unwrap();
+}
+```
+
+    </TabItem>
+
+    <TabItem value="go">
+
+See it in action: [example-recursive-factorial-go](https://github.com/resonatehq-examples/example-recursive-factorial-go)
+
+```go
+type Args struct {
+	N int `json:"n"`
+}
+
+func factorial(ctx *resonate.Context, args Args) (int, error) {
+	if args.N <= 1 {
+		return 1, nil
+	}
+	f, err := ctx.Run(factorial, Args{N: args.N - 1})
+	if err != nil {
+		return 0, err
+	}
+	var result int
+	if err := f.Await(&result); err != nil {
+		return 0, err
+	}
+	return args.N * result, nil
+}
+
+func main() {
+	r, _ := resonate.New(resonate.Config{URL: "http://localhost:8001"})
+	defer func() { _ = r.Stop() }()
+
+	factorialFn, _ := resonate.Register(r, "factorial", factorial)
+
+	h, _ := factorialFn.Run(context.Background(), "factorial-5", Args{N: 5})
+	result, _ := h.Result(context.Background())
+	fmt.Println(result)
+}
+```
+
+    </TabItem>
+
 </Tabs>
 
 ## Zero-dependency development
@@ -105,6 +174,8 @@ Resonate offers a zero-dependency development experience, where a Worker (single
     values={[
         {label: 'Python', value: 'python'},
         {label: 'TypeScript', value: 'typescript'},
+        {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
     ]}
 >
 
@@ -132,6 +203,39 @@ const resonate = new Resonate();
 
     </TabItem>
 
+    <TabItem value="rust">
+
+```rust
+use resonate::prelude::*;
+
+let resonate = Resonate::local();
+
+// ...
+```
+
+    </TabItem>
+
+    <TabItem value="go">
+
+```go
+import (
+	resonate "github.com/resonatehq/resonate-sdk-go"
+	"github.com/resonatehq/resonate-sdk-go/localnet"
+)
+
+// Local development mode runs the server state machine in-process,
+// using in-memory storage for promises and tasks.
+pid := "dev-worker"
+r, _ := resonate.New(resonate.Config{
+	Network:   localnet.NewLocal("default", &pid),
+	Heartbeat: resonate.NoopHeartbeat{}, // localnet has no lease endpoint to heartbeat against
+})
+
+// ...
+```
+
+    </TabItem>
+
 </Tabs>
 
 ## Human-in-the-loop
@@ -147,6 +251,8 @@ Then, you can resolve it from anywhere, optionally sending data into the functio
     values={[
         {label: 'Python', value: 'python'},
         {label: 'TypeScript', value: 'typescript'},
+        {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
     ]}
 >
 
@@ -198,6 +304,69 @@ await resonate.promises.resolve(promiseId, { data: JSON.stringify(data) });
 
     </TabItem>
 
+    <TabItem value="rust">
+
+See it in action: [example-human-in-the-loop-rs](https://github.com/resonatehq-examples/example-human-in-the-loop-rs)
+
+```rust
+// worker.rs
+#[resonate::function]
+async fn foo(ctx: &Context) -> Result<()> {
+    // Latent durable promise — no function backing it. Resolved externally.
+    let blocking_promise = ctx.promise::<bool>();
+    let _promise_id = blocking_promise.id().await?;
+    // ...
+    // suspend until the promise is resolved (survives crashes)
+    let _data = blocking_promise.await?;
+    // ...
+    Ok(())
+}
+```
+
+```rust
+use resonate::types::Value;
+
+// resolve from anywhere
+resonate
+    .promises
+    .resolve(&promise_id, Value::from_serializable(data)?)
+    .await?;
+```
+
+    </TabItem>
+
+    <TabItem value="go">
+
+See it in action: [example-human-in-the-loop-go](https://github.com/resonatehq-examples/example-human-in-the-loop-go)
+
+```go
+func foo(ctx *resonate.Context, _ struct{}) (string, error) {
+	// Latent durable promise — no function backing it. Resolved externally.
+	f, err := ctx.Promise()
+	if err != nil {
+		return "", err
+	}
+	promiseID := f.ID() // hand this ID to whoever resolves it
+	_ = promiseID
+	// ...
+	// Await suspends the workflow until the promise settles (survives crashes).
+	var data string
+	if err := f.Await(&data); err != nil {
+		return "", err
+	}
+	// ...
+	return data, nil
+}
+```
+
+```shell
+# The Go SDK has no high-level promises sub-client yet (pre-release), so
+# resolve the latent promise from outside via the Resonate CLI or server API:
+resonate promises resolve <promise-id> --value '{"headers": {}, "data": "approved"}'
+```
+
+    </TabItem>
+
 </Tabs>
 
 ## Distributed execution
@@ -214,6 +383,8 @@ Resonate will automatically load balance the invocations across the Workers in t
     values={[
         {label: 'Python', value: 'python'},
         {label: 'TypeScript', value: 'typescript'},
+        {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
     ]}
 >
 
@@ -271,6 +442,62 @@ async function main() {
     })
   );
 }
+```
+
+    </TabItem>
+
+    <TabItem value="rust">
+
+See it in action: [example-load-balancing-rs](https://github.com/resonatehq-examples/example-load-balancing-rs)
+
+```rust
+// worker.rs
+let resonate = Resonate::new(ResonateConfig {
+    url: Some("http://localhost:8001".into()),
+    group: Some("workers".into()),
+    ..Default::default()
+});
+```
+
+```rust
+// client.rs
+let resonate = Resonate::new(ResonateConfig {
+    url: Some("http://localhost:8001".into()),
+    group: Some("client".into()),
+    ..Default::default()
+});
+
+let result: u64 = resonate
+    .rpc(&promise_id, "function_name", params)
+    .target("poll://any@workers")
+    .await?;
+```
+
+    </TabItem>
+
+    <TabItem value="go">
+
+See it in action: [example-load-balancing-go](https://github.com/resonatehq-examples/example-load-balancing-go)
+
+```go
+// worker
+r, _ := resonate.New(resonate.Config{
+	Network: httpnet.NewHTTP("http://localhost:8001", httpnet.HTTPOptions{
+		Group: "workers",
+	}),
+})
+```
+
+```go
+// client
+r, _ := resonate.New(resonate.Config{
+	Network: httpnet.NewHTTP("http://localhost:8001", httpnet.HTTPOptions{
+		Group: "client",
+	}),
+})
+
+h, _ := r.RPC(context.Background(), promiseID, "function_name", params,
+	resonate.RPCOptions{Target: "poll://any@workers"})
 ```
 
     </TabItem>

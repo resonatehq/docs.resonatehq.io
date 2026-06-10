@@ -8021,7 +8021,7 @@ Your custom system is tied to your stack, your choices, your company.
 
 **Resonate implements Distributed Async Await** - a protocol with:
 - Formal semantics (TLA+ models, published specifications)
-- Language-agnostic design (TypeScript and Python SDKs today, more coming)
+- Language-agnostic design (TypeScript, Python, and Rust SDKs today, with a Go SDK in active development)
 - Open source implementation (server and SDKs)
 
 If you outgrow Resonate or want to embed the protocol elsewhere, the model is portable.
@@ -8079,7 +8079,7 @@ url: /evaluate/coming-from/dbos
 title: Coming from DBOS
 ---
 
-This page reflects `@resonatehq/sdk` v0.10.2 (current on npm) and `resonate-sdk` v0.6.7 for Python.
+This page reflects `@resonatehq/sdk` v0.10.2 (TypeScript, current on npm), `resonate-sdk` v0.6.7 (Python), `resonate-sdk` v0.4.0 (Rust, on crates.io), and the Resonate Go SDK (pre-release — no semver tag yet; tracks `main`).
 
 
 **Are you coming from DBOS?**
@@ -8155,13 +8155,80 @@ async function main() {
 
     
 
+    
+
+See it in action: [example-recursive-factorial-rs](https://github.com/resonatehq-examples/example-recursive-factorial-rs)
+
+```rust
+#[resonate::function]
+async fn factorial(ctx: &Context, n: u64) -> Result<u64> {
+    if n <= 1 {
+        return Ok(1);
+    }
+    let result = ctx.run(factorial, n - 1).await?;
+
+    Ok(n * result)
+}
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::local();
+    resonate.register(factorial).unwrap();
+
+    let result: u64 = resonate.run("factorial-5", factorial, 5).await.unwrap();
+    println!("{result}");
+
+    resonate.stop().await.unwrap();
+}
+```
+
+    
+
+    
+
+See it in action: [example-recursive-factorial-go](https://github.com/resonatehq-examples/example-recursive-factorial-go)
+
+```go
+type Args struct {
+	N int `json:"n"`
+}
+
+func factorial(ctx *resonate.Context, args Args) (int, error) {
+	if args.N <= 1 {
+		return 1, nil
+	}
+	f, err := ctx.Run(factorial, Args{N: args.N - 1})
+	if err != nil {
+		return 0, err
+	}
+	var result int
+	if err := f.Await(&result); err != nil {
+		return 0, err
+	}
+	return args.N * result, nil
+}
+
+func main() {
+	r, _ := resonate.New(resonate.Config{URL: "http://localhost:8001"})
+	defer func() { _ = r.Stop() }()
+
+	factorialFn, _ := resonate.Register(r, "factorial", factorial)
+
+	h, _ := factorialFn.Run(context.Background(), "factorial-5", Args{N: 5})
+	result, _ := h.Result(context.Background())
+	fmt.Println(result)
+}
+```
+
+    
+
 
 
 ## Zero-dependency development
 
-With DBOS, your Worker or application must always connect to a Postgres database, whether it’s a local development or a production instance.
+With DBOS, your application always runs against a database. Recent versions default to an embedded SQLite database for local development and use Postgres in production, so there is always a database in the loop.
 
-Resonate offers a zero-dependency development experience, where a Worker (single node application) can run without connecting to a Resonate Server.
+Resonate offers a zero-dependency development experience: a Worker (single node application) runs entirely in-memory, with no database and no Resonate Server, until you choose to connect one.
 
 
 
@@ -8182,6 +8249,39 @@ resonate = Resonate.local()
 
 ```typescript
 const resonate = new Resonate();
+
+// ...
+```
+
+    
+
+    
+
+```rust
+use resonate::prelude::*;
+
+let resonate = Resonate::local();
+
+// ...
+```
+
+    
+
+    
+
+```go
+import (
+	resonate "github.com/resonatehq/resonate-sdk-go"
+	"github.com/resonatehq/resonate-sdk-go/localnet"
+)
+
+// Local development mode runs the server state machine in-process,
+// using in-memory storage for promises and tasks.
+pid := "dev-worker"
+r, _ := resonate.New(resonate.Config{
+	Network:   localnet.NewLocal("default", &pid),
+	Heartbeat: resonate.NoopHeartbeat{}, // localnet has no lease endpoint to heartbeat against
+})
 
 // ...
 ```
@@ -8247,15 +8347,78 @@ await resonate.promises.resolve(promiseId, { data: JSON.stringify(data) });
 
     
 
+    
+
+See it in action: [example-human-in-the-loop-rs](https://github.com/resonatehq-examples/example-human-in-the-loop-rs)
+
+```rust
+// worker.rs
+#[resonate::function]
+async fn foo(ctx: &Context) -> Result<()> {
+    // Latent durable promise — no function backing it. Resolved externally.
+    let blocking_promise = ctx.promise::<bool>();
+    let _promise_id = blocking_promise.id().await?;
+    // ...
+    // suspend until the promise is resolved (survives crashes)
+    let _data = blocking_promise.await?;
+    // ...
+    Ok(())
+}
+```
+
+```rust
+use resonate::types::Value;
+
+// resolve from anywhere
+resonate
+    .promises
+    .resolve(&promise_id, Value::from_serializable(data)?)
+    .await?;
+```
+
+    
+
+    
+
+See it in action: [example-human-in-the-loop-go](https://github.com/resonatehq-examples/example-human-in-the-loop-go)
+
+```go
+func foo(ctx *resonate.Context, _ struct{}) (string, error) {
+	// Latent durable promise — no function backing it. Resolved externally.
+	f, err := ctx.Promise()
+	if err != nil {
+		return "", err
+	}
+	promiseID := f.ID() // hand this ID to whoever resolves it
+	_ = promiseID
+	// ...
+	// Await suspends the workflow until the promise settles (survives crashes).
+	var data string
+	if err := f.Await(&data); err != nil {
+		return "", err
+	}
+	// ...
+	return data, nil
+}
+```
+
+```shell
+# The Go SDK has no high-level promises sub-client yet (pre-release), so
+# resolve the latent promise from outside via the Resonate CLI or server API:
+resonate promises resolve <promise-id> --value '{"headers": {}, "data": "approved"}'
+```
+
+    
+
 
 
 ## Distributed execution
 
-A major difference between Resonate and DBOS is that Resonate can orchestrate executions across multiple Workers while DBOS cannot.
 With Resonate, you can run multiple Workers in a group, and Resonate will automatically load-balance invocations across them.
+DBOS can also distribute work across multiple processes, using durable queues that those processes poll.
+The meaningful difference is in crash recovery, which we cover below.
 
 Consider the following Resonate example.
-How would you accomplish this using DBOS?
 
 
 
@@ -8317,14 +8480,69 @@ async function main() {
 
     
 
+    
+
+See it in action: [example-load-balancing-rs](https://github.com/resonatehq-examples/example-load-balancing-rs)
+
+```rust
+// worker.rs
+let resonate = Resonate::new(ResonateConfig {
+    url: Some("http://localhost:8001".into()),
+    group: Some("workers".into()),
+    ..Default::default()
+});
+```
+
+```rust
+// client.rs
+let resonate = Resonate::new(ResonateConfig {
+    url: Some("http://localhost:8001".into()),
+    group: Some("client".into()),
+    ..Default::default()
+});
+
+let result: u64 = resonate
+    .rpc(&promise_id, "function_name", params)
+    .target("poll://any@workers")
+    .await?;
+```
+
+    
+
+    
+
+See it in action: [example-load-balancing-go](https://github.com/resonatehq-examples/example-load-balancing-go)
+
+```go
+// worker
+r, _ := resonate.New(resonate.Config{
+	Network: httpnet.NewHTTP("http://localhost:8001", httpnet.HTTPOptions{
+		Group: "workers",
+	}),
+})
+```
+
+```go
+// client
+r, _ := resonate.New(resonate.Config{
+	Network: httpnet.NewHTTP("http://localhost:8001", httpnet.HTTPOptions{
+		Group: "client",
+	}),
+})
+
+h, _ := r.RPC(context.Background(), promiseID, "function_name", params,
+	resonate.RPCOptions{Target: "poll://any@workers"})
+```
+
+    
 
 
-DBOS is designed to ensure durability for a single instance of an application.
-When a DBOS application process crashes, an operator must restart the application for any in-progress functions/workflows to recover and resume.
 
-Resonate will automatically recover and resume in-progress functions/workflows in another Worker.
+The meaningful difference is in crash recovery.
+Resonate automatically recovers and resumes in-progress functions/workflows in another Worker, as part of its open-source core.
 
-In essence, DBOS focuses on single-instance durability without addressing scalability, while Resonate holistically addresses the needs of modern distributed systems.
+With DBOS, automatic recovery of in-progress workflows across instances relies on DBOS Conductor, a separate service with tiered plans.
+Without Conductor, recovery in a distributed deployment is coordinated manually, and a single-node deployment recovers its own workflows when that process restarts.
 
 ---
 
@@ -8708,7 +8926,7 @@ url: /evaluate/coming-from/temporal
 title: Coming from Temporal
 ---
 
-This page reflects `@resonatehq/sdk` v0.10.2 (current on npm) and `resonate-sdk` v0.6.7 for Python.
+This page reflects `@resonatehq/sdk` v0.10.2 (TypeScript, current on npm), `resonate-sdk` v0.6.7 (Python), `resonate-sdk` v0.4.0 (Rust, on crates.io), and the Resonate Go SDK (pre-release — no semver tag yet; tracks `main`).
 
 
 **Are you coming from Temporal?**
@@ -8785,6 +9003,73 @@ async function main() {
 
     
 
+    
+
+See it in action: [example-recursive-factorial-rs](https://github.com/resonatehq-examples/example-recursive-factorial-rs)
+
+```rust
+#[resonate::function]
+async fn factorial(ctx: &Context, n: u64) -> Result<u64> {
+    if n <= 1 {
+        return Ok(1);
+    }
+    let result = ctx.run(factorial, n - 1).await?;
+
+    Ok(n * result)
+}
+
+#[tokio::main]
+async fn main() {
+    let resonate = Resonate::local();
+    resonate.register(factorial).unwrap();
+
+    let result: u64 = resonate.run("factorial-5", factorial, 5).await.unwrap();
+    println!("{result}");
+
+    resonate.stop().await.unwrap();
+}
+```
+
+    
+
+    
+
+See it in action: [example-recursive-factorial-go](https://github.com/resonatehq-examples/example-recursive-factorial-go)
+
+```go
+type Args struct {
+	N int `json:"n"`
+}
+
+func factorial(ctx *resonate.Context, args Args) (int, error) {
+	if args.N <= 1 {
+		return 1, nil
+	}
+	f, err := ctx.Run(factorial, Args{N: args.N - 1})
+	if err != nil {
+		return 0, err
+	}
+	var result int
+	if err := f.Await(&result); err != nil {
+		return 0, err
+	}
+	return args.N * result, nil
+}
+
+func main() {
+	r, _ := resonate.New(resonate.Config{URL: "http://localhost:8001"})
+	defer func() { _ = r.Stop() }()
+
+	factorialFn, _ := resonate.Register(r, "factorial", factorial)
+
+	h, _ := factorialFn.Run(context.Background(), "factorial-5", Args{N: 5})
+	result, _ := h.Result(context.Background())
+	fmt.Println(result)
+}
+```
+
+    
+
 
 
 ## Zero-dependency development
@@ -8811,6 +9096,39 @@ resonate = Resonate.local()
 
 ```typescript
 const resonate = new Resonate();
+
+// ...
+```
+
+    
+
+    
+
+```rust
+use resonate::prelude::*;
+
+let resonate = Resonate::local();
+
+// ...
+```
+
+    
+
+    
+
+```go
+import (
+	resonate "github.com/resonatehq/resonate-sdk-go"
+	"github.com/resonatehq/resonate-sdk-go/localnet"
+)
+
+// Local development mode runs the server state machine in-process,
+// using in-memory storage for promises and tasks.
+pid := "dev-worker"
+r, _ := resonate.New(resonate.Config{
+	Network:   localnet.NewLocal("default", &pid),
+	Heartbeat: resonate.NoopHeartbeat{}, // localnet has no lease endpoint to heartbeat against
+})
 
 // ...
 ```
@@ -8872,6 +9190,69 @@ function* foo(context: Context) {
 ```typescript
 // client.ts
 await resonate.promises.resolve(promiseId, { data: JSON.stringify(data) });
+```
+
+    
+
+    
+
+See it in action: [example-human-in-the-loop-rs](https://github.com/resonatehq-examples/example-human-in-the-loop-rs)
+
+```rust
+// worker.rs
+#[resonate::function]
+async fn foo(ctx: &Context) -> Result<()> {
+    // Latent durable promise — no function backing it. Resolved externally.
+    let blocking_promise = ctx.promise::<bool>();
+    let _promise_id = blocking_promise.id().await?;
+    // ...
+    // suspend until the promise is resolved (survives crashes)
+    let _data = blocking_promise.await?;
+    // ...
+    Ok(())
+}
+```
+
+```rust
+use resonate::types::Value;
+
+// resolve from anywhere
+resonate
+    .promises
+    .resolve(&promise_id, Value::from_serializable(data)?)
+    .await?;
+```
+
+    
+
+    
+
+See it in action: [example-human-in-the-loop-go](https://github.com/resonatehq-examples/example-human-in-the-loop-go)
+
+```go
+func foo(ctx *resonate.Context, _ struct{}) (string, error) {
+	// Latent durable promise — no function backing it. Resolved externally.
+	f, err := ctx.Promise()
+	if err != nil {
+		return "", err
+	}
+	promiseID := f.ID() // hand this ID to whoever resolves it
+	_ = promiseID
+	// ...
+	// Await suspends the workflow until the promise settles (survives crashes).
+	var data string
+	if err := f.Await(&data); err != nil {
+		return "", err
+	}
+	// ...
+	return data, nil
+}
+```
+
+```shell
+# The Go SDK has no high-level promises sub-client yet (pre-release), so
+# resolve the latent promise from outside via the Resonate CLI or server API:
+resonate promises resolve <promise-id> --value '{"headers": {}, "data": "approved"}'
 ```
 
     
@@ -8942,6 +9323,62 @@ async function main() {
     })
   );
 }
+```
+
+    
+
+    
+
+See it in action: [example-load-balancing-rs](https://github.com/resonatehq-examples/example-load-balancing-rs)
+
+```rust
+// worker.rs
+let resonate = Resonate::new(ResonateConfig {
+    url: Some("http://localhost:8001".into()),
+    group: Some("workers".into()),
+    ..Default::default()
+});
+```
+
+```rust
+// client.rs
+let resonate = Resonate::new(ResonateConfig {
+    url: Some("http://localhost:8001".into()),
+    group: Some("client".into()),
+    ..Default::default()
+});
+
+let result: u64 = resonate
+    .rpc(&promise_id, "function_name", params)
+    .target("poll://any@workers")
+    .await?;
+```
+
+    
+
+    
+
+See it in action: [example-load-balancing-go](https://github.com/resonatehq-examples/example-load-balancing-go)
+
+```go
+// worker
+r, _ := resonate.New(resonate.Config{
+	Network: httpnet.NewHTTP("http://localhost:8001", httpnet.HTTPOptions{
+		Group: "workers",
+	}),
+})
+```
+
+```go
+// client
+r, _ := resonate.New(resonate.Config{
+	Network: httpnet.NewHTTP("http://localhost:8001", httpnet.HTTPOptions{
+		Group: "client",
+	}),
+})
+
+h, _ := r.RPC(context.Background(), promiseID, "function_name", params,
+	resonate.RPCOptions{Target: "poll://any@workers"})
 ```
 
     
