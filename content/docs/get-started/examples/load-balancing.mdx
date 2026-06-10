@@ -36,7 +36,7 @@ TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x a
   />
   <CloneRepoCard
     sdk="Go SDK"
-    description="Worker group with simulated compute jobs dispatched via r.RPC to a poll://any target."
+    description="Worker group with simulated compute jobs dispatched via async RPC to a poll://any target."
     link="https://github.com/resonatehq-examples/example-load-balancing-go"
   />
 </CloneRepoGrid>
@@ -167,7 +167,25 @@ func computeSomething(workerID string) func(_ *resonate.Context, args WorkArgs) 
 }
 ```
 
-Each worker instance registers `computeSomething` under a shared group via `httpnet.NewHTTP(url, httpnet.HTTPOptions{Group: ...})`. The example spins several up inside one process; in production each would be its own process.
+Each worker instance is created with `httpnet.NewHTTP(url, httpnet.HTTPOptions{Group: ...})` and registers `computeSomething` under that shared group. The example spins several up inside one process — in production each would be its own process:
+
+```go title="main.go"
+		r, err := resonate.New(resonate.Config{
+			Network: httpnet.NewHTTP(*url, httpnet.HTTPOptions{
+				PID:   pid,
+				Group: *group,
+			}),
+		})
+		if err != nil {
+			log.Fatalf("resonate.New (worker-%s): %v", workerID, err)
+		}
+		workerInstances[i] = r
+
+		// Register the compute function with a closure that captures the worker ID.
+		if _, err := resonate.Register(r, "computeSomething", computeSomething(workerID)); err != nil {
+			log.Fatalf("Register (worker-%s): %v", workerID, err)
+		}
+```
 
 </TabItem>
 
@@ -259,7 +277,7 @@ async fn main() {
 
 <TabItem value="go">
 
-A separate client instance dispatches each task with `client.RPC` and a `poll://any@<group>` target — the server hands each task to whichever worker in the group claims it first.
+A separate client instance dispatches each task with `client.RPC` and a `poll://any@<group>` target — the server hands each task to whichever worker in the group claims it first. Both blocks below are excerpts from `main()`, where `*url`, `*group`, and `ctx` come from the parsed flags and request context:
 
 ```go title="main.go"
 	clientPID := fmt.Sprintf("client-%d", time.Now().UnixNano())
@@ -378,6 +396,8 @@ for i in 1 2 3 4 5 6; do cargo run --bin client; done
 
 <TabItem value="go">
 
+Unlike the other SDKs, the Go example runs the workers **and** the client in a single binary — there's no separate terminal per worker. `-workers` controls how many worker instances it spins up.
+
 ```shell
 git clone https://github.com/resonatehq-examples/example-load-balancing-go
 cd example-load-balancing-go
@@ -393,7 +413,7 @@ resonate dev
 go run . -url=http://localhost:8001 -workers=3 -tasks=6
 ```
 
-The single process starts three workers and a client that dispatches six tasks across the group; the `[worker-N]` log lines show the work spreading. Bump `-workers` and `-tasks` to watch the distribution change. Because the workers run as goroutines in this one process, the kill-a-single-worker recovery story below is the one shown by the separate-process TypeScript, Python, and Rust examples.
+The single process starts three worker instances and a client that dispatches six tasks across the group; the `[worker-N]` log lines show the work spreading. Increase `-workers` and `-tasks` to watch the distribution change. Because the workers share this one process, the kill-a-single-worker recovery story below is the one shown by the separate-process TypeScript, Python, and Rust examples.
 
 </TabItem>
 
@@ -402,6 +422,8 @@ The single process starts three workers and a client that dispatches six tasks a
 ## Try the recovery story
 
 Start three workers and dispatch enough jobs to keep all of them busy. Kill the worker holding a long-running job. The Resonate Server detects the loss, reassigns the workflow's durable promise to one of the survivors, and the work continues. The client never sees an error — it just gets a slightly delayed result.
+
+The TypeScript, Python, and Rust examples run each worker as its own process, so you can `Ctrl-C` a single one to watch this happen. The Go example runs its workers inside one process, so it demonstrates the distribution but not single-worker recovery — [recursive factorial](/get-started/examples/recursive-factorial) shows the Go crash-recovery story with a separate worker process.
 
 ## Related
 

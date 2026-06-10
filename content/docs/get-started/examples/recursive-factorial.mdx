@@ -207,6 +207,8 @@ The worker binary joins the group and registers the workflow:
 	}
 ```
 
+The recursive `ctx.RPC(Name, …)` call takes no explicit target — inside a workflow the Go SDK resolves the dispatch group from the worker that's running it (`factorial-workers`), so the recursion stays within the group automatically.
+
 </TabItem>
 
 </Tabs>
@@ -310,7 +312,7 @@ async fn main() {
 	fmt.Printf("factorial(%d) = %d\n", *n, result)
 ```
 
-The client targets `poll://any@factorial-workers` and awaits the typed result. The stable `factorial-<n>` promise ID makes a second run with the same `-n` return the cached result instantly.
+This is an excerpt from `main()`, where `r` is a `*resonate.Resonate` constructed (like the worker's) with `httpnet.NewHTTP`, but joining a `factorial-client` group. The client targets `poll://any@factorial-workers` and decodes the result into an `int`. The stable `factorial-<n>` promise ID makes a second run with the same `-n` return the cached result instantly.
 
 </TabItem>
 
