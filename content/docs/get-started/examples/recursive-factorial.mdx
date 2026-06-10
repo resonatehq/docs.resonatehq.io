@@ -15,7 +15,7 @@ keywords:
 A workflow that computes `n!` by calling itself with `n-1`. Each recursive call dispatches via `ctx.rpc` to whichever worker in the group claims it — recursion ends up distributed across machines without any explicit coordination, and every step is checkpointed so a worker crash mid-recursion resumes cleanly.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development. Go: pre-release — no semver tag yet, so the example pins a specific commit (see [Go SDK](/develop/go)).
 </Callout>
 
 <CloneRepoGrid>
@@ -33,6 +33,11 @@ TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x a
     sdk="Rust SDK"
     description="Workflow recurses via ctx.rpc, dispatched across the factorial-workers group."
     link="https://github.com/resonatehq-examples/example-recursive-factorial-rs"
+  />
+  <CloneRepoCard
+    sdk="Go SDK"
+    description="Workflow recurses via ctx.RPC, dispatched across the factorial-workers group."
+    link="https://github.com/resonatehq-examples/example-recursive-factorial-go"
   />
 </CloneRepoGrid>
 
@@ -57,6 +62,7 @@ The pattern is one self-recursive function plus a client that kicks it off.
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
         {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
     ]}>
 
 <TabItem value="typescript">
@@ -146,6 +152,63 @@ async fn main() {
 
 </TabItem>
 
+<TabItem value="go">
+
+```go title="factorial/factorial.go"
+const Name = "Factorial"
+
+// WorkerGroup is the dispatch group the worker(s) join and the client targets
+// when calling RPC. Using a non-default group keeps clients out of the
+// task-dispatch pool — only processes that actually have Factorial registered
+// will be asked to execute it.
+const WorkerGroup = "factorial-workers"
+
+// Args is the workflow input.
+type Args struct {
+	N int `json:"n"`
+}
+
+// Workflow computes n! by recursively dispatching factorial(n-1) via ctx.RPC.
+// Each recursive call is a durable promise on the server; with multiple
+// workers running, the recursion fans out across them.
+func Workflow(ctx *resonate.Context, args Args) (int, error) {
+	if args.N <= 1 {
+		return 1, nil
+	}
+	f, err := ctx.RPC(Name, Args{N: args.N - 1})
+	if err != nil {
+		return 0, err
+	}
+	var sub int
+	if err := f.Await(&sub); err != nil {
+		return 0, err
+	}
+	return args.N * sub, nil
+}
+```
+
+The worker binary joins the group and registers the workflow:
+
+```go title="cmd/worker/main.go"
+	pid := fmt.Sprintf("factorial-worker-%d", os.Getpid())
+	r, err := resonate.New(resonate.Config{
+		Network: httpnet.NewHTTP(*url, httpnet.HTTPOptions{
+			PID:   pid,
+			Group: factorial.WorkerGroup,
+		}),
+	})
+	if err != nil {
+		log.Fatalf("resonate.New: %v", err)
+	}
+	defer func() { _ = r.Stop() }()
+
+	if _, err := resonate.Register(r, factorial.Name, factorial.Workflow); err != nil {
+		log.Fatalf("Register: %v", err)
+	}
+```
+
+</TabItem>
+
 </Tabs>
 
 ### Kicking it off
@@ -159,6 +222,7 @@ The client looks identical to any other RPC call — Resonate doesn't care that 
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
         {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
     ]}>
 
 <TabItem value="typescript">
@@ -227,6 +291,29 @@ async fn main() {
 
 </TabItem>
 
+<TabItem value="go">
+
+```go title="cmd/client/main.go"
+	id := fmt.Sprintf("factorial-%d", *n)
+	target := fmt.Sprintf("poll://any@%s", factorial.WorkerGroup)
+
+	h, err := r.RPC(ctx, id, factorial.Name, factorial.Args{N: *n},
+		resonate.RPCOptions{Target: target})
+	if err != nil {
+		log.Fatalf("RPC: %v", err)
+	}
+
+	var result int
+	if err := h.Result(ctx, &result); err != nil {
+		log.Fatalf("Result: %v", err)
+	}
+	fmt.Printf("factorial(%d) = %d\n", *n, result)
+```
+
+The client targets `poll://any@factorial-workers` and awaits the typed result. The stable `factorial-<n>` promise ID makes a second run with the same `-n` return the cached result instantly.
+
+</TabItem>
+
 </Tabs>
 
 ## Run it locally
@@ -240,6 +327,7 @@ Start the server, run a few workers, then dispatch from the client.
         {label: 'TypeScript', value: 'typescript'},
         {label: 'Python', value: 'python'},
         {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
     ]}>
 
 <TabItem value="typescript">
@@ -312,6 +400,31 @@ cargo run --bin worker
 ```shell title="Terminal 5 — client"
 cargo run --bin client -- 10
 ```
+
+</TabItem>
+
+<TabItem value="go">
+
+```shell
+git clone https://github.com/resonatehq-examples/example-recursive-factorial-go
+cd example-recursive-factorial-go
+go mod download
+```
+
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
+
+```shell title="Terminals 2+ — one or more workers"
+go run ./cmd/worker
+```
+
+```shell title="Terminal 3 — client"
+go run ./cmd/client -n 6
+```
+
+Run several workers and watch `factorial(6)`, `factorial(5)`, `factorial(4)` … fan out across them as the recursion descends.
 
 </TabItem>
 
