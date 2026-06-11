@@ -11,8 +11,9 @@ keywords:
 Every code block is pinned to the latest released SDK at the time of writing:
 `@resonatehq/sdk` **v0.10.2** (npm), `resonate-sdk` **v0.6.7** (PyPI),
 `resonate-sdk` **v0.4.0** (crates.io), and the Resonate Go SDK (pre-release,
-tracks `main`). Temporal blocks are excerpted verbatim from the official
-`temporalio/samples-{typescript,python,go}` repositories — never rewritten.
+tracks `main`). Temporal blocks are excerpted from the official
+`temporalio/samples-{typescript,python,go}` repositories — trimmed for focus
+(elisions marked), never rewritten.
 </Callout>
 
 If you have already read [Coming from Temporal](/evaluate/coming-from/temporal),
@@ -31,9 +32,10 @@ example repo**. Three rules keep it honest:
 2. **Coverage is stated, not implied.** Resonate's example library does not yet
    cover every pattern in every language. Where an example is missing, the cell
    says so — we do not fake parity.
-3. **Temporal has no Rust SDK.** Its official SDKs are Go, Java, Python,
-   TypeScript, .NET, and PHP. For Resonate-Rust targets, the migration source is
-   Temporal **TypeScript** (Temporal's closest idiomatic match to Rust's
+3. **No official Temporal Rust samples.** Temporal's Rust SDK is in Public
+   Preview (mid-2026) with no samples repository yet (`temporalio/samples-rust`
+   does not exist). So for Resonate-Rust targets, the migration source is the
+   Temporal **TypeScript** sample (Temporal's closest idiomatic match to Rust's
    async/await), clearly labeled as such.
 
 ### Coverage matrix
@@ -42,6 +44,7 @@ example repo**. Three rules keep it honest:
 |---|---|:--:|:--:|:--:|:--:|
 | [Workflow + activity](#workflow--activity) | `hello-world` | ✅ | ✅ | ✅ | ✅ |
 | [Composing functions](#composing-functions-child-workflows) | `child-workflows` | ✅ | ✅ | ✅ | ✅ |
+| [Fan-out / fan-in](#fan-out--fan-in) | parallel activities | ✅ | ✅ | ✅ | ✅ |
 | [Durable timers](#durable-timers) | `sleep-for-days` | ✅ | ✅ | ✅ | ✅ |
 | [Signals](#signals--durable-promises) | `signals-queries` | ✅ | ✅ | ✅ | ✅ |
 | [Saga / compensation](#saga--compensation) | `saga` | ✅ | ✅ | ✅ | ⚠️ |
@@ -160,8 +163,9 @@ No `proxyActivities`, no Task Queue. The step is a plain function passed to
 
 <TabItem value="rust">
 
-**Source: Temporal TypeScript → target: Resonate Rust.** Temporal has no Rust
-SDK, so the migration source is the Temporal TypeScript sample above.
+**Source: Temporal TypeScript → target: Resonate Rust.** Temporal's Rust SDK is in
+Public Preview with no samples repo yet, so the migration source is the Temporal
+TypeScript sample above.
 
 **Resonate** — `example-hello-world-rs/src/main.rs`:
 
@@ -279,8 +283,9 @@ def factorial(ctx, n):
     return n * result
 ```
 
-Python is the one example that pins each child's promise ID explicitly via
-`.options(id=...)`, making every recursive step deterministically addressable.
+The Python example pins each child's promise ID explicitly via `.options(id=...)`
+— an optional pattern available in all SDKs — making every recursive step
+deterministically addressable.
 
 <SeeItInAction repo="example-recursive-factorial-py" />
 
@@ -403,6 +408,142 @@ child type.
 
 ---
 
+## Fan-out / fan-in
+
+Start many units of work in parallel, then join all results. In Temporal you
+spawn activities (or children) without awaiting, then await them together.
+Resonate is the same shape: start each with a non-blocking invocation, then await
+each promise.
+
+<Callout type="info" title="Verdict — 1:1">
+Identical structure. The only per-SDK wrinkle is the name of the non-blocking
+spawn primitive — TS `ctx.beginRun`, Python `ctx.rfi`, Rust `.spawn()`, Go
+`ctx.RPC` — each returns a future immediately; you await them after all are
+started.
+</Callout>
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
+    ]}
+>
+
+<TabItem value="python">
+
+**Temporal** — `samples-python/hello/hello_parallel_activity.py`:
+
+```python
+results = await asyncio.gather(
+    workflow.execute_activity(say_hello_activity, "user1", start_to_close_timeout=timedelta(seconds=5)),
+    workflow.execute_activity(say_hello_activity, "user2", start_to_close_timeout=timedelta(seconds=5)),
+    # …user3 … user5 …
+)
+```
+
+**Resonate** — `example-fan-out-fan-in-py/workflow.py`:
+
+```python
+# fan-out: rfi() returns a handle immediately
+email_p = yield ctx.rfi(send_email, event).options(id=f"{ctx.id}.email")
+sms_p   = yield ctx.rfi(send_sms, event).options(id=f"{ctx.id}.sms")
+# fan-in: await each
+email = yield email_p
+sms   = yield sms_p
+```
+
+Two yields per child: `yield ctx.rfi(...)` to start, `yield handle` to await.
+Start all, then await all.
+
+<SeeItInAction repo="example-fan-out-fan-in-py" />
+
+</TabItem>
+
+<TabItem value="typescript">
+
+**Temporal** — `samples-typescript/child-workflows/src/workflows.ts`:
+
+```typescript
+const responseArray = await Promise.all(
+  names.map((name) => executeChild(childWorkflow, { args: [name] })),
+);
+```
+
+**Resonate** — `example-fan-out-fan-in-ts/src/workflow.ts`:
+
+```typescript
+// fan-out: beginRun returns a future immediately
+const emailFuture = yield* ctx.beginRun(sendEmail, event);
+const smsFuture   = yield* ctx.beginRun(sendSms, event);
+// fan-in: await each
+const results = [yield* emailFuture, yield* smsFuture];
+```
+
+<SeeItInAction repo="example-fan-out-fan-in-ts" />
+
+</TabItem>
+
+<TabItem value="rust">
+
+**Source: Temporal TypeScript → target: Resonate Rust.** See the Temporal
+TypeScript excerpt above.
+
+**Resonate** — `example-fan-out-fan-in-rs/src/main.rs`:
+
+```rust
+// fan-out: .spawn() returns a handle immediately
+let h1 = ctx.run(process_item, items[0].clone()).spawn().await?;
+let h2 = ctx.run(process_item, items[1].clone()).spawn().await?;
+// fan-in: await each
+let r1 = h1.await?;
+let r2 = h2.await?;
+```
+
+<SeeItInAction repo="example-fan-out-fan-in-rs" />
+
+</TabItem>
+
+<TabItem value="go">
+
+**Temporal** — `samples-go/splitmerge-future/splitmerge_workflow.go`:
+
+```go
+var results []workflow.Future
+for i := 0; i < processorCount; i++ {                    // fan-out
+    results = append(results, workflow.ExecuteActivity(ctx, ChunkProcessingActivity, i+1))
+}
+for i := 0; i < processorCount; i++ {                    // fan-in
+    var r ChunkResult
+    _ = results[i].Get(ctx, &r)
+}
+```
+
+**Resonate** — `example-fan-out-fan-in-go/main.go`:
+
+```go
+futures := make([]*resonate.Future, 0, len(args.Channels))
+for _, ch := range args.Channels {                       // fan-out
+    f, _ := ctx.RPC("send", SendArgs{Channel: ch, Message: args.Message})
+    futures = append(futures, f)
+}
+for _, f := range futures {                              // fan-in
+    var d Delivery
+    _ = f.Await(&d)
+}
+```
+
+<SeeItInAction repo="example-fan-out-fan-in-go" />
+
+</TabItem>
+
+</Tabs>
+
+---
+
 ## Durable timers
 
 Temporal's `sleep-for-days` shows a durable timer racing against a signal.
@@ -432,6 +573,7 @@ Go and Rust take a native `Duration`. Converting `'30 days'` for the TS SDK mean
 **Temporal** — `samples-python/sleep_for_days/workflows.py`:
 
 ```python
+# raced against a completion signal inside asyncio.wait(...):
 await workflow.sleep(timedelta(days=30))   # timedelta
 ```
 
@@ -544,9 +686,9 @@ anywhere*.
 
 <Callout type="info" title="Verdict — simpler, and addressable from anywhere">
 Three Temporal constructs (signal def + handler + `condition`) collapse into one
-awaited promise. The Query disappears: the promise *is* the state. And the trigger
-is an HTTP-addressable promise ID, so it can come from a CLI, webhook, or Slack —
-not only a typed Workflow client.
+awaited promise. The Query disappears — promise state is the source of truth. And
+the trigger is an HTTP-addressable promise ID, so it can come from a CLI, a
+webhook, or any external service.
 </Callout>
 
 <Tabs
@@ -569,8 +711,13 @@ not only a typed Workflow client.
 class GreetingWorkflow:
     @workflow.run
     async def run(self) -> List[str]:
-        await workflow.wait_condition(lambda: self._exit)
-        return self._greetings
+        greetings: List[str] = []
+        while True:
+            await workflow.wait_condition(
+                lambda: not self._pending_greetings.empty() or self._exit)
+            # …drain self._pending_greetings into greetings…
+            if self._exit:
+                return greetings
 
     @workflow.signal
     def exit(self) -> None:
@@ -663,7 +810,8 @@ async fn foo(ctx: &Context, workflow_id: String) -> Result<String> {
 }
 ```
 
-Trigger — `src/bin/gateway.rs` (pinned to crates.io v0.4.0):
+Trigger — resolve from anywhere. Against the released **v0.4.0** crate, `resolve`
+takes a `resonate::types::Value`:
 
 ```rust
 use resonate::types::Value;
@@ -673,6 +821,10 @@ resonate
     .resolve(&promise_id, Value::from_serializable(true)?)
     .await?;
 ```
+
+The `example-human-in-the-loop-rs` repo pins to the SDK's `main` branch, where the
+older `resolve(&str, serde_json::Value)` signature lets it pass `json!(true)`; use
+the `Value` form above against the released crate.
 
 <SeeItInAction repo="example-human-in-the-loop-rs" />
 
@@ -800,6 +952,7 @@ try {
   await addAddress({ accountId, address });
   compensations.unshift({ message: '…', fn: () => clearPostalAddresses({ accountId }) });
 
+  // …addClient + its compensation omitted for brevity…
   await addBankAccount({ accountId, details });
   compensations.unshift({ message: '…', fn: () => disconnectBankAccounts({ accountId }) });
 } catch (err) {
@@ -877,6 +1030,7 @@ func TransferMoney(ctx workflow.Context, td TransferDetails) (err error) {
     }()
 
     err = workflow.ExecuteActivity(ctx, Deposit, td).Get(ctx, nil)
+    // …Deposit's own defer-compensation + a final failing step omitted for brevity…
     return err
 }
 ```
@@ -904,8 +1058,9 @@ unboundedly, so for finite loops you just… loop.
 For bounded loops, the Resonate example is a plain `while`/`for` — no
 `continue-as-new` needed. **But** for *truly unbounded* loops, a naive loop in a
 single durable invocation accumulates child promises that get re-walked on
-replay; once replay exceeds the task lease, cadence collapses. The
-production-correct pattern is `ctx.detached` **tail-recursion** (the SDK docblock
+replay; once replay time exceeds the task lease, the worker loop stalls and stops
+making progress. The production-correct pattern is `ctx.detached`
+**tail-recursion** (the SDK docblock
 calls this out explicitly). The shipped examples below use the naive loop, which
 is correct for demos and bounded counts; reach for `detached` when the loop is
 genuinely infinite.
@@ -969,6 +1124,9 @@ function* playGame(ctx: Context, n: number) {
 
 ```go
 func SampleChildWorkflow(ctx workflow.Context, totalCount, runCount int) (string, error) {
+    if runCount <= 0 {
+        return "", errors.New("invalid run count")
+    }
     totalCount++
     runCount--
     if runCount == 0 {
@@ -1018,9 +1176,9 @@ treat this as a known gap.
 <TabItem value="rust">
 
 <Callout type="caution" title="No Resonate Rust infinite-workflow example yet">
-`example-infinite-workflow-rs` does not exist, and Temporal has no Rust SDK. The
-Resonate equivalent is a plain `loop`/`while` with `ctx.detached` for the
-unbounded case — treat as a known gap until an example ships.
+`example-infinite-workflow-rs` does not exist, and Temporal's Rust SDK has no
+samples repo yet. The Resonate equivalent is a plain `loop`/`while` with
+`ctx.detached` for the unbounded case — treat as a known gap until an example ships.
 </Callout>
 
 </TabItem>
@@ -1102,7 +1260,7 @@ export class EncryptionCodec implements PayloadCodec {
         [METADATA_ENCODING_KEY]: encode(ENCODING),
         [METADATA_ENCRYPTION_KEY_ID]: encode(this.defaultKeyId),
       },
-      data: await encrypt(Payload.encode(payload).finish(), this.keys.get(this.defaultKeyId)!),
+      data: await encrypt(temporal.api.common.v1.Payload.encode(payload).finish(), this.keys.get(this.defaultKeyId)!),
     })));
   }
   async decode(payloads: Payload[]): Promise<Payload[]> { /* …mirror of encode… */ }
@@ -1143,8 +1301,8 @@ Honesty about coverage gaps, so you can plan around them:
 - **Saga in Go** — no `example-money-transfer-go` / `example-saga-booking-go` yet.
 - **Long-running loops in Python and Rust** — no `example-infinite-workflow-py` / `-rs` yet.
 - **Distributed mutex & encryption** — TypeScript only.
-- **Rust source** — Temporal has no Rust SDK, so every Rust target migrates from
-  the Temporal TypeScript sample.
+- **Rust source** — Temporal's Rust SDK is in Public Preview with no samples repo
+  yet, so every Rust target migrates from the Temporal TypeScript sample.
 
 For anything not covered here, the [Coming from Temporal](/evaluate/coming-from/temporal)
 conceptual guide explains the underlying model, and the

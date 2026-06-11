@@ -21,7 +21,8 @@
   named `temporalio/samples-*` file. If you can't find it, say so.
 - **Resonate has no `@workflow`/`@activity` split.** A step is just a function
   made durable by `ctx.run`. Do not invent decorators.
-- **Temporal has no Rust SDK.** If the target is Resonate-Rust, the source is the
+- **No official Temporal Rust samples.** Temporal's Rust SDK is in Public Preview
+  with no samples repo yet; if the target is Resonate-Rust, source from the
   Temporal *TypeScript* idiom. State this.
 - **State coverage honestly.** Missing example ≠ impossible; it means no worked
   reference exists yet.
@@ -48,6 +49,7 @@
 | `defineQuery` / `setHandler(query, …)` | delete — promise/result state is the source of truth |
 | `handle.signal(sig)` (external) | `resonate.promises.resolve(id, value)` (HTTP-addressable from anywhere) |
 | `workflow.sleep` / `NewTimer` | `ctx.sleep(duration)` |
+| `Promise.all` / `asyncio.gather` / parallel futures (fan-out) | start each non-blocking (`ctx.beginRun` / `ctx.rfi` / `.spawn()` / `ctx.RPC`), then await each |
 | saga compensation stack + drain-on-catch | inline `ctx.run(undo, …)` in the error branch, guarded by what completed |
 | `continueAsNew` | for bounded loops: a plain loop. For unbounded loops: `ctx.detached(self, n+1)` tail-recursion |
 
@@ -76,6 +78,19 @@
 - **RESONATE TARGET:** `example-recursive-factorial-{ts,py,rs,go}`.
 - **COVERAGE:** ts ✅ py ✅ rs ✅ go ✅.
 
+## Pattern: Fan-out / fan-in (parallel + join)
+
+- **DETECT:** `Promise.all` over `executeChild`/activities (ts), `asyncio.gather`
+  (py), multiple `workflow.ExecuteActivity` futures then `.Get()` (go).
+- **TRANSFORM:** Start each unit non-blocking — `ctx.beginRun` (ts) / `ctx.rfi`
+  (py) / `ctx.run(...).spawn()` (rs) / `ctx.RPC` (go); each returns a future
+  immediately. Then await each future. Start ALL before awaiting ANY, or the
+  work serializes.
+- **TEMPORAL SOURCE:** `samples-typescript/child-workflows` (`Promise.all`),
+  `samples-python/hello/hello_parallel_activity.py`, `samples-go/splitmerge-future`.
+- **RESONATE TARGET:** `example-fan-out-fan-in-{ts,py,rs,go}`.
+- **COVERAGE:** ts ✅ py ✅ rs ✅ go ✅.
+
 ## Pattern: Durable timers
 
 - **DETECT:** `workflow.sleep(timedelta)` (py), `sleep('30 days')` (ts),
@@ -100,11 +115,11 @@
   `handle.signal(...)` with `resonate.promises.resolve(id, value)`. Delete Query
   handlers.
 - **RESOLVE API — verify against pinned version:**
-  - ts (0.10.2): `resonate.promises.resolve(id, { data: base64(JSON.stringify(v)) })`
+  - ts (0.10.2): `resonate.promises.resolve(id, { data: Buffer.from(JSON.stringify(v)).toString("base64") })`
   - py (0.6.7): `resonate.promises.resolve(id=…, ikey=…)`
   - rs (0.4.0): `resonate.promises.resolve(&id, Value::from_serializable(v)?)`
-    (note: the example repo tracks `main` and uses `json!(v)`; on the released
-    crate use `Value`)
+    (the example repo tracks SDK `main` and uses `json!(v)`, which does NOT compile
+    against the released v0.4.0 crate — use the `Value` form)
   - go (main): **no high-level resolve yet** — use the CLI
     `resonate promises resolve <id> --value '{"data":"…"}'` or
     `r.Sender().PromiseSettle(...)` with a base64-encoded codec value.
@@ -136,8 +151,9 @@
   - **Truly unbounded loop → `ctx.detached(self, n+1)` tail-recursion**, split
     *inside* the per-iteration function. A naive infinite loop in a single durable
     invocation accumulates child promises that get re-walked on replay; once
-    replay exceeds the task lease, cadence collapses. Do not emit a naive
-    `while(true)` for genuinely infinite loops.
+    replay time exceeds the task lease, the worker loop stalls. Do not emit a naive
+    unbounded loop (`while(true)` / `while True:` / `loop {}`) for genuinely
+    infinite loops.
 - **TEMPORAL SOURCE:** `samples-typescript/continue-as-new`,
   `samples-go/child-workflow-continue-as-new`,
   `samples-python/hello/hello_continue_as_new.py`.
@@ -174,8 +190,8 @@
 - Saga: no Go example (`example-saga-booking-go` / `example-money-transfer-go`).
 - Long-running loops: no Python or Rust example (`example-infinite-workflow-py` / `-rs`).
 - Distributed mutex, Encryption: TypeScript only.
-- Rust source: Temporal has no Rust SDK — migrate Rust targets from the Temporal
-  TypeScript idiom.
+- Rust source: Temporal's Rust SDK is in Public Preview with no samples repo yet —
+  migrate Rust targets from the Temporal TypeScript idiom.
 
 ## Source of truth
 
