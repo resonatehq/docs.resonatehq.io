@@ -22,12 +22,12 @@ export function Card({ title, description, href, icon }: CardProps) {
             {title}
           </h3>
           {description && (
-            <p className="font-serif text-sm text-muted mt-1">{description}</p>
+            <p className="font-serif text-sm text-fg-muted mt-1">{description}</p>
           )}
         </div>
         <ArrowRight
           size={14}
-          className="text-muted group-hover:text-secondary transition mt-1 shrink-0"
+          className="text-fg-muted group-hover:text-secondary transition mt-1 shrink-0"
         />
       </div>
     </Link>

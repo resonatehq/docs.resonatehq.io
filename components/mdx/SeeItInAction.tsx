@@ -22,7 +22,7 @@ export default function SeeItInAction({ repo, href }: SeeItInActionProps) {
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className="group inline-flex items-center gap-1.5 text-xs font-mono !text-bright-gray-500 dark:!text-muted !no-underline transition-colors hover:!text-accent-teal-800 dark:hover:!text-secondary focus-visible:outline-2 focus-visible:outline-secondary focus-visible:outline-offset-2"
+        className="group inline-flex items-center gap-1.5 text-xs font-mono !text-fg-muted !no-underline transition-colors hover:!text-accent-teal-800 dark:hover:!text-secondary focus-visible:outline-2 focus-visible:outline-secondary focus-visible:outline-offset-2"
       >
         <Github size={13} className="shrink-0" />
         <span>See it in action: {repo}</span>

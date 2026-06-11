@@ -158,7 +158,7 @@ export function CodeTabs({ children, labels, defaultValue, values, groupId }: Co
             className={`px-4 py-2 text-sm font-mono transition-colors focus-visible:outline-2 focus-visible:outline-secondary focus-visible:outline-offset-[-2px] ${
               activeKey === key
                 ? "text-bright-gray-900 dark:text-secondary border-b-2 border-secondary -mb-px"
-                : "text-bright-gray-500 hover:text-bright-gray-900 dark:text-muted dark:hover:text-primary"
+                : "text-bright-gray-500 hover:text-bright-gray-900 dark:text-fg-muted dark:hover:text-primary"
             }`}
           >
             {tabLabels[i]}

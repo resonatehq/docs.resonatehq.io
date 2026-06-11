@@ -31,7 +31,7 @@ export default function CopyButton({ containerRef }: { containerRef: RefObject<H
   return (
     <button
       onClick={handleCopy}
-      className="absolute top-2 right-2 p-1.5 text-muted hover:text-primary bg-bright-gray-100/80 dark:bg-surface-subtle/80 border border-primary/10 opacity-0 group-hover:opacity-100 transition-opacity focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-secondary"
+      className="absolute top-2 right-2 p-1.5 text-fg-muted hover:text-bright-gray-900 dark:hover:text-primary bg-bright-gray-100/80 dark:bg-surface-subtle/80 border border-primary/10 opacity-0 group-hover:opacity-100 transition-opacity focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-secondary"
       aria-label={copied ? "Copied" : "Copy code"}
     >
       {copied ? <Check size={14} /> : <Copy size={14} />}

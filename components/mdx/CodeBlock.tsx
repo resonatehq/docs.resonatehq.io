@@ -67,14 +67,14 @@ export function Pre({ children, title, "data-title": dataTitle, ...props }: PreP
             <>
               <span className="truncate text-bright-gray-900 dark:text-primary">{displayTitle}</span>
               {langLabel && (
-                <span className="shrink-0 text-muted/60">·</span>
+                <span className="shrink-0 text-fg-muted/60">·</span>
               )}
               {langLabel && (
-                <span className="shrink-0 text-muted">{langLabel}</span>
+                <span className="shrink-0 text-fg-muted">{langLabel}</span>
               )}
             </>
           ) : (
-            <span className="text-muted">{langLabel ?? "code"}</span>
+            <span className="text-fg-muted">{langLabel ?? "code"}</span>
           )}
         </div>
       </div>

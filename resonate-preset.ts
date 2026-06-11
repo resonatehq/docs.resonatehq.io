@@ -72,6 +72,11 @@ const resonatePreset: Partial<Config> = {
         primary: "#E4E7EB",
         secondary: "#1EE3CF",
         muted: "#94A3B8",
+        // Mode-aware muted foreground. `muted` (#94A3B8) is tuned for dark
+        // surfaces and fails contrast on light ones, so prefer `fg-muted` for
+        // any muted text/icon that renders in both themes. Channels live in
+        // globals.css (:root / .dark); the <alpha-value> form keeps `/60` etc.
+        "fg-muted": "rgb(var(--fg-muted) / <alpha-value>)",
         surface: {
           dark: "#080A0E",
           DEFAULT: "#080A0E",

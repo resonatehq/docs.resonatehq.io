@@ -50,7 +50,7 @@ export default function Navigation() {
             </a>
             <Link
               href="/"
-              className="font-display text-xl font-semibold tracking-tight text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
+              className="font-display text-xl font-semibold tracking-tight text-fg-muted hover:text-bright-gray-900 dark:hover:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
             >
               Docs
             </Link>
@@ -73,7 +73,7 @@ export default function Navigation() {
               href="https://github.com/resonatehq"
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 text-muted hover:text-secondary transition focus-visible:outline-2 focus-visible:outline-secondary focus-visible:outline-offset-2"
+              className="p-2 text-fg-muted hover:text-secondary transition focus-visible:outline-2 focus-visible:outline-secondary focus-visible:outline-offset-2"
               aria-label="GitHub"
             >
               <Github size={18} />

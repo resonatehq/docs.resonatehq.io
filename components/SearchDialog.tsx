@@ -39,12 +39,12 @@ export default function SearchDialog() {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="hidden md:flex items-center gap-2 px-4 py-2 text-sm text-muted border border-primary/10 hover:border-primary/30 transition focus-visible:outline-2 focus-visible:outline-secondary"
+        className="hidden md:flex items-center gap-2 px-4 py-2 text-sm text-fg-muted border border-primary/10 hover:border-primary/30 transition focus-visible:outline-2 focus-visible:outline-secondary"
         aria-label="Quick navigation"
       >
         <Search size={14} />
         <span>Jump to...</span>
-        <kbd className="ml-2 text-xs text-muted/60 font-mono">⌘K</kbd>
+        <kbd className="ml-2 text-xs text-fg-muted/60 font-mono">⌘K</kbd>
       </button>
     );
   }
@@ -85,18 +85,18 @@ export default function SearchDialog() {
       >
         <div className="bg-surface-light dark:bg-surface-elevated border border-primary/10 shadow-lg">
           <div className="flex items-center border-b border-primary/10 px-4">
-            <Search size={16} className="text-muted shrink-0" />
+            <Search size={16} className="text-fg-muted shrink-0" />
             <input
               ref={inputRef}
               type="text"
               placeholder="Jump to page..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="flex-1 bg-transparent px-3 py-3 text-sm text-bright-gray-900 dark:text-primary outline-none placeholder:text-muted"
+              className="flex-1 bg-transparent px-3 py-3 text-sm text-bright-gray-900 dark:text-primary outline-none placeholder:text-fg-muted"
             />
             <button
               onClick={() => setOpen(false)}
-              className="p-1 text-muted hover:text-bright-gray-900 dark:hover:text-primary transition"
+              className="p-1 text-fg-muted hover:text-bright-gray-900 dark:hover:text-primary transition"
               aria-label="Close search"
             >
               <X size={16} />
@@ -105,19 +105,19 @@ export default function SearchDialog() {
 
           <div className="max-h-[50vh] overflow-y-auto p-2">
             {search.length === 0 && (
-              <p className="px-3 py-6 text-center text-sm text-muted">
+              <p className="px-3 py-6 text-center text-sm text-fg-muted">
                 Type to navigate...
               </p>
             )}
 
             {search.length > 0 && query.isLoading && (
-              <p className="px-3 py-6 text-center text-sm text-muted">
+              <p className="px-3 py-6 text-center text-sm text-fg-muted">
                 Searching...
               </p>
             )}
 
             {search.length > 0 && !query.isLoading && results.length === 0 && (
-              <p className="px-3 py-6 text-center text-sm text-muted">
+              <p className="px-3 py-6 text-center text-sm text-fg-muted">
                 No results for &ldquo;{search}&rdquo;
               </p>
             )}
@@ -130,9 +130,9 @@ export default function SearchDialog() {
                 className="flex items-start gap-3 px-3 py-2.5 hover:bg-bright-gray-50 dark:hover:bg-surface-subtle transition text-sm"
               >
                 {hit.type === "page" ? (
-                  <FileText size={14} className="text-muted mt-0.5 shrink-0" />
+                  <FileText size={14} className="text-fg-muted mt-0.5 shrink-0" />
                 ) : (
-                  <Hash size={14} className="text-muted mt-0.5 shrink-0" />
+                  <Hash size={14} className="text-fg-muted mt-0.5 shrink-0" />
                 )}
                 <div className="min-w-0">
                   <p className="font-medium text-bright-gray-900 dark:text-primary truncate">

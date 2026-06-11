@@ -22,21 +22,21 @@ export function RepoCard({ name, href, description, language }: RepoCardProps) {
       rel="noopener noreferrer"
       className="group flex items-start gap-3 p-4 border border-primary/10 bg-bright-gray-50 dark:bg-surface-elevated transition-all duration-200 hover:border-accent-plum/30 hover:bg-bright-gray-100 dark:hover:bg-surface-subtle hover:-translate-y-0.5 hover:shadow-glow-sm focus-visible:outline-2 focus-visible:outline-secondary"
     >
-      <Github size={16} className="text-muted mt-0.5 shrink-0" />
+      <Github size={16} className="text-fg-muted mt-0.5 shrink-0" />
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <span className="font-mono text-sm text-bright-gray-900 dark:text-white group-hover:text-accent-plum-300 transition truncate">
             {name}
           </span>
           {language && (
-            <span className="flex items-center gap-1 text-xs text-muted">
+            <span className="flex items-center gap-1 text-xs text-fg-muted">
               <span className={`w-2 h-2 rounded-full ${langColors[language] || "bg-gray-500"}`} />
               {language}
             </span>
           )}
         </div>
         {description && (
-          <p className="text-xs text-muted mt-1">{description}</p>
+          <p className="text-xs text-fg-muted mt-1">{description}</p>
         )}
       </div>
     </a>

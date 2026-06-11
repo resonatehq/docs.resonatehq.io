@@ -4,10 +4,16 @@
 
 :root {
   --echo-fill: #FAFAF7;
+  /* Muted foreground channels — light: bright-gray-500 (#617196). See the
+     `fg-muted` token in resonate-preset.ts. */
+  --fg-muted: 97 113 150;
 }
 
 .dark {
   --echo-fill: #080A0E;
+  /* dark: muted (#94A3B8) — matches the legacy `muted` token exactly, so
+     `dark:text-muted` → `text-fg-muted` migrations are render-identical. */
+  --fg-muted: 148 163 184;
 }
 
 @layer base {
