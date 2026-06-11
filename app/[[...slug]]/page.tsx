@@ -11,6 +11,7 @@ import { RepoCard, RepoGrid } from "@/components/mdx/RepoCard";
 import HomePageCategory from "@/components/mdx/HomePageCategory";
 import CloneRepoCard from "@/components/mdx/CloneRepoCard";
 import DocCardList from "@/components/mdx/DocCardList";
+import SeeItInAction from "@/components/mdx/SeeItInAction";
 import { Pre } from "@/components/mdx/CodeBlock";
 import { H2, H3, H4 } from "@/components/mdx/Heading";
 import { ChevronLeft, ChevronRight, Pencil } from "lucide-react";
@@ -46,6 +47,7 @@ const mdxComponents = {
   CloneRepoGrid: RepoGrid,
   CloneRepoCard,
   DocCardList,
+  SeeItInAction,
   pre: Pre,
   img: MdxImg,
   h2: H2,
