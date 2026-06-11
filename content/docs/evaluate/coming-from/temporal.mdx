@@ -247,7 +247,7 @@ How might you implement it in Temporal?
 def factorial(ctx: Context, n: int) -> int:
     if n <= 1:
         return 1
-    r = yield ctx.run(factorial, n - 1).options(id=f"factorial-{n-1}")
+    r = yield ctx.rpc("factorial", n - 1).options(target="poll://any@factorial-worker", id=f"factorial-{n-1}")
     return n * r
 
 
@@ -268,7 +268,11 @@ function* factorial(ctx: Context, n: number): Generator<any, number, any> {
   if (n <= 1) {
     return 1;
   }
-  const result = yield* ctx.run(factorial, n - 1);
+  const result = yield* ctx.rpc(
+    "factorial",
+    n - 1,
+    ctx.options({ target: "poll://any@factorial-workers" }),
+  );
 
   return n * result;
 }
@@ -293,7 +297,10 @@ async fn factorial(ctx: &Context, n: u64) -> Result<u64> {
     if n <= 1 {
         return Ok(1);
     }
-    let result = ctx.run(factorial, n - 1).await?;
+    let result: u64 = ctx
+        .rpc("factorial", n - 1)
+        .target("poll://any@factorial-workers")
+        .await?;
 
     Ok(n * result)
 }
@@ -325,7 +332,7 @@ func factorial(ctx *resonate.Context, args Args) (int, error) {
 	if args.N <= 1 {
 		return 1, nil
 	}
-	f, err := ctx.Run(factorial, Args{N: args.N - 1})
+	f, err := ctx.RPC("factorial", Args{N: args.N - 1})
 	if err != nil {
 		return 0, err
 	}
@@ -526,12 +533,14 @@ equivalent is in the tabs below.
 `samples-go/await-signals/await_signals_workflow.go` (excerpt):
 
 ```go
-func AwaitSignalsWorkflow(ctx workflow.Context) error {
+func AwaitSignalsWorkflow(ctx workflow.Context) (err error) {
     var a AwaitSignals
     workflow.Go(ctx, a.Listen)                     // signal handlers in a goroutine
-    return workflow.Await(ctx, func() bool {       // blocks here
+    err = workflow.Await(ctx, func() bool {        // blocks until Signal1 arrives
         return a.Signal1Received
     })
+    // … then awaits Signal2 and Signal3 via workflow.AwaitWithTimeout …
+    return
 }
 // a.Listen: selector.AddReceive(workflow.GetSignalChannel(ctx, "Signal1"), …)
 ```
@@ -597,7 +606,10 @@ function* foo(context: Context) {
 
 ```typescript
 // client.ts
-await resonate.promises.resolve(promiseId, { data: JSON.stringify(data) });
+// promises.resolve does not run the codec, so encode the payload the way the
+// codec expects: JSON → base64 string in the `data` field.
+const data = Buffer.from(JSON.stringify(value), "utf8").toString("base64");
+await resonate.promises.resolve(promiseId, { data });
 ```
 
     </TabItem>
@@ -659,8 +671,11 @@ func foo(ctx *resonate.Context, _ struct{}) (string, error) {
 
 ```shell
 # The Go SDK has no high-level promises sub-client yet (pre-release), so
-# resolve the latent promise from outside via the Resonate CLI or server API:
-resonate promises resolve <promise-id> --value '{"headers": {}, "data": "approved"}'
+# resolve the latent promise from outside via the Resonate CLI or server API.
+# `data` must be a JSON-quoted string: the CLI base64-encodes it before storing,
+# and the worker's codec base64-decodes then JSON-parses it. A bare "approved"
+# would decode to the bytes `approved`, which is not valid JSON (DecodingError).
+resonate promises resolve <promise-id> --value '{"headers": {}, "data": "\"approved\""}'
 ```
 
     </TabItem>
@@ -1024,15 +1039,42 @@ pub async fn run(ctx: &mut WorkflowContext<Self>, trip_id: String) -> WorkflowRe
 ```rust
 #[resonate::function]
 async fn transfer_money(ctx: &Context, args: TransferArgs) -> Result<TransferResult> {
-    ctx.run(apply_entry, debit_entry(&args)).await?;
+    // Step 1 — debit the source (durable checkpoint).
+    ctx.run(apply_entry, EntryArgs {
+        op_id: format!("{}-debit", args.transfer_id),
+        account: args.source.clone(),
+        amount: -args.amount,
+        note: "debit".to_string(),
+    }).await?;
 
-    let credit_outcome = ctx.run(credit_target, credit_args(&args)).await;
+    // Step 2 — credit the target; on failure, compensate by reversing the debit.
+    let credit_outcome = ctx.run(credit_target, CreditArgs {
+        op_id: format!("{}-credit", args.transfer_id),
+        target: args.target.clone(),
+        amount: args.amount,
+        fail: args.simulate_credit_failure,
+    }).await;
+
     if let Err(err) = credit_outcome {
         // compensate inline — also durable + idempotent
-        ctx.run(apply_entry, reversal_entry(&args)).await?;
-        return Ok(TransferResult { status: "compensated".into(), error: Some(err.to_string()) });
+        ctx.run(apply_entry, EntryArgs {
+            op_id: format!("{}-reversal", args.transfer_id),
+            account: args.source.clone(),
+            amount: args.amount,
+            note: "reversal".to_string(),
+        }).await?;
+        return Ok(TransferResult {
+            transfer_id: args.transfer_id,
+            status: "compensated".to_string(),
+            error: Some(err.to_string()),
+        });
     }
-    Ok(TransferResult { status: "committed".into(), error: None })
+
+    Ok(TransferResult {
+        transfer_id: args.transfer_id,
+        status: "committed".to_string(),
+        error: None,
+    })
 }
 ```
 
