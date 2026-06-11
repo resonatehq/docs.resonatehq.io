@@ -18,12 +18,12 @@ code in every SDK.
 
 <Callout type="info" title="About the code">
 Temporal blocks below are excerpted from the official
-`temporalio/samples-{typescript,python,go}` repos (trimmed for focus, elisions
-marked). Resonate blocks come from the [examples
+`temporalio/samples-{typescript,python,go}` repos and the Rust SDK's in-repo
+examples (`temporalio/sdk-rust/crates/sdk/examples/`) — trimmed for focus,
+elisions marked, never rewritten. Resonate blocks come from the [examples
 library](https://github.com/resonatehq-examples), pinned to the latest released
-SDKs. Temporal's Rust SDK is in Public Preview with no samples repo yet, so Rust
-targets migrate from the Temporal **TypeScript** sample. Some patterns don't have
-a Resonate example in every language yet; those gaps are noted inline.
+SDKs. Some patterns don't have a Resonate example in every language yet; those
+gaps are noted inline.
 </Callout>
 
 ## Durability
@@ -131,7 +131,31 @@ const fooR = resonate.register("foo", foo);
 
 <TabItem value="rust">
 
-**Source: Temporal TypeScript → target: Resonate Rust** (Temporal's Rust SDK has no samples repo yet).
+**Temporal** — `sdk-rust/crates/sdk/examples/hello_world/workflows.rs`:
+
+```rust
+#[workflow]
+pub struct HelloWorldWorkflow;
+
+#[workflow_methods]
+impl HelloWorldWorkflow {
+    #[run]
+    pub async fn run(ctx: &mut WorkflowContext<Self>, name: String) -> WorkflowResult<String> {
+        ctx.start_activity(
+            GreetingActivities::greet, name,
+            ActivityOptions::start_to_close_timeout(Duration::from_secs(10)),
+        ).await
+    }
+}
+
+#[activities]
+impl GreetingActivities {
+    #[activity]
+    pub async fn greet(_ctx: ActivityContext, name: String) -> Result<String, ActivityError> {
+        Ok(format!("Hello, {}!", name))
+    }
+}
+```
 
 **Resonate** — `example-hello-world-rs/src/main.rs`:
 
@@ -471,8 +495,29 @@ Unblock it externally: `await handle.signal(unblockSignal);`.
 
 <TabItem value="rust">
 
-Temporal's Rust SDK has no samples repo yet — its signal idiom is the TypeScript
-one above. The Resonate Rust equivalent is in the tabs below.
+`sdk-rust/crates/sdk/examples/message_passing/workflows.rs`:
+
+```rust
+#[workflow]
+pub struct MessagePassingWorkflow { counter: i32 }
+
+#[workflow_methods]
+impl MessagePassingWorkflow {
+    #[run]
+    pub async fn run(ctx: &mut WorkflowContext<Self>, target: i32) -> WorkflowResult<i32> {
+        ctx.wait_condition(|s| s.counter >= target).await;   // blocks here
+        Ok(ctx.state(|s| s.counter))
+    }
+
+    #[signal]
+    pub fn increment(&mut self, _ctx: &mut SyncWorkflowContext<Self>, amount: i32) {
+        self.counter += amount;
+    }
+}
+```
+
+Unblock it externally by sending the `increment` signal. The Resonate Rust
+equivalent is in the tabs below.
 
 </TabItem>
 
@@ -686,7 +731,15 @@ function* sleepingWorkflow(ctx: Context, ms: number) {
 
 <TabItem value="rust">
 
-**Source: Temporal TypeScript → target: Resonate Rust.** See the Temporal TypeScript `sleep-for-days` excerpt above.
+**Temporal** — `sdk-rust/crates/sdk/examples/timer_examples/workflows.rs`:
+
+```rust
+#[run]
+pub async fn run(ctx: &mut WorkflowContext<Self>) -> WorkflowResult<String> {
+    ctx.timer(Duration::from_secs(1)).await;   // durable timer
+    // …select! race + cancellable-timer demo omitted…
+}
+```
 
 **Resonate** — `example-durable-sleep-rs/src/bin/worker.rs`:
 
@@ -807,7 +860,7 @@ const results = [yield* emailFuture, yield* smsFuture];
 
 <TabItem value="rust">
 
-**Source: Temporal TypeScript → target: Resonate Rust.** See the Temporal TypeScript excerpt above.
+**Temporal Rust has no dedicated fan-out sample** — its `child_workflows` example starts children sequentially. The Resonate Rust equivalent fans out with `.spawn()`:
 
 **Resonate** — `example-fan-out-fan-in-rs/src/main.rs`:
 
@@ -952,7 +1005,19 @@ Temporal pushes typed `Compensation` closures onto a stack and drains it in a se
 
 <TabItem value="rust">
 
-**Source: Temporal TypeScript → target: Resonate Rust.** See the Temporal TypeScript `saga` excerpt above.
+**Temporal** — `sdk-rust/crates/sdk/examples/saga/workflows.rs`:
+
+```rust
+#[run]
+pub async fn run(ctx: &mut WorkflowContext<Self>, trip_id: String) -> WorkflowResult<Vec<String>> {
+    let mut saga = Saga::new(ctx, activity_opts());
+    match Self::book_trip(&mut saga, trip_id).await {
+        Ok(ids) => Ok(ids),
+        Err(e) => { saga.compensate().await; Err(e.into()) }   // run compensations
+    }
+}
+// book_trip: saga.step(book_hotel, …, cancel_hotel).await? — one step + compensation per booking
+```
 
 **Resonate** — `example-money-transfer-rs/src/main.rs`:
 
@@ -1115,7 +1180,7 @@ The Go SDK also has `ctx.Detached` for the unbounded case; the shipped example u
 <TabItem value="rust">
 
 <Callout type="caution" title="No Resonate Rust infinite-workflow example yet">
-`example-infinite-workflow-rs` does not exist, and Temporal's Rust SDK has no samples repo yet. The Resonate equivalent is a plain `loop`/`while` with `ctx.detached` for the unbounded case — treat as a known gap until an example ships.
+`example-infinite-workflow-rs` does not exist yet. Temporal's Rust `continue_as_new` example (`sdk-rust/crates/sdk/examples/continue_as_new`) maps to a plain Resonate `loop`/`while` with `ctx.detached` for the unbounded case — treat the missing Resonate example as a known gap until one ships.
 </Callout>
 
 </TabItem>
