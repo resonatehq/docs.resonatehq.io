@@ -8082,9 +8082,15 @@ title: Coming from DBOS
 This page reflects `@resonatehq/sdk` v0.10.2 (TypeScript, current on npm), `resonate-sdk` v0.6.7 (Python), `resonate-sdk` v0.4.0 (Rust, on crates.io), and the Resonate Go SDK (pre-release — no semver tag yet; tracks `main`).
 
 
+
+DBOS blocks below are excerpted from the official `dbos-inc/dbos-demo-apps` repo and the DBOS SDK repos (`dbos-transact-{py,ts,golang}`) — trimmed for focus, elisions marked, never rewritten. They reflect `dbos` v2.23.0 (Python), `@dbos-inc/dbos-sdk` v4.19.8 (TypeScript), and `dbos-transact-golang` v0.16.0 (Go). Resonate blocks come from the [examples library](https://github.com/resonatehq-examples), pinned to the latest released SDKs. DBOS ships SDKs for TypeScript, Python, Go, and Java; it has no Rust SDK, so the Rust tabs below show Resonate only. Some patterns don't have a Resonate example in every language yet; those gaps are noted inline.
+
+
 **Are you coming from DBOS?**
 
-If so, this guide is meant to help you understand the differences and similarities between Resonate and DBOS.
+If so, this guide is meant to help you understand the differences and similarities between Resonate and DBOS — concept by concept, with side-by-side migration code.
+
+DBOS and Resonate have a lot in common, and DBOS is a genuinely good system: you add durability by annotating ordinary functions, the only required infrastructure is a database you already know, and you get built-in observability for free. This guide focuses on how the two map onto each other, and is honest about what each does that the other does not.
 
 ## Durability
 
@@ -8097,28 +8103,193 @@ In Resonate, if your process crashes, your function can recover and resume from 
 
 ## Programming model
 
-If you have experience with DBOS, then you are familiar with thinking in terms of Workflows and Steps.
+If you have experience with DBOS, then you are familiar with thinking in terms of Workflows and Steps. You annotate a function with `@DBOS.workflow()` and the functions it calls with `@DBOS.step()` (or run them inline with `DBOS.runStep` / `DBOS.RunAsStep`). DBOS checkpoints each step to the database so a restarted workflow resumes from the last completed step.
 
-Resonate does not have proprietary function types such as Workflows and Steps – you just write functions.
+Resonate does not have proprietary function types such as Workflows and Steps – you just write functions. A step is any function you pass to `ctx.run`, which makes its result durable. There is no decorator split, no task-queue wiring, and no mandatory per-step timeout policy.
 
-Resonate promotes a procedural programming model that enables you to compose functions indefinitely and recursively.
-
-Consider this factorial example.
-How might you implement it in DBOS?
+Here is the most basic migration — a workflow that runs a few steps, and the equivalent Resonate function:
 
 
 
 
 
+**DBOS** — `dbos-demo-apps/python/dbos-app-starter/app/main.py`:
 
-    
+```python
+@DBOS.step()
+def step_one():
+    time.sleep(5)
+    DBOS.logger.info("Completed step 1!")
+
+@DBOS.workflow()
+def workflow():
+    step_one()
+    # ... step_two(), step_three() ...
+```
+
+**Resonate** — `example-hello-world-py/main.py`:
+
+```python
+def bar(_: Context, greetee: str) -> str:
+    return f"Hello {greetee} from bar!"
+
+def baz(_: Context, greetee: str) -> str:
+    return f"Hello {greetee} from baz!"
+
+@resonate.register
+def foo(ctx: Context, greetee: str) -> Generator[Any, Any, str]:
+    foo_greeting = f"Hello {greetee} from foo!"
+    bar_greeting = yield ctx.run(bar, greetee=greetee)
+    baz_greeting = yield ctx.run(baz, greetee=greetee)
+    greeting = f"{foo_greeting} {bar_greeting} {baz_greeting}"
+    return greeting
+```
+
+See it in action: [example-hello-world-py](https://github.com/resonatehq-examples/example-hello-world-py)
+
+
+
+
+
+**DBOS** — `dbos-demo-apps/typescript/dbos-node-starter/src/main.ts`:
+
+```typescript
+async function stepOne() {
+  await sleep(5000);
+  console.log("Completed step 1!");
+}
+
+async function exampleWorkflow() {
+  await DBOS.runStep(stepOne);
+  // ... DBOS.runStep(stepTwo), DBOS.runStep(stepThree) ...
+}
+
+const registeredWorkflow = DBOS.registerWorkflow(exampleWorkflow);
+```
+
+**Resonate** — `example-hello-world-ts/index.ts`:
+
+```typescript
+async function bar(_: Context, greetee: string): Promise<string> {
+  return `Hello ${greetee} from bar!`;
+}
+
+async function baz(_: Context, greetee: string): Promise<string> {
+  return `Hello ${greetee} from baz!`;
+}
+
+function* foo(ctx: Context, greetee: string): Generator<any, string, any> {
+  const fooGreeting = `Hello ${greetee} from foo!`;
+  const barGreeting = yield* ctx.run(bar, greetee);
+  const bazGreeting = yield* ctx.run(baz, greetee);
+  const greeting = `${fooGreeting} ${barGreeting} ${bazGreeting}`;
+  return greeting;
+}
+
+const fooR = resonate.register("foo", foo);
+```
+
+See it in action: [example-hello-world-ts](https://github.com/resonatehq-examples/example-hello-world-ts)
+
+
+
+
+
+
+DBOS ships SDKs for TypeScript, Python, Go, and Java. There is no DBOS Rust SDK, so there is no DBOS code to place beside Resonate here. The Resonate Rust equivalent:
+
+
+**Resonate** — `example-hello-world-rs/src/main.rs`:
+
+```rust
+#[resonate::function]
+async fn greet(ctx: &Context, name: String) -> Result {
+    let greeting = ctx.run(format_greeting, name).await?;
+    Ok(greeting)
+}
+
+#[resonate::function]
+async fn format_greeting(name: String) -> Result {
+    Ok(format!("Hello, {name}!"))
+}
+```
+
+See it in action: [example-hello-world-rs](https://github.com/resonatehq-examples/example-hello-world-rs)
+
+
+
+
+
+**DBOS** — `dbos-demo-apps/golang/dbos-go-starter/main.go`:
+
+```go
+func ExampleWorkflow(ctx dbos.DBOSContext, _ string) (string, error) {
+    _, err := dbos.RunAsStep(ctx, func(stepCtx context.Context) (string, error) {
+        return stepOne(stepCtx)
+    })
+    if err != nil {
+        return "", err
+    }
+    // ... RunAsStep(stepTwo), RunAsStep(stepThree) ...
+    return "Workflow completed", nil
+}
+
+func stepOne(ctx context.Context) (string, error) {
+    time.Sleep(5 * time.Second)
+    fmt.Println("Step one completed!")
+    return "Step 1 completed", nil
+}
+```
+
+In `main()`, register it with `dbos.RegisterWorkflow(dbosCtx, ExampleWorkflow)`.
+
+**Resonate** — `example-hello-world-go/main.go`:
+
+```go
+func greet(_ *resonate.Context, args GreetArgs) (string, error) {
+    return fmt.Sprintf("hello, %s!", args.Name), nil
+}
+
+func main() {
+    r, _ := resonate.New(resonate.Config{URL: "http://localhost:8001"})
+    defer r.Stop()
+
+    greetFn, _ := resonate.Register(r, "greet", greet)
+    h, _ := greetFn.Run(ctx, id, GreetArgs{Name: "world"})
+    out, _ := h.Result(ctx)
+    fmt.Println(out)
+}
+```
+
+See it in action: [example-hello-world-go](https://github.com/resonatehq-examples/example-hello-world-go)
+
+
+
+
+
+`ctx.run` (and registering the function) replaces the `@DBOS.workflow()` / `@DBOS.step()` split. One thing to carry over from DBOS: a DBOS workflow function must be deterministic — non-deterministic work (network calls, the clock, random numbers) belongs inside steps. The same discipline applies in Resonate: do side-effecting work inside `ctx.run` so it is checkpointed and replayed from the durable record, not re-executed.
+
+### Composing and recursing
+
+In DBOS you compose by invoking one registered workflow from another — a child workflow — with `DBOS.start_workflow(fn, ...args)` (Python), `DBOS.startWorkflow(fn)(...args)` (TypeScript), or `dbos.RunWorkflow(ctx, fn, args)` (Go). For example, the widget-store checkout starts its dispatch workflow as a child:
+
+```python
+# dbos-demo-apps/python/widget-store/widget_store/main.py
+DBOS.start_workflow(dispatch_order_workflow, order_id)
+```
+
+Resonate promotes a procedural programming model that lets you compose functions indefinitely and recursively — a function can simply call itself. Consider this factorial example.
+
+
+
+
 
 ```python
 @resonate.register
 def factorial(ctx: Context, n: int) -> int:
     if n <= 1:
         return 1
-    r = yield ctx.run(factorial, n - 1).options(id=f"factorial-{n-1}")
+    r = yield ctx.rpc("factorial", n - 1).options(target="poll://any@factorial-worker", id=f"factorial-{n-1}")
     return n * r
 
 
@@ -8129,16 +8300,20 @@ def main():
 
 See it in action: [example-recursive-factorial-py](https://github.com/resonatehq-examples/example-recursive-factorial-py)
 
-    
 
-    
+
+
 
 ```typescript
 function* factorial(ctx: Context, n: number): Generator<any, number, any> {
   if (n <= 1) {
     return 1;
   }
-  const result = yield* ctx.run(factorial, n - 1);
+  const result = yield* ctx.rpc(
+    "factorial",
+    n - 1,
+    ctx.options({ target: "poll://any@factorial-workers" }),
+  );
 
   return n * result;
 }
@@ -8153,9 +8328,9 @@ async function main() {
 
 See it in action: [example-recursive-factorial-ts](https://github.com/resonatehq-examples/example-recursive-factorial-ts)
 
-    
 
-    
+
+
 
 ```rust
 #[resonate::function]
@@ -8163,7 +8338,10 @@ async fn factorial(ctx: &Context, n: u64) -> Result<u64> {
     if n <= 1 {
         return Ok(1);
     }
-    let result = ctx.run(factorial, n - 1).await?;
+    let result: u64 = ctx
+        .rpc("factorial", n - 1)
+        .target("poll://any@factorial-workers")
+        .await?;
 
     Ok(n * result)
 }
@@ -8182,9 +8360,9 @@ async fn main() {
 
 See it in action: [example-recursive-factorial-rs](https://github.com/resonatehq-examples/example-recursive-factorial-rs)
 
-    
 
-    
+
+
 
 ```go
 type Args struct {
@@ -8195,7 +8373,7 @@ func factorial(ctx *resonate.Context, args Args) (int, error) {
 	if args.N <= 1 {
 		return 1, nil
 	}
-	f, err := ctx.Run(factorial, Args{N: args.N - 1})
+	f, err := ctx.RPC("factorial", Args{N: args.N - 1})
 	if err != nil {
 		return 0, err
 	}
@@ -8220,32 +8398,57 @@ func main() {
 
 See it in action: [example-recursive-factorial-go](https://github.com/resonatehq-examples/example-recursive-factorial-go)
 
-    
+
 
 
 
 ## Zero-dependency development
 
-With DBOS, your application always runs against a database. Recent versions default to an embedded SQLite database for local development and use Postgres in production, so there is always a database in the loop.
+DBOS keeps workflow state in a database. The Python SDK makes this nearly invisible for local development: if you don't set a system database URL, it defaults to an on-disk SQLite file (`sqlite:///{app_name}.sqlite`), so a Python app runs with no Postgres to install. The TypeScript SDK requires Postgres — it ships `npx dbos postgres start` to bring one up in Docker — and the Go SDK uses Postgres by default (it can run on SQLite if you wire one in). In every case, there is a database holding workflow state.
 
-Resonate offers a zero-dependency development experience: a Worker (single node application) runs entirely in-memory, with no database and no Resonate Server, until you choose to connect one.
+Resonate offers a zero-dependency development experience: a Worker (single-node application) runs entirely in-memory, with no database and no Resonate Server, until you choose to connect one.
 
 
 
-    
+
+
+**DBOS** — Postgres optional; omit the URL and DBOS uses an embedded SQLite file (`dbos-demo-apps/python/dbos-app-starter/app/main.py` sets it from the environment):
+
+```python
+config: DBOSConfig = {
+    "name": "dbos-app-starter",
+    "system_database_url": os.environ.get("DBOS_SYSTEM_DATABASE_URL"),
+    # ...
+}
+DBOS(config=config)
+```
+
+**Resonate** — no database, no server:
 
 ```python
 from resonate import Resonate
 
 resonate = Resonate.local()
 
-#...
-
+# ...
 ```
 
-    
 
-    
+
+
+
+**DBOS** — Postgres required (`dbos-demo-apps/typescript/dbos-node-starter/src/main.ts`):
+
+```typescript
+DBOS.setConfig({
+  name: "dbos-node-starter",
+  systemDatabaseUrl: process.env.DBOS_SYSTEM_DATABASE_URL,
+  // ...
+});
+await DBOS.launch(/* { conductorKey } */);
+```
+
+**Resonate** — no database, no server:
 
 ```typescript
 const resonate = new Resonate();
@@ -8253,9 +8456,13 @@ const resonate = new Resonate();
 // ...
 ```
 
-    
 
-    
+
+
+
+
+The Resonate Rust worker runs fully in-memory until you connect a server:
+
 
 ```rust
 use resonate::prelude::*;
@@ -8265,9 +8472,21 @@ let resonate = Resonate::local();
 // ...
 ```
 
-    
 
-    
+
+
+
+**DBOS** — Postgres by default (`dbos-demo-apps/golang/dbos-go-starter/main.go`):
+
+```go
+dbosCtx, err = dbos.NewDBOSContext(context.Background(), dbos.Config{
+	DatabaseURL: os.Getenv("DBOS_SYSTEM_DATABASE_URL"),
+	AppName:     "dbos-toolbox",
+	// ...
+})
+```
+
+**Resonate** — no database, no server:
 
 ```go
 import (
@@ -8286,54 +8505,446 @@ r, _ := resonate.New(resonate.Config{
 // ...
 ```
 
-    
+
+
+
+
+## Fan-out / fan-in
+
+To run many units of work in parallel and then join the results, DBOS uses durable queues: you enqueue each task and collect each handle's result. Resonate starts each unit with a non-blocking invocation and then awaits each promise.
+
+
+DBOS queues are a real strength worth calling out: beyond parallelism, they give you per-queue and per-process concurrency limits, rate limits, priorities, and debouncing — all backed by Postgres, with no separate broker. If you rely on those controls, plan how you'll reproduce them; Resonate's fan-out primitive is parallelism plus join, not a managed queue.
+
+
+
+
+
+
+**DBOS** — DBOS docs, Python queue tutorial:
+
+```python
+DBOS.register_queue("example_queue")
+
+@DBOS.workflow()
+def process_tasks(tasks):
+    task_handles = []
+    # Enqueue each task so all tasks are processed concurrently.
+    for task in tasks:
+        handle = DBOS.enqueue_workflow("example_queue", process_task, task)
+        task_handles.append(handle)
+    # Wait for each task to complete and retrieve its result.
+    return [handle.get_result() for handle in task_handles]
+```
+
+**Resonate** — `example-fan-out-fan-in-py/workflow.py`:
+
+```python
+# fan-out: rfi() returns a handle immediately
+email_p = yield ctx.rfi(send_email, event).options(id=f"{ctx.id}.email")
+sms_p   = yield ctx.rfi(send_sms, event).options(id=f"{ctx.id}.sms")
+# fan-in: await each
+email = yield email_p
+sms   = yield sms_p
+```
+
+See it in action: [example-fan-out-fan-in-py](https://github.com/resonatehq-examples/example-fan-out-fan-in-py)
+
+
+
+
+
+**DBOS** — DBOS docs, TypeScript programming guide:
+
+```typescript
+async function queueFunction() {
+  const handles = []
+  for (let i = 0; i < 10; i++) {
+    handles.push(await DBOS.startWorkflow(taskWorkflow, { queueName: "example_queue" })(i))
+  }
+  const results = []
+  for (const h of handles) {
+    results.push(await h.getResult())
+  }
+}
+```
+
+**Resonate** — `example-fan-out-fan-in-ts/src/workflow.ts`:
+
+```typescript
+// fan-out: beginRun returns a future immediately
+const emailFuture = yield* ctx.beginRun(sendEmail, event);
+const smsFuture   = yield* ctx.beginRun(sendSms, event);
+// fan-in: await each
+const results = [yield* emailFuture, yield* smsFuture];
+```
+
+See it in action: [example-fan-out-fan-in-ts](https://github.com/resonatehq-examples/example-fan-out-fan-in-ts)
+
+
+
+
+
+
+The Resonate Rust equivalent fans out with `.spawn()`:
+
+
+**Resonate** — `example-fan-out-fan-in-rs/src/main.rs`:
+
+```rust
+// fan-out: .spawn() returns a handle immediately
+let h1 = ctx.run(process_item, items[0].clone()).spawn().await?;
+let h2 = ctx.run(process_item, items[1].clone()).spawn().await?;
+let h3 = ctx.run(process_item, items[2].clone()).spawn().await?;
+// fan-in: await each
+let r1 = h1.await?;
+let r2 = h2.await?;
+let r3 = h3.await?;
+```
+
+See it in action: [example-fan-out-fan-in-rs](https://github.com/resonatehq-examples/example-fan-out-fan-in-rs)
+
+
+
+
+
+**DBOS** — `dbos-transact-golang` README:
+
+```go
+queue := dbos.NewWorkflowQueue(ctx, "queue")
+// ...
+handles := make([]dbos.WorkflowHandle[int], 10)
+for i := range 10 {                                      // fan-out
+    handle, err := dbos.RunWorkflow(ctx, task, i, dbos.WithQueue(queue.Name))
+    if err != nil {
+        panic(fmt.Sprintf("failed to enqueue step %d: %v", i, err))
+    }
+    handles[i] = handle
+}
+results := make([]int, 10)
+for i, handle := range handles {                         // fan-in
+    result, err := handle.GetResult()
+    if err != nil {
+        panic(fmt.Sprintf("failed to get result for step %d: %v", i, err))
+    }
+    results[i] = result
+}
+```
+
+**Resonate** — `example-fan-out-fan-in-go/main.go`:
+
+```go
+futures := make([]*resonate.Future, 0, len(args.Channels))
+for _, ch := range args.Channels {                       // fan-out
+    f, _ := ctx.RPC("send", SendArgs{Channel: ch, Message: args.Message})
+    futures = append(futures, f)
+}
+for _, f := range futures {                              // fan-in
+    var d Delivery
+    _ = f.Await(&d)
+}
+```
+
+See it in action: [example-fan-out-fan-in-go](https://github.com/resonatehq-examples/example-fan-out-fan-in-go)
+
+
+
+
+
+## Durable sleep and scheduled work
+
+DBOS workflows pause with `DBOS.sleep`, which records the wakeup time in the database so the sleep survives crashes and restarts. Resonate's equivalent is `ctx.sleep` — a single durable promise that survives crashes.
+
+
+Both systems vary the unit by SDK. DBOS: TypeScript `DBOS.sleep` takes **milliseconds**, Python `DBOS.sleep` takes **seconds**, Go `dbos.Sleep` takes a `time.Duration`. Resonate matches almost exactly: TypeScript **milliseconds**, Python **seconds**, Go and Rust a native `Duration`.
+
+
+
+
+
+
+**DBOS** — `dbos-demo-apps/python/widget-store/widget_store/main.py`:
+
+```python
+@DBOS.workflow()
+def dispatch_order_workflow(order_id):
+    for _ in range(10):
+        DBOS.sleep(1)                          # seconds
+        update_order_progress(order_id)
+```
+
+**Resonate** — `example-durable-sleep-py/worker.py`:
+
+```python
+@resonate.register
+def sleeping_workflow(ctx: Context, wf_id: str, secs: float):
+    print(f"Workflow {wf_id} starting, will sleep for {secs} seconds.")
+    yield ctx.sleep(secs)                      # seconds (float)
+    return f"Workflow {wf_id} completed after sleeping for {secs} seconds."
+```
+
+See it in action: [example-durable-sleep-py](https://github.com/resonatehq-examples/example-durable-sleep-py)
+
+
+
+
+
+**DBOS** — `dbos-demo-apps/typescript/widget-store/src/shop.ts`:
+
+```typescript
+export const dispatchOrder = DBOS.registerWorkflow(
+  async (order_id: number) => {
+    for (let i = 0; i < 10; i++) {
+      await DBOS.sleep(1000);                  // milliseconds
+      // ...
+    }
+  },
+  { name: 'dispatchOrder' },
+);
+```
+
+**Resonate** — `example-durable-sleep-ts/worker.ts`:
+
+```typescript
+function* sleepingWorkflow(ctx: Context, ms: number) {
+  yield* ctx.run((ctx: Context) => console.log(`Sleeping for ${ms / 1000} seconds...`));
+  yield* ctx.sleep(ms);                        // milliseconds
+  return `Slept for ${ms / 1000} seconds`;
+}
+```
+
+See it in action: [example-durable-sleep-ts](https://github.com/resonatehq-examples/example-durable-sleep-ts)
+
+
+
+
+
+
+The Resonate Rust equivalent sleeps on a native `Duration`:
+
+
+**Resonate** — `example-durable-sleep-rs/src/bin/worker.rs`:
+
+```rust
+#[resonate::function]
+async fn sleeping_workflow(ctx: &Context, secs: u64) -> Result {
+    ctx.sleep(Duration::from_secs(secs)).await?;   // std::time::Duration
+    Ok(format!("Slept for {secs} seconds"))
+}
+```
+
+See it in action: [example-durable-sleep-rs](https://github.com/resonatehq-examples/example-durable-sleep-rs)
+
+
+
+
+
+**DBOS** — `dbos-demo-apps/golang/widget-store/workflows.go`:
+
+```go
+func dispatchOrderWorkflow(ctx dbos.DBOSContext, orderID int) (string, error) {
+    for range 10 {
+        _, err := dbos.Sleep(ctx, time.Second)     // time.Duration
+        if err != nil {
+            return "", err
+        }
+        // ...
+    }
+    return "", nil
+}
+```
+
+**Resonate** — `example-durable-sleep-go/main.go`:
+
+```go
+func sleepingWorkflow(ctx *resonate.Context, args SleepArgs) (string, error) {
+    d := time.Duration(args.Secs) * time.Second
+    f, err := ctx.Sleep(d)                       // time.Duration
+    if err != nil {
+        return "", err
+    }
+    if err := f.Await(nil); err != nil {         // Await(nil) — no return value
+        return "", err
+    }
+    return fmt.Sprintf("slept for %d second(s)", args.Secs), nil
+}
+```
+
+See it in action: [example-durable-sleep-go](https://github.com/resonatehq-examples/example-durable-sleep-go)
+
+
+
+
+
+For recurring work, DBOS schedules a workflow on a cron expression — either the `@DBOS.scheduled(cron)` decorator (the workflow receives the scheduled and actual fire times) or the database-backed `DBOS.create_schedule(...)` / `apply_schedules(...)` API. Resonate registers a schedule with `resonate.schedule(...)` (TypeScript and Rust) or `resonate.schedules.create(...)` (Python), and the Resonate Server fires the promise on the cron.
+
+
+
+
+
+**DBOS** — `dbos-transact-py/tests/test_scheduler_decorator.py`:
+
+```python
+@DBOS.scheduled("* * * * * *")
+@DBOS.workflow()
+def test_workflow(scheduled: datetime, actual: datetime) -> None:
+    # scheduled = the cron-planned fire time; actual = when DBOS fired it
+    # ...
+```
+
+**Resonate** — registers a cron schedule with the server (`example-schedule-py`):
+
+```python
+resonate.schedules.create(
+    id="my-schedule",
+    cron="* * * * *",
+    promise_id="my-schedule.{{.timestamp}}",
+    # ...
+)
+```
+
+See it in action: [example-schedule-py](https://github.com/resonatehq-examples/example-schedule-py)
+
+
+
+
+
+**DBOS** — `dbos-transact-ts/tests/scheduler_decorator.test.ts`:
+
+```typescript
+@DBOS.scheduled({ crontab: '* * * * * *', mode: SchedulerMode.ExactlyOncePerIntervalWhenActive })
+@DBOS.workflow()
+static async scheduledDefault(schedTime: Date, startTime: Date) {
+  // ...
+}
+```
+
+**Resonate** — `example-schedule-ts/src/schedule.ts`:
+
+```typescript
+await resonate.schedule("my-schedule", "* * * * *", myFunction /* , ...args */);
+```
+
+See it in action: [example-schedule-ts](https://github.com/resonatehq-examples/example-schedule-ts)
+
+
+
+
+
+
+The Resonate Rust equivalent registers the schedule with the server:
+
+
+**Resonate** — `example-schedule-rs/src/bin/schedule.rs`:
+
+```rust
+let result = resonate
+    .schedule(
+        "daily_report",    // schedule ID
+        "* * * * *",       // cron: every minute
+        "generate_report", // function name (matches #[resonate::function])
+        123_u64,           // argument
+    )
+    .await;
+```
+
+See it in action: [example-schedule-rs](https://github.com/resonatehq-examples/example-schedule-rs)
+
+
+
+
+
+**DBOS** — `dbos-transact-golang` README:
+
+```go
+dbos.RegisterWorkflow(dbosCtx, func(ctx dbos.DBOSContext, scheduledTime time.Time) (string, error) {
+    return fmt.Sprintf("Workflow executed at %s", scheduledTime), nil
+}, dbos.WithSchedule("* * * * * *")) // Every second
+```
+
+
+There is no `example-schedule-go` yet. The Go SDK's schedules API landed recently (it tracks `main`); until a worked example ships, treat the Go scheduling cell as a known gap rather than a verified sample.
+
+
+
 
 
 
 ## Human-in-the-loop
 
-With DBOS, you can use a '@recv' function to block the Workflow and await input from a human.
+With DBOS, a workflow calls `DBOS.recv()` to block and await a message — for example, a human decision — while an outside caller delivers it with `DBOS.send()`. A companion pair, `DBOS.set_event()` / `DBOS.get_event()`, lets the workflow publish status that external callers read. All of it is persisted to the database.
 
-With Resonate, you can achieve the same effect by creating a Durable Promise that is not attached to any function execution, and then await on it.
-Then, you can resolve it from anywhere, optionally sending data into the function while doing so.
-
+With Resonate, you achieve the same effect by creating a Durable Promise that is not attached to any function execution, and then awaiting it. You can resolve it from anywhere, optionally sending data into the function while doing so.
 
 
-    
+
+
+
+**DBOS** — `dbos-demo-apps/python/widget-store/widget_store/main.py`:
+
+```python
+@DBOS.workflow()
+def checkout_workflow():
+    # ...
+    DBOS.set_event(PAYMENT_ID, DBOS.workflow_id)   # publish status to the caller
+    payment_status = DBOS.recv(PAYMENT_STATUS)     # block until the webhook sends it
+    # ...
+
+# elsewhere, an HTTP handler delivers the decision:
+DBOS.send(payment_id, payment_status, PAYMENT_STATUS)
+```
+
+**Resonate** — `example-human-in-the-loop-py`:
 
 ```python
 # worker.py
 @resonate.register()
-def foo(ctx: Context) -> None:
+def foo(ctx, workflow_id):
     blocking_promise = yield ctx.promise()
+    yield ctx.lfc(send_email, blocking_promise.id)
     # ...
     # wait for the promise to be resolved
-    data = yield blocking_promise
+    yield blocking_promise
     # ...
 ```
 
 See it in action: [example-human-in-the-loop-py](https://github.com/resonatehq-examples/example-human-in-the-loop-py)
 
 ```python
-# client.py
-def main():
-    # ...
-    resonate.promises.resolve(
-        id=promise_id,
-        data=json.dumps(data)
-    )
+# gateway.py — resolve from anywhere by promise id
+resonate.promises.resolve(id=promise_id, ikey=promise_id)
 ```
 
-    
 
-    
+
+
+
+**DBOS** — `dbos-demo-apps/typescript/widget-store/src/main.ts`:
 
 ```typescript
-function* foo(context: Context) {
-  const blockingPromise = yield* context.promise();
+export const checkoutWorkflow = DBOS.registerWorkflow(
+  async () => {
+    // ...
+    await DBOS.setEvent(PAYMENT_ID_EVENT, DBOS.workflowID);   // publish status
+    const notification = await DBOS.recv<string>(PAYMENT_TOPIC, 120); // block, 120s timeout
+    // ...
+  },
+  { name: 'checkoutWorkflow' },
+);
+
+// elsewhere, the payment webhook delivers it:
+await DBOS.send(key, status, PAYMENT_TOPIC);
+```
+
+**Resonate** — `example-human-in-the-loop-ts`:
+
+```typescript
+function* fooWorkflow(ctx: Context, workflowId: string) {
+  const blockingPromise = yield* ctx.promise({});
+  yield* ctx.run(sendEmail, blockingPromise.id);
   // ...
   // wait for the promise to be resolved
-  data = yield* blockingPromise;
+  const data = yield* blockingPromise;
   // ...
 }
 ```
@@ -8341,13 +8952,18 @@ function* foo(context: Context) {
 See it in action: [example-human-in-the-loop-ts](https://github.com/resonatehq-examples/example-human-in-the-loop-ts)
 
 ```typescript
-// client.ts
-await resonate.promises.resolve(promiseId, { data: JSON.stringify(data) });
+// gateway.ts — resolve from anywhere; the data field is base64-encoded JSON
+const data = Buffer.from(JSON.stringify(value), "utf8").toString("base64");
+await resonate.promises.resolve(promiseId, { data });
 ```
 
-    
 
-    
+
+
+
+
+The Resonate Rust equivalent awaits a latent durable promise and resolves it from anywhere:
+
 
 ```rust
 // worker.rs
@@ -8376,9 +8992,22 @@ resonate
     .await?;
 ```
 
-    
 
-    
+
+
+
+**DBOS** — `dbos-demo-apps/golang/widget-store/workflows.go`:
+
+```go
+func checkoutWorkflow(ctx dbos.DBOSContext, _ string) (string, error) {
+    // ...
+    err = dbos.SetEvent(ctx, PAYMENT_ID, workflowID)                       // publish status
+    payment_status, err := dbos.Recv[string](ctx, PAYMENT_STATUS, 60*time.Second) // block
+    // ...
+}
+```
+
+**Resonate** — `example-human-in-the-loop-go`:
 
 ```go
 func foo(ctx *resonate.Context, _ struct{}) (string, error) {
@@ -8405,17 +9034,192 @@ See it in action: [example-human-in-the-loop-go](https://github.com/resonatehq-e
 ```shell
 # The Go SDK has no high-level promises sub-client yet (pre-release), so
 # resolve the latent promise from outside via the Resonate CLI or server API:
-resonate promises resolve <promise-id> --value '{"headers": {}, "data": "approved"}'
+resonate promises resolve <promise-id> --value '{"headers": {}, "data": "\"approved\""}'
 ```
 
-    
+
+
+
+
+DBOS gives you a richer built-in messaging surface here — point-to-point `send`/`recv` plus key-value `setEvent`/`getEvent`, all addressed by workflow ID. Resonate collapses the same use case to one primitive: a latent Durable Promise the workflow awaits, resolvable from anywhere by its ID (HTTP-addressable through the Resonate Server).
+
+## Saga / compensation
+
+A saga runs a sequence of steps and, on failure, runs **compensations** to undo the completed ones. Neither DBOS nor Resonate ships a saga DSL — in both, you write the compensation in the failure branch and rely on durable execution to guarantee it runs to completion. DBOS checks each step's result and calls an explicit undo step on the failure path; Resonate writes the undo inline in a `try`/`catch`.
+
+
+
+
+
+**DBOS** — `dbos-demo-apps/python/widget-store/widget_store/main.py`:
+
+```python
+@DBOS.workflow()
+def checkout_workflow():
+    order_id = create_order()
+
+    inventory_reserved = reserve_inventory()
+    if not inventory_reserved:
+        update_order_status(order_id=order_id, status=OrderStatus.CANCELLED.value)
+        DBOS.set_event(PAYMENT_ID, None)
+        return
+    # ...
+    if payment_status == "paid":
+        update_order_status(order_id=order_id, status=OrderStatus.PAID.value)
+        DBOS.start_workflow(dispatch_order_workflow, order_id)
+    else:
+        undo_reserve_inventory()                 # compensation
+        update_order_status(order_id=order_id, status=OrderStatus.CANCELLED.value)
+```
+
+**Resonate** — `example-money-transfer-py/main.py`:
+
+```python
+def transfer_money(ctx, transfer_id, source, target, amount, *, simulate_credit_failure=False):
+    yield ctx.run(apply_entry, f"{transfer_id}-debit", source, -amount, "debit")
+    try:
+        yield ctx.run(
+            credit_target, f"{transfer_id}-credit", target, amount,
+            fail=simulate_credit_failure,
+        ).options(retry_policy=Never())
+    except Exception as err:
+        # compensate inline
+        yield ctx.run(apply_entry, f"{transfer_id}-reversal", source, amount, "reversal")
+        return {"transfer_id": transfer_id, "status": "compensated", "error": str(err)}
+    return {"transfer_id": transfer_id, "status": "committed"}
+```
+
+See it in action: [example-money-transfer-py](https://github.com/resonatehq-examples/example-money-transfer-py)
+
+
+
+
+
+**DBOS** — `dbos-demo-apps/typescript/widget-store/src/main.ts`:
+
+```typescript
+export const checkoutWorkflow = DBOS.registerWorkflow(
+  async () => {
+    try {
+      await subtractInventory();
+    } catch (error) {
+      await DBOS.setEvent(PAYMENT_ID_EVENT, null);
+      return;
+    }
+    const orderID = await createOrder();
+    // ...
+    if (notification && notification === 'paid') {
+      await markOrderPaid(orderID);
+      await DBOS.startWorkflow(dispatchOrder)(orderID);
+    } else {
+      await errorOrder(orderID);
+      await undoSubtractInventory();             // compensation
+    }
+  },
+  { name: 'checkoutWorkflow' },
+);
+```
+
+**Resonate** — `example-saga-booking-ts/src/workflow.ts`:
+
+```typescript
+let flightId: string | undefined;
+let hotelId: string | undefined;
+try {
+  flightId = yield* ctx.run(bookFlight, tripId);
+  hotelId  = yield* ctx.run(bookHotel, tripId);
+  const carId = yield* ctx.run(bookCarRental, tripId, shouldFail,
+    ctx.options({ retryPolicy: noRetry }));
+  return { status: "success", tripId, flightId, hotelId, carId };
+} catch (error) {
+  if (hotelId)  yield* ctx.run(cancelHotel, tripId, hotelId);
+  if (flightId) yield* ctx.run(cancelFlight, tripId, flightId);
+  return { status: "failed", tripId, error: (error as Error).message };
+}
+```
+
+See it in action: [example-saga-booking-ts](https://github.com/resonatehq-examples/example-saga-booking-ts)
+
+
+
+
+
+
+The Resonate Rust equivalent compensates inline in the error branch:
+
+
+**Resonate** — `example-money-transfer-rs/src/main.rs`:
+
+```rust
+#[resonate::function]
+async fn transfer_money(ctx: &Context, args: TransferArgs) -> Result {
+    let debit_id = format!("{}-debit", args.transfer_id);
+    let credit_id = format!("{}-credit", args.transfer_id);
+    let reversal_id = format!("{}-reversal", args.transfer_id);
+
+    // Step 1 — debit the source (durable checkpoint).
+    ctx.run(apply_entry, EntryArgs {
+        op_id: debit_id, account: args.source.clone(), amount: -args.amount, note: "debit".to_string(),
+    }).await?;
+
+    // Step 2 — credit the target; compensate on failure.
+    let credit_outcome = ctx.run(credit_target, CreditArgs {
+        op_id: credit_id, target: args.target.clone(), amount: args.amount, fail: args.simulate_credit_failure,
+    }).await;
+
+    if let Err(err) = credit_outcome {
+        // compensating action — also durable + idempotent
+        ctx.run(apply_entry, EntryArgs {
+            op_id: reversal_id, account: args.source.clone(), amount: args.amount, note: "reversal".to_string(),
+        }).await?;
+        return Ok(TransferResult {
+            transfer_id: args.transfer_id, status: "compensated".to_string(), error: Some(err.to_string()),
+        });
+    }
+    Ok(TransferResult {
+        transfer_id: args.transfer_id, status: "committed".to_string(), error: None,
+    })
+}
+```
+
+See it in action: [example-money-transfer-rs](https://github.com/resonatehq-examples/example-money-transfer-rs)
+
+
+
+
+
+**DBOS** — `dbos-demo-apps/golang/widget-store/workflows.go`:
+
+```go
+func checkoutWorkflow(ctx dbos.DBOSContext, _ string) (string, error) {
+    // ... reserve inventory, await payment ...
+    payment_status, err := dbos.Recv[string](ctx, PAYMENT_STATUS, 60*time.Second)
+    if err != nil || payment_status != "paid" {
+        dbos.RunAsStep(ctx, func(stepCtx context.Context) (string, error) {
+            return undoReserveInventory(stepCtx)        // compensation
+        })
+        dbos.RunAsStep(ctx, func(stepCtx context.Context) (string, error) {
+            return updateOrderStatus(stepCtx, UpdateOrderStatusInput{OrderID: orderID, OrderStatus: CANCELLED})
+        })
+    } else {
+        // ... mark paid, dispatch ...
+    }
+    return "", nil
+}
+```
+
+
+There is no `example-money-transfer-go` or `example-saga-booking-go` yet. The migration maps the same way as the other languages — `ctx.Run(...)` per step, compensation inline in the error branch — but until a Go example ships, treat this cell as a known gap rather than a worked sample.
+
+
+
 
 
 
 ## Distributed execution
 
 With Resonate, you can run multiple Workers in a group, and Resonate will automatically load-balance invocations across them.
-DBOS can also distribute work across multiple processes, using durable queues that those processes poll.
+DBOS can also distribute work across multiple processes: you enqueue workflows onto durable queues that those processes poll, with the per-queue and per-process flow control described above.
 The meaningful difference is in crash recovery, which we cover below.
 
 Consider the following Resonate example.
@@ -8541,8 +9345,17 @@ h, _ := r.RPC(context.Background(), promiseID, "function_name", params,
 The meaningful difference is in crash recovery.
 Resonate automatically recovers and resumes in-progress functions/workflows in another Worker, as part of its open-source core.
 
-With DBOS, automatic recovery of in-progress workflows across instances relies on DBOS Conductor, a separate service with tiered plans.
-Without Conductor, recovery in a distributed deployment is coordinated manually, and a single-node deployment recovers its own workflows when that process restarts.
+With DBOS, when a process restarts it recovers all the workflows that were executing on it before the restart. Recovering a workflow whose process has died onto a *different*, healthy process is the job of DBOS Conductor — a separate control-plane product that detects an unhealthy executor and signals another to take over its workflows. Without Conductor, each executor recovers only its own workflows on restart.
+
+## Where DBOS and Resonate differ
+
+Both systems value simplicity, add durability by wrapping ordinary functions, and run on infrastructure you already understand. Where they diverge:
+
+**DBOS leans on what you already run.** Its strengths are real: durability from a couple of annotations; only Postgres in the loop (and an embedded SQLite file for Python local dev); durable queues with built-in concurrency limits, rate limits, priorities, and debouncing; a built-in observability dashboard and workflow-management APIs; exactly-once Kafka consumers; and SDKs in TypeScript, Python, Go, and Java.
+
+**Resonate leans on a minimal core.** A Worker runs fully in-memory with no datastore until you connect one; the model is plain functions that compose and recurse without a workflow/step type split; automatic cross-process crash recovery ships in the open-source core; the server is a single binary; and you scale a decentralized topology by adding servers rather than sizing one service up front. Resonate also ships a Rust SDK, which DBOS does not.
+
+Which fits depends on your constraints. If you want managed queues with rich flow control and a built-in dashboard on top of Postgres, DBOS gives you a lot out of the box. If you want a tiny core, an in-memory dev loop with no database, recursion as a first-class shape, and distributed recovery without a separate control plane, Resonate is built around those.
 
 ---
 
