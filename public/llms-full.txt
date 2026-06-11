@@ -8113,8 +8113,6 @@ How might you implement it in DBOS?
 
     
 
-See it in action: [example-recursive-factorial-py](https://github.com/resonatehq-examples/example-recursive-factorial-py)
-
 ```python
 @resonate.register
 def factorial(ctx: Context, n: int) -> int:
@@ -8129,11 +8127,11 @@ def main():
     print(result)
 ```
 
-    
+See it in action: [example-recursive-factorial-py](https://github.com/resonatehq-examples/example-recursive-factorial-py)
 
     
 
-See it in action: [example-recursive-factorial-ts](https://github.com/resonatehq-examples/example-recursive-factorial-ts)
+    
 
 ```typescript
 function* factorial(ctx: Context, n: number): Generator<any, number, any> {
@@ -8153,11 +8151,11 @@ async function main() {
 }
 ```
 
-    
+See it in action: [example-recursive-factorial-ts](https://github.com/resonatehq-examples/example-recursive-factorial-ts)
 
     
 
-See it in action: [example-recursive-factorial-rs](https://github.com/resonatehq-examples/example-recursive-factorial-rs)
+    
 
 ```rust
 #[resonate::function]
@@ -8182,11 +8180,11 @@ async fn main() {
 }
 ```
 
-    
+See it in action: [example-recursive-factorial-rs](https://github.com/resonatehq-examples/example-recursive-factorial-rs)
 
     
 
-See it in action: [example-recursive-factorial-go](https://github.com/resonatehq-examples/example-recursive-factorial-go)
+    
 
 ```go
 type Args struct {
@@ -8219,6 +8217,8 @@ func main() {
 	fmt.Println(result)
 }
 ```
+
+See it in action: [example-recursive-factorial-go](https://github.com/resonatehq-examples/example-recursive-factorial-go)
 
     
 
@@ -8301,8 +8301,6 @@ Then, you can resolve it from anywhere, optionally sending data into the functio
 
     
 
-See it in action: [example-human-in-the-loop-py](https://github.com/resonatehq-examples/example-human-in-the-loop-py)
-
 ```python
 # worker.py
 @resonate.register()
@@ -8313,6 +8311,8 @@ def foo(ctx: Context) -> None:
     data = yield blocking_promise
     # ...
 ```
+
+See it in action: [example-human-in-the-loop-py](https://github.com/resonatehq-examples/example-human-in-the-loop-py)
 
 ```python
 # client.py
@@ -8328,8 +8328,6 @@ def main():
 
     
 
-See it in action: [example-human-in-the-loop-ts](https://github.com/resonatehq-examples/example-human-in-the-loop-ts)
-
 ```typescript
 function* foo(context: Context) {
   const blockingPromise = yield* context.promise();
@@ -8340,6 +8338,8 @@ function* foo(context: Context) {
 }
 ```
 
+See it in action: [example-human-in-the-loop-ts](https://github.com/resonatehq-examples/example-human-in-the-loop-ts)
+
 ```typescript
 // client.ts
 await resonate.promises.resolve(promiseId, { data: JSON.stringify(data) });
@@ -8348,8 +8348,6 @@ await resonate.promises.resolve(promiseId, { data: JSON.stringify(data) });
     
 
     
-
-See it in action: [example-human-in-the-loop-rs](https://github.com/resonatehq-examples/example-human-in-the-loop-rs)
 
 ```rust
 // worker.rs
@@ -8366,6 +8364,8 @@ async fn foo(ctx: &Context) -> Result<()> {
 }
 ```
 
+See it in action: [example-human-in-the-loop-rs](https://github.com/resonatehq-examples/example-human-in-the-loop-rs)
+
 ```rust
 use resonate::types::Value;
 
@@ -8379,8 +8379,6 @@ resonate
     
 
     
-
-See it in action: [example-human-in-the-loop-go](https://github.com/resonatehq-examples/example-human-in-the-loop-go)
 
 ```go
 func foo(ctx *resonate.Context, _ struct{}) (string, error) {
@@ -8401,6 +8399,8 @@ func foo(ctx *resonate.Context, _ struct{}) (string, error) {
 	return data, nil
 }
 ```
+
+See it in action: [example-human-in-the-loop-go](https://github.com/resonatehq-examples/example-human-in-the-loop-go)
 
 ```shell
 # The Go SDK has no high-level promises sub-client yet (pre-release), so
@@ -8424,8 +8424,6 @@ Consider the following Resonate example.
 
     
 
-See it in action: [example-load-balancing-py](https://github.com/resonatehq-examples/example-load-balancing-py)
-
 ```python
 # worker.py
 resonate = Resonate.remote(
@@ -8433,6 +8431,8 @@ resonate = Resonate.remote(
     # ...
 )
 ```
+
+See it in action: [example-load-balancing-py](https://github.com/resonatehq-examples/example-load-balancing-py)
 
 ```python
 # client.py
@@ -8449,8 +8449,6 @@ def main():
 
     
 
-See it in action: [example-load-balancing-ts](https://github.com/resonatehq-examples/example-load-balancing-ts)
-
 ```typescript
 // worker.ts
 const resonate = new Resonate({
@@ -8458,6 +8456,8 @@ const resonate = new Resonate({
   group: "workers",
 });
 ```
+
+See it in action: [example-load-balancing-ts](https://github.com/resonatehq-examples/example-load-balancing-ts)
 
 ```typescript
 //client.ts
@@ -8482,8 +8482,6 @@ async function main() {
 
     
 
-See it in action: [example-load-balancing-rs](https://github.com/resonatehq-examples/example-load-balancing-rs)
-
 ```rust
 // worker.rs
 let resonate = Resonate::new(ResonateConfig {
@@ -8492,6 +8490,8 @@ let resonate = Resonate::new(ResonateConfig {
     ..Default::default()
 });
 ```
+
+See it in action: [example-load-balancing-rs](https://github.com/resonatehq-examples/example-load-balancing-rs)
 
 ```rust
 // client.rs
@@ -8511,8 +8511,6 @@ let result: u64 = resonate
 
     
 
-See it in action: [example-load-balancing-go](https://github.com/resonatehq-examples/example-load-balancing-go)
-
 ```go
 // worker
 r, _ := resonate.New(resonate.Config{
@@ -8521,6 +8519,8 @@ r, _ := resonate.New(resonate.Config{
 	}),
 })
 ```
+
+See it in action: [example-load-balancing-go](https://github.com/resonatehq-examples/example-load-balancing-go)
 
 ```go
 // client
@@ -8960,8 +8960,6 @@ How might you implement it in Temporal?
 
     
 
-See it in action: [example-recursive-factorial-py](https://github.com/resonatehq-examples/example-recursive-factorial-py)
-
 ```python
 @resonate.register
 def factorial(ctx: Context, n: int) -> int:
@@ -8976,12 +8974,12 @@ def main():
     print(result)
 ```
 
+See it in action: [example-recursive-factorial-py](https://github.com/resonatehq-examples/example-recursive-factorial-py)
+
     
 
 
     
-
-See it in action: [example-recursive-factorial-ts](https://github.com/resonatehq-examples/example-recursive-factorial-ts)
 
 ```typescript
 function* factorial(ctx: Context, n: number): Generator<any, number, any> {
@@ -9001,11 +8999,11 @@ async function main() {
 }
 ```
 
-    
+See it in action: [example-recursive-factorial-ts](https://github.com/resonatehq-examples/example-recursive-factorial-ts)
 
     
 
-See it in action: [example-recursive-factorial-rs](https://github.com/resonatehq-examples/example-recursive-factorial-rs)
+    
 
 ```rust
 #[resonate::function]
@@ -9030,11 +9028,11 @@ async fn main() {
 }
 ```
 
-    
+See it in action: [example-recursive-factorial-rs](https://github.com/resonatehq-examples/example-recursive-factorial-rs)
 
     
 
-See it in action: [example-recursive-factorial-go](https://github.com/resonatehq-examples/example-recursive-factorial-go)
+    
 
 ```go
 type Args struct {
@@ -9067,6 +9065,8 @@ func main() {
 	fmt.Println(result)
 }
 ```
+
+See it in action: [example-recursive-factorial-go](https://github.com/resonatehq-examples/example-recursive-factorial-go)
 
     
 
@@ -9148,8 +9148,6 @@ Then, you can resolve it from anywhere, optionally sending data into the functio
 
     
 
-See it in action: [example-human-in-the-loop-py](https://github.com/resonatehq-examples/example-human-in-the-loop-py)
-
 ```python
 # worker.py
 @resonate.register()
@@ -9160,6 +9158,8 @@ def foo(ctx: Context) -> None:
     data = yield blocking_promise
     # ...
 ```
+
+See it in action: [example-human-in-the-loop-py](https://github.com/resonatehq-examples/example-human-in-the-loop-py)
 
 ```python
 # client.py
@@ -9175,8 +9175,6 @@ def main():
 
     
 
-See it in action: [example-human-in-the-loop-ts](https://github.com/resonatehq-examples/example-human-in-the-loop-ts)
-
 ```typescript
 function* foo(context: Context) {
   const blockingPromise = yield* context.promise();
@@ -9187,6 +9185,8 @@ function* foo(context: Context) {
 }
 ```
 
+See it in action: [example-human-in-the-loop-ts](https://github.com/resonatehq-examples/example-human-in-the-loop-ts)
+
 ```typescript
 // client.ts
 await resonate.promises.resolve(promiseId, { data: JSON.stringify(data) });
@@ -9195,8 +9195,6 @@ await resonate.promises.resolve(promiseId, { data: JSON.stringify(data) });
     
 
     
-
-See it in action: [example-human-in-the-loop-rs](https://github.com/resonatehq-examples/example-human-in-the-loop-rs)
 
 ```rust
 // worker.rs
@@ -9213,6 +9211,8 @@ async fn foo(ctx: &Context) -> Result<()> {
 }
 ```
 
+See it in action: [example-human-in-the-loop-rs](https://github.com/resonatehq-examples/example-human-in-the-loop-rs)
+
 ```rust
 use resonate::types::Value;
 
@@ -9226,8 +9226,6 @@ resonate
     
 
     
-
-See it in action: [example-human-in-the-loop-go](https://github.com/resonatehq-examples/example-human-in-the-loop-go)
 
 ```go
 func foo(ctx *resonate.Context, _ struct{}) (string, error) {
@@ -9248,6 +9246,8 @@ func foo(ctx *resonate.Context, _ struct{}) (string, error) {
 	return data, nil
 }
 ```
+
+See it in action: [example-human-in-the-loop-go](https://github.com/resonatehq-examples/example-human-in-the-loop-go)
 
 ```shell
 # The Go SDK has no high-level promises sub-client yet (pre-release), so
@@ -9271,8 +9271,6 @@ Resonate will automatically load balance the invocations across the Workers in t
 
     
 
-See it in action: [example-load-balancing-py](https://github.com/resonatehq-examples/example-load-balancing-py)
-
 ```python
 # worker.py
 resonate = Resonate.remote(
@@ -9280,6 +9278,8 @@ resonate = Resonate.remote(
     # ...
 )
 ```
+
+See it in action: [example-load-balancing-py](https://github.com/resonatehq-examples/example-load-balancing-py)
 
 ```python
 # client.py
@@ -9296,8 +9296,6 @@ def main():
 
     
 
-See it in action: [example-load-balancing-ts](https://github.com/resonatehq-examples/example-load-balancing-ts)
-
 ```typescript
 // worker.ts
 const resonate = new Resonate({
@@ -9305,6 +9303,8 @@ const resonate = new Resonate({
   group: "workers",
 });
 ```
+
+See it in action: [example-load-balancing-ts](https://github.com/resonatehq-examples/example-load-balancing-ts)
 
 ```typescript
 //client.ts
@@ -9329,8 +9329,6 @@ async function main() {
 
     
 
-See it in action: [example-load-balancing-rs](https://github.com/resonatehq-examples/example-load-balancing-rs)
-
 ```rust
 // worker.rs
 let resonate = Resonate::new(ResonateConfig {
@@ -9339,6 +9337,8 @@ let resonate = Resonate::new(ResonateConfig {
     ..Default::default()
 });
 ```
+
+See it in action: [example-load-balancing-rs](https://github.com/resonatehq-examples/example-load-balancing-rs)
 
 ```rust
 // client.rs
@@ -9358,8 +9358,6 @@ let result: u64 = resonate
 
     
 
-See it in action: [example-load-balancing-go](https://github.com/resonatehq-examples/example-load-balancing-go)
-
 ```go
 // worker
 r, _ := resonate.New(resonate.Config{
@@ -9368,6 +9366,8 @@ r, _ := resonate.New(resonate.Config{
 	}),
 })
 ```
+
+See it in action: [example-load-balancing-go](https://github.com/resonatehq-examples/example-load-balancing-go)
 
 ```go
 // client

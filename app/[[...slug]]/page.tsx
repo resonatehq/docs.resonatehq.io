@@ -11,6 +11,7 @@ import { RepoCard, RepoGrid } from "@/components/mdx/RepoCard";
 import HomePageCategory from "@/components/mdx/HomePageCategory";
 import CloneRepoCard from "@/components/mdx/CloneRepoCard";
 import DocCardList from "@/components/mdx/DocCardList";
+import SeeItInAction from "@/components/mdx/SeeItInAction";
 import { Pre } from "@/components/mdx/CodeBlock";
 import { H2, H3, H4 } from "@/components/mdx/Heading";
 import { ChevronLeft, ChevronRight, Pencil } from "lucide-react";
@@ -46,6 +47,7 @@ const mdxComponents = {
   CloneRepoGrid: RepoGrid,
   CloneRepoCard,
   DocCardList,
+  SeeItInAction,
   pre: Pre,
   img: MdxImg,
   h2: H2,
@@ -117,7 +119,7 @@ export default async function Page({ params }: PageProps) {
       <main className="flex-1 min-w-0 px-6 md:px-10 py-8">
         {/* Breadcrumbs (suppressed on the docs root) */}
         {crumbs.length > 0 && (
-          <nav className="text-xs text-bright-gray-500 dark:text-muted mb-6 font-mono" aria-label="Breadcrumb">
+          <nav className="text-xs text-fg-muted mb-6 font-mono" aria-label="Breadcrumb">
             <Link href="/" className="hover:text-bright-gray-900 dark:hover:text-primary transition">
               Docs
             </Link>
@@ -142,7 +144,7 @@ export default async function Page({ params }: PageProps) {
         <article className="docs-content max-w-3xl">
           {!page.data.hideTitle && <h1>{page.data.pageTitle ?? page.data.title}</h1>}
           {page.data.description && (
-            <p className="text-lg text-bright-gray-500 dark:text-muted font-serif mb-8 !mt-0">
+            <p className="text-lg text-fg-muted font-serif mb-8 !mt-0">
               {page.data.description}
             </p>
           )}
@@ -155,7 +157,7 @@ export default async function Page({ params }: PageProps) {
             href={`https://github.com/resonatehq/docs.resonatehq.io/edit/main/content/${page.file.path}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-secondary transition"
+            className="inline-flex items-center gap-1.5 text-sm text-fg-muted hover:text-secondary transition"
           >
             <Pencil size={14} />
             Edit this page on GitHub
@@ -167,7 +169,7 @@ export default async function Page({ params }: PageProps) {
           {neighbours.previous ? (
             <Link
               href={neighbours.previous.url}
-              className="group flex items-center gap-2 text-sm text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
+              className="group flex items-center gap-2 text-sm text-fg-muted hover:text-bright-gray-900 dark:hover:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
             >
               <ChevronLeft size={14} />
               <span className="group-hover:text-secondary transition">
@@ -180,7 +182,7 @@ export default async function Page({ params }: PageProps) {
           {neighbours.next ? (
             <Link
               href={neighbours.next.url}
-              className="group flex items-center gap-2 text-sm text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
+              className="group flex items-center gap-2 text-sm text-fg-muted hover:text-bright-gray-900 dark:hover:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
             >
               <span className="group-hover:text-secondary transition">
                 {neighbours.next.name}

@@ -29,7 +29,7 @@ function SidebarNode({
   if (node.type === "separator") {
     return (
       <div className="pt-6 pb-2 first:pt-0">
-        <span className="text-xs font-display font-semibold uppercase tracking-wider text-bright-gray-500 dark:text-muted">
+        <span className="text-xs font-display font-semibold uppercase tracking-wider text-fg-muted">
           {node.name}
         </span>
       </div>
@@ -46,7 +46,7 @@ function SidebarNode({
         } ${
           isActive
             ? "text-bright-gray-900 dark:text-primary font-medium border-secondary"
-            : "text-bright-gray-600 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary border-transparent"
+            : "text-bright-gray-600 dark:text-fg-muted hover:text-bright-gray-900 dark:hover:text-primary border-transparent"
         }`}
       >
         {node.name}
@@ -62,7 +62,7 @@ function SidebarNode({
         ? "text-bright-gray-900 dark:text-primary font-medium"
         : isAncestor(node, currentPath)
         ? "text-bright-gray-900 dark:text-primary font-medium"
-        : "text-bright-gray-600 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary"
+        : "text-bright-gray-600 dark:text-fg-muted hover:text-bright-gray-900 dark:hover:text-primary"
     }`;
     return (
       <div>
@@ -88,7 +88,7 @@ function SidebarNode({
             onClick={() => setOpen(!open)}
             aria-label={open ? `Collapse ${String(node.name)}` : `Expand ${String(node.name)}`}
             aria-expanded={open}
-            className="p-1.5 text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
+            className="p-1.5 text-fg-muted hover:text-bright-gray-900 dark:hover:text-primary transition focus-visible:outline-2 focus-visible:outline-secondary"
           >
             <ChevronRight
               size={14}

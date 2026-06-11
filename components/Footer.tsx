@@ -27,13 +27,13 @@ function FooterLink({ href, children }: { href: string; children: React.ReactNod
   const isExternal = href.startsWith("http");
   if (isExternal) {
     return (
-      <a href={href} className="text-sm text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary transition" target="_blank" rel="noopener noreferrer">
+      <a href={href} className="text-sm text-fg-muted hover:text-bright-gray-900 dark:hover:text-primary transition" target="_blank" rel="noopener noreferrer">
         {children}
       </a>
     );
   }
   return (
-    <Link href={href} className="text-sm text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary transition">
+    <Link href={href} className="text-sm text-fg-muted hover:text-bright-gray-900 dark:hover:text-primary transition">
       {children}
     </Link>
   );
@@ -68,7 +68,7 @@ export default function Footer() {
               </svg>
               <span className="font-display text-lg font-semibold text-bright-gray-900 dark:text-white">resonate</span>
             </div>
-            <p className="font-serif text-sm text-bright-gray-500 dark:text-muted">
+            <p className="font-serif text-sm text-fg-muted">
               Durable execution. Dead simple.
             </p>
           </div>
@@ -106,14 +106,14 @@ export default function Footer() {
 
         {/* Bottom */}
         <div className="mt-12 pt-6 border-t border-bright-gray-200 dark:border-primary/10 flex items-center justify-between">
-          <p className="text-xs text-bright-gray-500 dark:text-muted">
+          <p className="text-xs text-fg-muted">
             &copy; {new Date().getFullYear()} ResonateHQ, Inc.
           </p>
           <a
             href="https://github.com/resonatehq"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-bright-gray-500 dark:text-muted hover:text-bright-gray-900 dark:hover:text-primary transition"
+            className="text-fg-muted hover:text-bright-gray-900 dark:hover:text-primary transition"
             aria-label="GitHub"
           >
             <Github size={16} />

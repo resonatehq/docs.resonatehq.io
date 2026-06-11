@@ -33,8 +33,15 @@ function extractFrontmatter(content) {
 }
 
 function stripJsx(content) {
-  // Remove JSX component tags but keep their text children
+  // Remove JSX component tags but keep their text children.
   return content
+    // Components that carry link content the LLM corpus needs must be expanded
+    // to markdown BEFORE the generic tag strip below, or they vanish entirely.
+    .replace(
+      /<SeeItInAction\s+repo="([^"]+)"(?:\s+href="([^"]+)")?\s*\/>/g,
+      (_m, repo, href) =>
+        `See it in action: [${repo}](${href ?? `https://github.com/resonatehq-examples/${repo}`})`
+    )
     .replace(/<\/?[A-Z][A-Za-z]*[^>]*>/g, "")
     .replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, "")
     .trim();
