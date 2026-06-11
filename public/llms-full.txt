@@ -8127,7 +8127,7 @@ def main():
     print(result)
 ```
 
-
+See it in action: [example-recursive-factorial-py](https://github.com/resonatehq-examples/example-recursive-factorial-py)
 
     
 
@@ -8151,7 +8151,7 @@ async function main() {
 }
 ```
 
-
+See it in action: [example-recursive-factorial-ts](https://github.com/resonatehq-examples/example-recursive-factorial-ts)
 
     
 
@@ -8180,7 +8180,7 @@ async fn main() {
 }
 ```
 
-
+See it in action: [example-recursive-factorial-rs](https://github.com/resonatehq-examples/example-recursive-factorial-rs)
 
     
 
@@ -8218,7 +8218,7 @@ func main() {
 }
 ```
 
-
+See it in action: [example-recursive-factorial-go](https://github.com/resonatehq-examples/example-recursive-factorial-go)
 
     
 
@@ -8312,7 +8312,7 @@ def foo(ctx: Context) -> None:
     # ...
 ```
 
-
+See it in action: [example-human-in-the-loop-py](https://github.com/resonatehq-examples/example-human-in-the-loop-py)
 
 ```python
 # client.py
@@ -8338,7 +8338,7 @@ function* foo(context: Context) {
 }
 ```
 
-
+See it in action: [example-human-in-the-loop-ts](https://github.com/resonatehq-examples/example-human-in-the-loop-ts)
 
 ```typescript
 // client.ts
@@ -8364,7 +8364,7 @@ async fn foo(ctx: &Context) -> Result<()> {
 }
 ```
 
-
+See it in action: [example-human-in-the-loop-rs](https://github.com/resonatehq-examples/example-human-in-the-loop-rs)
 
 ```rust
 use resonate::types::Value;
@@ -8400,7 +8400,7 @@ func foo(ctx *resonate.Context, _ struct{}) (string, error) {
 }
 ```
 
-
+See it in action: [example-human-in-the-loop-go](https://github.com/resonatehq-examples/example-human-in-the-loop-go)
 
 ```shell
 # The Go SDK has no high-level promises sub-client yet (pre-release), so
@@ -8432,7 +8432,7 @@ resonate = Resonate.remote(
 )
 ```
 
-
+See it in action: [example-load-balancing-py](https://github.com/resonatehq-examples/example-load-balancing-py)
 
 ```python
 # client.py
@@ -8457,7 +8457,7 @@ const resonate = new Resonate({
 });
 ```
 
-
+See it in action: [example-load-balancing-ts](https://github.com/resonatehq-examples/example-load-balancing-ts)
 
 ```typescript
 //client.ts
@@ -8491,7 +8491,7 @@ let resonate = Resonate::new(ResonateConfig {
 });
 ```
 
-
+See it in action: [example-load-balancing-rs](https://github.com/resonatehq-examples/example-load-balancing-rs)
 
 ```rust
 // client.rs
@@ -8520,7 +8520,7 @@ r, _ := resonate.New(resonate.Config{
 })
 ```
 
-
+See it in action: [example-load-balancing-go](https://github.com/resonatehq-examples/example-load-balancing-go)
 
 ```go
 // client
@@ -8974,7 +8974,7 @@ def main():
     print(result)
 ```
 
-
+See it in action: [example-recursive-factorial-py](https://github.com/resonatehq-examples/example-recursive-factorial-py)
 
     
 
@@ -8999,7 +8999,7 @@ async function main() {
 }
 ```
 
-
+See it in action: [example-recursive-factorial-ts](https://github.com/resonatehq-examples/example-recursive-factorial-ts)
 
     
 
@@ -9028,7 +9028,7 @@ async fn main() {
 }
 ```
 
-
+See it in action: [example-recursive-factorial-rs](https://github.com/resonatehq-examples/example-recursive-factorial-rs)
 
     
 
@@ -9066,7 +9066,7 @@ func main() {
 }
 ```
 
-
+See it in action: [example-recursive-factorial-go](https://github.com/resonatehq-examples/example-recursive-factorial-go)
 
     
 
@@ -9159,7 +9159,7 @@ def foo(ctx: Context) -> None:
     # ...
 ```
 
-
+See it in action: [example-human-in-the-loop-py](https://github.com/resonatehq-examples/example-human-in-the-loop-py)
 
 ```python
 # client.py
@@ -9185,7 +9185,7 @@ function* foo(context: Context) {
 }
 ```
 
-
+See it in action: [example-human-in-the-loop-ts](https://github.com/resonatehq-examples/example-human-in-the-loop-ts)
 
 ```typescript
 // client.ts
@@ -9211,7 +9211,7 @@ async fn foo(ctx: &Context) -> Result<()> {
 }
 ```
 
-
+See it in action: [example-human-in-the-loop-rs](https://github.com/resonatehq-examples/example-human-in-the-loop-rs)
 
 ```rust
 use resonate::types::Value;
@@ -9247,7 +9247,7 @@ func foo(ctx *resonate.Context, _ struct{}) (string, error) {
 }
 ```
 
-
+See it in action: [example-human-in-the-loop-go](https://github.com/resonatehq-examples/example-human-in-the-loop-go)
 
 ```shell
 # The Go SDK has no high-level promises sub-client yet (pre-release), so
@@ -9279,7 +9279,7 @@ resonate = Resonate.remote(
 )
 ```
 
-
+See it in action: [example-load-balancing-py](https://github.com/resonatehq-examples/example-load-balancing-py)
 
 ```python
 # client.py
@@ -9304,7 +9304,7 @@ const resonate = new Resonate({
 });
 ```
 
-
+See it in action: [example-load-balancing-ts](https://github.com/resonatehq-examples/example-load-balancing-ts)
 
 ```typescript
 //client.ts
@@ -9338,7 +9338,7 @@ let resonate = Resonate::new(ResonateConfig {
 });
 ```
 
-
+See it in action: [example-load-balancing-rs](https://github.com/resonatehq-examples/example-load-balancing-rs)
 
 ```rust
 // client.rs
@@ -9367,7 +9367,7 @@ r, _ := resonate.New(resonate.Config{
 })
 ```
 
-
+See it in action: [example-load-balancing-go](https://github.com/resonatehq-examples/example-load-balancing-go)
 
 ```go
 // client
