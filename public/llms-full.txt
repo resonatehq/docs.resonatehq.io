@@ -11119,13 +11119,13 @@ Resonate applications, on the other hand, can use multiple Resonate Servers to d
 
     
 
-![Temporal architecture](/images/temporal-system-arch.svg)
+
 
     
 
     
 
-![Resonate architecture](/images/resonate-system-arch.svg)
+
 
     
 
