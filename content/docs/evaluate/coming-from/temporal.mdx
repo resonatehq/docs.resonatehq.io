@@ -12,7 +12,19 @@ This page reflects `@resonatehq/sdk` v0.10.2 (TypeScript, current on npm), `reso
 
 **Are you coming from Temporal?**
 
-This guide is meant to help you understand the differences and similarities between Temporal and Resonate.
+This guide is meant to help you understand the differences and similarities
+between Temporal and Resonate — concept by concept, with side-by-side migration
+code in every SDK.
+
+<Callout type="info" title="About the code">
+Temporal blocks below are excerpted from the official
+`temporalio/samples-{typescript,python,go}` repos and the Rust SDK's in-repo
+examples (`temporalio/sdk-rust/crates/sdk/examples/`) — trimmed for focus,
+elisions marked, never rewritten. Resonate blocks come from the [examples
+library](https://github.com/resonatehq-examples), pinned to the latest released
+SDKs. Some patterns don't have a Resonate example in every language yet; those
+gaps are noted inline.
+</Callout>
 
 ## Durability
 
@@ -28,6 +40,186 @@ In Resonate, if your process crashes, your function can recover and resume from 
 If you have experience with Temporal, then you are familiar with thinking in terms of Workflows and Activities.
 
 Resonate does not have proprietary function types such as Workflows and Activities; it just uses functions.
+
+Here is the most basic migration — a Workflow that calls one Activity, and the equivalent Resonate function calling one step:
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
+    ]}
+>
+
+<TabItem value="python">
+
+**Temporal** — `samples-python/hello/hello_activity.py`:
+
+```python
+@activity.defn
+def compose_greeting(input: ComposeGreetingInput) -> str:
+    return f"{input.greeting}, {input.name}!"
+
+@workflow.defn
+class GreetingWorkflow:
+    @workflow.run
+    async def run(self, name: str) -> str:
+        return await workflow.execute_activity(
+            compose_greeting,
+            ComposeGreetingInput("Hello", name),
+            start_to_close_timeout=timedelta(seconds=10),
+        )
+```
+
+**Resonate** — `example-hello-world-py/main.py`:
+
+```python
+def bar(_: Context, greetee: str) -> str:
+    return f"Hello {greetee} from bar!"
+
+@resonate.register
+def foo(ctx: Context, greetee: str) -> Generator[Any, Any, str]:
+    bar_greeting = yield ctx.run(bar, greetee=greetee)
+    return bar_greeting
+```
+
+<SeeItInAction repo="example-hello-world-py" />
+
+</TabItem>
+
+<TabItem value="typescript">
+
+**Temporal** — `samples-typescript/hello-world/src/workflows.ts` + `activities.ts`:
+
+```typescript
+// activities.ts
+export async function greet(name: string): Promise<string> {
+  return `Hello, ${name}!`;
+}
+
+// workflows.ts
+const { greet } = proxyActivities<typeof activities>({
+  startToCloseTimeout: '1 minute',
+});
+
+export async function example(name: string): Promise<string> {
+  return await greet(name);
+}
+```
+
+**Resonate** — `example-hello-world-ts/index.ts`:
+
+```typescript
+async function bar(_: Context, greetee: string): Promise<string> {
+  return `Hello ${greetee} from bar!`;
+}
+
+function* foo(ctx: Context, greetee: string): Generator<any, string, any> {
+  const barGreeting = yield* ctx.run(bar, greetee);
+  return barGreeting;
+}
+
+const fooR = resonate.register("foo", foo);
+```
+
+<SeeItInAction repo="example-hello-world-ts" />
+
+</TabItem>
+
+<TabItem value="rust">
+
+**Temporal** — `sdk-rust/crates/sdk/examples/hello_world/workflows.rs`:
+
+```rust
+#[workflow]
+pub struct HelloWorldWorkflow;
+
+#[workflow_methods]
+impl HelloWorldWorkflow {
+    #[run]
+    pub async fn run(ctx: &mut WorkflowContext<Self>, name: String) -> WorkflowResult<String> {
+        ctx.start_activity(
+            GreetingActivities::greet, name,
+            ActivityOptions::start_to_close_timeout(Duration::from_secs(10)),
+        ).await
+    }
+}
+
+#[activities]
+impl GreetingActivities {
+    #[activity]
+    pub async fn greet(_ctx: ActivityContext, name: String) -> Result<String, ActivityError> {
+        Ok(format!("Hello, {}!", name))
+    }
+}
+```
+
+**Resonate** — `example-hello-world-rs/src/main.rs`:
+
+```rust
+#[resonate::function]
+async fn greet(ctx: &Context, name: String) -> Result<String> {
+    let greeting = ctx.run(format_greeting, name).await?;
+    Ok(greeting)
+}
+
+#[resonate::function]
+async fn format_greeting(name: String) -> Result<String> {
+    Ok(format!("Hello, {name}!"))
+}
+```
+
+<SeeItInAction repo="example-hello-world-rs" />
+
+</TabItem>
+
+<TabItem value="go">
+
+**Temporal** — `samples-go/helloworld/helloworld.go`:
+
+```go
+func Workflow(ctx workflow.Context, name string) (string, error) {
+    ao := workflow.ActivityOptions{StartToCloseTimeout: 10 * time.Second}
+    ctx = workflow.WithActivityOptions(ctx, ao)
+
+    var result string
+    err := workflow.ExecuteActivity(ctx, Activity, name).Get(ctx, &result)
+    return result, err
+}
+
+func Activity(ctx context.Context, name string) (string, error) {
+    return "Hello " + name + "!", nil
+}
+```
+
+**Resonate** — `example-hello-world-go/main.go`:
+
+```go
+func greet(_ *resonate.Context, args GreetArgs) (string, error) {
+    return fmt.Sprintf("hello, %s!", args.Name), nil
+}
+
+func main() {
+    r, _ := resonate.New(resonate.Config{URL: "http://localhost:8001"})
+    defer r.Stop()
+
+    greetFn, _ := resonate.Register(r, "greet", greet)
+    h, _ := greetFn.Run(ctx, id, GreetArgs{Name: "world"})
+    out, _ := h.Result(ctx)
+    fmt.Println(out)
+}
+```
+
+<SeeItInAction repo="example-hello-world-go" />
+
+</TabItem>
+
+</Tabs>
+
+`@resonate.register` (and its per-SDK equivalents) replaces the `@workflow.defn` / `@activity.defn` split. A step is just a function passed to `ctx.run` — no Task Queue wiring, no mandatory timeout policy.
 
 Resonate promotes a procedural programming model that enables you to compose functions indefinitely and recursively.
 
@@ -55,7 +247,7 @@ How might you implement it in Temporal?
 def factorial(ctx: Context, n: int) -> int:
     if n <= 1:
         return 1
-    r = yield ctx.run(factorial, n - 1).options(id=f"factorial-{n-1}")
+    r = yield ctx.rpc("factorial", n - 1).options(target="poll://any@factorial-worker", id=f"factorial-{n-1}")
     return n * r
 
 
@@ -76,7 +268,11 @@ function* factorial(ctx: Context, n: number): Generator<any, number, any> {
   if (n <= 1) {
     return 1;
   }
-  const result = yield* ctx.run(factorial, n - 1);
+  const result = yield* ctx.rpc(
+    "factorial",
+    n - 1,
+    ctx.options({ target: "poll://any@factorial-workers" }),
+  );
 
   return n * result;
 }
@@ -101,7 +297,10 @@ async fn factorial(ctx: &Context, n: u64) -> Result<u64> {
     if n <= 1 {
         return Ok(1);
     }
-    let result = ctx.run(factorial, n - 1).await?;
+    let result: u64 = ctx
+        .rpc("factorial", n - 1)
+        .target("poll://any@factorial-workers")
+        .await?;
 
     Ok(n * result)
 }
@@ -133,7 +332,7 @@ func factorial(ctx *resonate.Context, args Args) (int, error) {
 	if args.N <= 1 {
 		return 1, nil
 	}
-	f, err := ctx.Run(factorial, Args{N: args.N - 1})
+	f, err := ctx.RPC("factorial", Args{N: args.N - 1})
 	if err != nil {
 		return 0, err
 	}
@@ -161,6 +360,8 @@ func main() {
     </TabItem>
 
 </Tabs>
+
+In Temporal, recursion like this means **child workflows** (`executeChild` / `ExecuteChildWorkflow`) — each a separately registered Workflow type, each accruing its own event history. That history accounting is what makes deep or unbounded recursion awkward in Temporal; in Resonate a function simply calls itself by its registered name (`ctx.run` / `ctx.rpc`), with no separate type and no per-child history to manage.
 
 ## Zero-dependency development
 
@@ -240,7 +441,113 @@ r, _ := resonate.New(resonate.Config{
 
 ## Human-in-the-loop
 
-In Temporal, you can use Signals to unblock a Workflow Execution with input from a human.
+In Temporal, you can use Signals to unblock a Workflow Execution with input from a human — define a signal, register a handler, flip a flag, and `await` a condition:
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
+    ]}
+>
+
+<TabItem value="python">
+
+`samples-python/hello/hello_signal.py`:
+
+```python
+@workflow.defn
+class GreetingWorkflow:
+    @workflow.run
+    async def run(self) -> List[str]:
+        greetings: List[str] = []
+        while True:
+            await workflow.wait_condition(
+                lambda: not self._pending_greetings.empty() or self._exit)
+            # …drain self._pending_greetings into greetings…
+            if self._exit:
+                return greetings
+
+    @workflow.signal
+    def exit(self) -> None:
+        self._exit = True
+```
+
+Unblock it externally: `await handle.signal(GreetingWorkflow.exit)`.
+
+</TabItem>
+
+<TabItem value="typescript">
+
+`samples-typescript/signals-queries/src/workflows.ts`:
+
+```typescript
+export const unblockSignal = wf.defineSignal('unblock');
+export const isBlockedQuery = wf.defineQuery<boolean>('isBlocked');
+
+export async function unblockOrCancel(): Promise<void> {
+  let isBlocked = true;
+  wf.setHandler(unblockSignal, () => void (isBlocked = false));
+  wf.setHandler(isBlockedQuery, () => isBlocked);
+  await wf.condition(() => !isBlocked);              // blocks here
+}
+```
+
+Unblock it externally: `await handle.signal(unblockSignal);`.
+
+</TabItem>
+
+<TabItem value="rust">
+
+`sdk-rust/crates/sdk/examples/message_passing/workflows.rs`:
+
+```rust
+#[workflow]
+pub struct MessagePassingWorkflow { counter: i32 }
+
+#[workflow_methods]
+impl MessagePassingWorkflow {
+    #[run]
+    pub async fn run(ctx: &mut WorkflowContext<Self>, target: i32) -> WorkflowResult<i32> {
+        ctx.wait_condition(|s| s.counter >= target).await;   // blocks here
+        Ok(ctx.state(|s| s.counter))
+    }
+
+    #[signal]
+    pub fn increment(&mut self, _ctx: &mut SyncWorkflowContext<Self>, amount: i32) {
+        self.counter += amount;
+    }
+}
+```
+
+Unblock it externally by sending the `increment` signal. The Resonate Rust
+equivalent is in the tabs below.
+
+</TabItem>
+
+<TabItem value="go">
+
+`samples-go/await-signals/await_signals_workflow.go` (excerpt):
+
+```go
+func AwaitSignalsWorkflow(ctx workflow.Context) (err error) {
+    var a AwaitSignals
+    workflow.Go(ctx, a.Listen)                     // signal handlers in a goroutine
+    err = workflow.Await(ctx, func() bool {        // blocks until Signal1 arrives
+        return a.Signal1Received
+    })
+    // … then awaits Signal2 and Signal3 via workflow.AwaitWithTimeout …
+    return
+}
+// a.Listen: selector.AddReceive(workflow.GetSignalChannel(ctx, "Signal1"), …)
+```
+
+</TabItem>
+
+</Tabs>
 
 With Resonate, you can achieve the same effect by creating a Durable Promise that is not attached to any function execution, and then await on it.
 Then, you can resolve it from anywhere, optionally sending data into the function while doing so.
@@ -299,7 +606,10 @@ function* foo(context: Context) {
 
 ```typescript
 // client.ts
-await resonate.promises.resolve(promiseId, { data: JSON.stringify(data) });
+// promises.resolve does not run the codec, so encode the payload the way the
+// codec expects: JSON → base64 string in the `data` field.
+const data = Buffer.from(JSON.stringify(value), "utf8").toString("base64");
+await resonate.promises.resolve(promiseId, { data });
 ```
 
     </TabItem>
@@ -361,13 +671,664 @@ func foo(ctx *resonate.Context, _ struct{}) (string, error) {
 
 ```shell
 # The Go SDK has no high-level promises sub-client yet (pre-release), so
-# resolve the latent promise from outside via the Resonate CLI or server API:
-resonate promises resolve <promise-id> --value '{"headers": {}, "data": "approved"}'
+# resolve the latent promise from outside via the Resonate CLI or server API.
+# `data` must be a JSON-quoted string: the CLI base64-encodes it before storing,
+# and the worker's codec base64-decodes then JSON-parses it. A bare "approved"
+# would decode to the bytes `approved`, which is not valid JSON (DecodingError).
+resonate promises resolve <promise-id> --value '{"headers": {}, "data": "\"approved\""}'
 ```
 
     </TabItem>
 
 </Tabs>
+
+## Durable timers
+
+Temporal's `sleep-for-days` shows a durable timer racing against a signal. Resonate's equivalent is `ctx.sleep` — a single durable promise that survives crashes.
+
+<Callout type="caution" title="Watch the time units">
+Temporal accepts human strings (`'30 days'`) or a `timedelta`. Resonate's units differ **per SDK**: TypeScript takes **milliseconds**, Python takes **seconds**, Go and Rust take a native `Duration`. Converting `'30 days'` for the TS SDK means `30 * 24 * 60 * 60 * 1000`.
+</Callout>
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
+    ]}
+>
+
+<TabItem value="python">
+
+**Temporal** — `samples-python/sleep_for_days/workflows.py`:
+
+```python
+# raced against a completion signal inside asyncio.wait(...):
+await workflow.sleep(timedelta(days=30))   # timedelta
+```
+
+**Resonate** — `example-durable-sleep-py/worker.py`:
+
+```python
+@resonate.register
+def sleeping_workflow(ctx: Context, wf_id: str, secs: float):
+    yield ctx.sleep(secs)                   # seconds (float)
+    return f"Workflow {wf_id} slept for {secs} seconds."
+```
+
+<SeeItInAction repo="example-durable-sleep-py" />
+
+</TabItem>
+
+<TabItem value="typescript">
+
+**Temporal** — `samples-typescript/sleep-for-days/src/workflows.ts`:
+
+```typescript
+await Promise.race([sleep('30 days'), condition(() => isComplete)]);
+```
+
+**Resonate** — `example-durable-sleep-ts/worker.ts`:
+
+```typescript
+function* sleepingWorkflow(ctx: Context, ms: number) {
+  yield* ctx.sleep(ms);                     // milliseconds
+  return `Slept for ${ms / 1000} seconds`;
+}
+```
+
+<SeeItInAction repo="example-durable-sleep-ts" />
+
+</TabItem>
+
+<TabItem value="rust">
+
+**Temporal** — `sdk-rust/crates/sdk/examples/timer_examples/workflows.rs`:
+
+```rust
+#[run]
+pub async fn run(ctx: &mut WorkflowContext<Self>) -> WorkflowResult<String> {
+    ctx.timer(Duration::from_secs(1)).await;   // durable timer
+    // …select! race + cancellable-timer demo omitted…
+}
+```
+
+**Resonate** — `example-durable-sleep-rs/src/bin/worker.rs`:
+
+```rust
+#[resonate::function]
+async fn sleeping_workflow(ctx: &Context, secs: u64) -> Result<String> {
+    ctx.sleep(Duration::from_secs(secs)).await?;   // std::time::Duration
+    Ok(format!("Slept for {secs} seconds"))
+}
+```
+
+<SeeItInAction repo="example-durable-sleep-rs" />
+
+</TabItem>
+
+<TabItem value="go">
+
+**Temporal** — `samples-go/sleep-for-days/sleepfordays_workflow.go`:
+
+```go
+selector := workflow.NewSelector(ctx)
+selector.AddFuture(workflow.NewTimer(ctx, time.Hour*24*30), func(f workflow.Future) {})
+selector.AddReceive(sigChan, func(c workflow.ReceiveChannel, more bool) { isComplete = true })
+selector.Select(ctx)
+```
+
+**Resonate** — `example-durable-sleep-go/main.go`:
+
+```go
+func sleepingWorkflow(ctx *resonate.Context, args SleepArgs) (string, error) {
+    d := time.Duration(args.Secs) * time.Second
+    f, err := ctx.Sleep(d)                   // time.Duration
+    if err != nil {
+        return "", err
+    }
+    if err := f.Await(nil); err != nil {     // Await(nil) — no return value
+        return "", err
+    }
+    return fmt.Sprintf("slept for %d second(s)", args.Secs), nil
+}
+```
+
+<SeeItInAction repo="example-durable-sleep-go" />
+
+</TabItem>
+
+</Tabs>
+
+## Fan-out / fan-in
+
+Start many units of work in parallel, then join all results. In Temporal you spawn activities (or children) without awaiting, then await them together. Resonate is the same shape: start each with a non-blocking invocation, then await each promise.
+
+<Callout type="info" title="The only per-SDK wrinkle">
+The non-blocking spawn primitive's name — TS `ctx.beginRun`, Python `ctx.rfi`, Rust `.spawn()`, Go `ctx.RPC` — each returns a future immediately; you await them after all are started.
+</Callout>
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
+    ]}
+>
+
+<TabItem value="python">
+
+**Temporal** — `samples-python/hello/hello_parallel_activity.py`:
+
+```python
+results = await asyncio.gather(
+    workflow.execute_activity(say_hello_activity, "user1", start_to_close_timeout=timedelta(seconds=5)),
+    workflow.execute_activity(say_hello_activity, "user2", start_to_close_timeout=timedelta(seconds=5)),
+    # …user3 … user5 …
+)
+```
+
+**Resonate** — `example-fan-out-fan-in-py/workflow.py`:
+
+```python
+# fan-out: rfi() returns a handle immediately
+email_p = yield ctx.rfi(send_email, event).options(id=f"{ctx.id}.email")
+sms_p   = yield ctx.rfi(send_sms, event).options(id=f"{ctx.id}.sms")
+# fan-in: await each
+email = yield email_p
+sms   = yield sms_p
+```
+
+<SeeItInAction repo="example-fan-out-fan-in-py" />
+
+</TabItem>
+
+<TabItem value="typescript">
+
+**Temporal** — `samples-typescript/child-workflows/src/workflows.ts`:
+
+```typescript
+const responseArray = await Promise.all(
+  names.map((name) => executeChild(childWorkflow, { args: [name] })),
+);
+```
+
+**Resonate** — `example-fan-out-fan-in-ts/src/workflow.ts`:
+
+```typescript
+// fan-out: beginRun returns a future immediately
+const emailFuture = yield* ctx.beginRun(sendEmail, event);
+const smsFuture   = yield* ctx.beginRun(sendSms, event);
+// fan-in: await each
+const results = [yield* emailFuture, yield* smsFuture];
+```
+
+<SeeItInAction repo="example-fan-out-fan-in-ts" />
+
+</TabItem>
+
+<TabItem value="rust">
+
+**Temporal Rust has no dedicated fan-out sample** — its `child_workflows` example starts children sequentially. The Resonate Rust equivalent fans out with `.spawn()`:
+
+**Resonate** — `example-fan-out-fan-in-rs/src/main.rs`:
+
+```rust
+// fan-out: .spawn() returns a handle immediately
+let h1 = ctx.run(process_item, items[0].clone()).spawn().await?;
+let h2 = ctx.run(process_item, items[1].clone()).spawn().await?;
+// fan-in: await each
+let r1 = h1.await?;
+let r2 = h2.await?;
+```
+
+<SeeItInAction repo="example-fan-out-fan-in-rs" />
+
+</TabItem>
+
+<TabItem value="go">
+
+**Temporal** — `samples-go/splitmerge-future/splitmerge_workflow.go`:
+
+```go
+var results []workflow.Future
+for i := 0; i < processorCount; i++ {                    // fan-out
+    results = append(results, workflow.ExecuteActivity(ctx, ChunkProcessingActivity, i+1))
+}
+for i := 0; i < processorCount; i++ {                    // fan-in
+    var r ChunkResult
+    _ = results[i].Get(ctx, &r)
+}
+```
+
+**Resonate** — `example-fan-out-fan-in-go/main.go`:
+
+```go
+futures := make([]*resonate.Future, 0, len(args.Channels))
+for _, ch := range args.Channels {                       // fan-out
+    f, _ := ctx.RPC("send", SendArgs{Channel: ch, Message: args.Message})
+    futures = append(futures, f)
+}
+for _, f := range futures {                              // fan-in
+    var d Delivery
+    _ = f.Await(&d)
+}
+```
+
+<SeeItInAction repo="example-fan-out-fan-in-go" />
+
+</TabItem>
+
+</Tabs>
+
+## Saga / compensation
+
+A saga runs a sequence of steps and, on failure, runs **compensations** to undo the completed ones. Temporal's samples register compensation closures and drain them on error. Resonate's examples write the compensation inline in a `try`/`catch`, because the durable generator itself is the recovery record.
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="python"
+    values={[
+        {label: 'Python', value: 'python'},
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Rust', value: 'rust'},
+        {label: 'Go', value: 'go'},
+    ]}
+>
+
+<TabItem value="python">
+
+**Temporal** — `samples-python/message_passing/waiting_for_handlers_and_compensation/workflows.py` (the compensation itself is a single activity call):
+
+```python
+async def workflow_compensation(self):
+    await workflow.execute_activity(
+        activity_executed_to_perform_workflow_compensation,
+        start_to_close_timeout=timedelta(seconds=10),
+    )
+```
+
+**Resonate** — `example-money-transfer-py/main.py`:
+
+```python
+def transfer_money(ctx, transfer_id, source, target, amount, *, simulate_credit_failure=False):
+    yield ctx.run(apply_entry, f"{transfer_id}-debit", source, -amount, "debit")
+    try:
+        yield ctx.run(
+            credit_target, f"{transfer_id}-credit", target, amount,
+            fail=simulate_credit_failure,
+        ).options(retry_policy=Never())
+    except Exception as err:
+        # compensate inline
+        yield ctx.run(apply_entry, f"{transfer_id}-reversal", source, amount, "reversal")
+        return {"transfer_id": transfer_id, "status": "compensated", "error": str(err)}
+    return {"transfer_id": transfer_id, "status": "committed"}
+```
+
+<SeeItInAction repo="example-money-transfer-py" />
+
+</TabItem>
+
+<TabItem value="typescript">
+
+**Temporal** — `samples-typescript/saga/src/workflows.ts`:
+
+```typescript
+const compensations: Compensation[] = [];
+try {
+  await addAddress({ accountId, address });
+  compensations.unshift({ message: '…', fn: () => clearPostalAddresses({ accountId }) });
+
+  // …addClient + its compensation omitted for brevity…
+  await addBankAccount({ accountId, details });
+  compensations.unshift({ message: '…', fn: () => disconnectBankAccounts({ accountId }) });
+} catch (err) {
+  await compensate(compensations);   // drains the stack LIFO
+  throw err;
+}
+```
+
+**Resonate** — `example-saga-booking-ts/src/workflow.ts`:
+
+```typescript
+let flightId: string | undefined;
+let hotelId: string | undefined;
+try {
+  flightId = yield* ctx.run(bookFlight, tripId);
+  hotelId  = yield* ctx.run(bookHotel, tripId);
+  const carId = yield* ctx.run(bookCarRental, tripId, shouldFail,
+    ctx.options({ retryPolicy: noRetry }));
+  return { status: "success", tripId, flightId, hotelId, carId };
+} catch (error) {
+  if (hotelId)  yield* ctx.run(cancelHotel, tripId, hotelId);
+  if (flightId) yield* ctx.run(cancelFlight, tripId, flightId);
+  return { status: "failed", tripId, error: (error as Error).message };
+}
+```
+
+Temporal pushes typed `Compensation` closures onto a stack and drains it in a separate `compensate()` function. Resonate writes the undo inline in `catch`, guarded by `if (hotelId)` — no stack, no helper.
+
+<SeeItInAction repo="example-saga-booking-ts" />
+
+</TabItem>
+
+<TabItem value="rust">
+
+**Temporal** — `sdk-rust/crates/sdk/examples/saga/workflows.rs`:
+
+```rust
+#[run]
+pub async fn run(ctx: &mut WorkflowContext<Self>, trip_id: String) -> WorkflowResult<Vec<String>> {
+    let mut saga = Saga::new(ctx, activity_opts());
+    match Self::book_trip(&mut saga, trip_id).await {
+        Ok(ids) => Ok(ids),
+        Err(e) => { saga.compensate().await; Err(e.into()) }   // run compensations
+    }
+}
+// book_trip: saga.step(book_hotel, …, cancel_hotel).await? — one step + compensation per booking
+```
+
+**Resonate** — `example-money-transfer-rs/src/main.rs`:
+
+```rust
+#[resonate::function]
+async fn transfer_money(ctx: &Context, args: TransferArgs) -> Result<TransferResult> {
+    // Step 1 — debit the source (durable checkpoint).
+    ctx.run(apply_entry, EntryArgs {
+        op_id: format!("{}-debit", args.transfer_id),
+        account: args.source.clone(),
+        amount: -args.amount,
+        note: "debit".to_string(),
+    }).await?;
+
+    // Step 2 — credit the target; on failure, compensate by reversing the debit.
+    let credit_outcome = ctx.run(credit_target, CreditArgs {
+        op_id: format!("{}-credit", args.transfer_id),
+        target: args.target.clone(),
+        amount: args.amount,
+        fail: args.simulate_credit_failure,
+    }).await;
+
+    if let Err(err) = credit_outcome {
+        // compensate inline — also durable + idempotent
+        ctx.run(apply_entry, EntryArgs {
+            op_id: format!("{}-reversal", args.transfer_id),
+            account: args.source.clone(),
+            amount: args.amount,
+            note: "reversal".to_string(),
+        }).await?;
+        return Ok(TransferResult {
+            transfer_id: args.transfer_id,
+            status: "compensated".to_string(),
+            error: Some(err.to_string()),
+        });
+    }
+
+    Ok(TransferResult {
+        transfer_id: args.transfer_id,
+        status: "committed".to_string(),
+        error: None,
+    })
+}
+```
+
+<SeeItInAction repo="example-money-transfer-rs" />
+
+</TabItem>
+
+<TabItem value="go">
+
+**Temporal** — `samples-go/saga/workflow.go` (uses stacked `defer` for LIFO compensation):
+
+```go
+func TransferMoney(ctx workflow.Context, td TransferDetails) (err error) {
+    err = workflow.ExecuteActivity(ctx, Withdraw, td).Get(ctx, nil)
+    if err != nil { return err }
+    defer func() {
+        if err != nil {
+            errC := workflow.ExecuteActivity(ctx, WithdrawCompensation, td).Get(ctx, nil)
+            err = multierr.Append(err, errC)
+        }
+    }()
+
+    err = workflow.ExecuteActivity(ctx, Deposit, td).Get(ctx, nil)
+    // …Deposit's own defer-compensation + a final failing step omitted for brevity…
+    return err
+}
+```
+
+<Callout type="caution" title="No Resonate Go saga example yet">
+There is currently no `example-saga-booking-go` or `example-money-transfer-go`. The migration maps the same way as the other languages — `ctx.Run(...)` per step, compensation inline in the error branch — but until a Go example ships, treat this cell as a known gap rather than a worked sample.
+</Callout>
+
+</TabItem>
+
+</Tabs>
+
+## Long-running loops
+
+Temporal's `continue-as-new` exists to reset a Workflow's event history before it hits the size limit. Resonate has no per-execution event history that grows unboundedly, so for finite loops you just… loop.
+
+<Callout type="caution" title="One production caveat">
+For bounded loops, the Resonate example is a plain `while`/`for` — no `continue-as-new` needed. **But** for *truly unbounded* loops, a naive loop in a single durable invocation accumulates child promises that get re-walked on replay; once replay time exceeds the task lease, the worker loop stalls and stops making progress. The production-correct pattern is `ctx.detached` **tail-recursion** (the SDK docblock calls this out explicitly). The shipped examples below use the naive loop, which is correct for demos and bounded counts; reach for `detached` when the loop is genuinely infinite.
+</Callout>
+
+<Tabs
+    groupId="preferred-language"
+    defaultValue="typescript"
+    values={[
+        {label: 'TypeScript', value: 'typescript'},
+        {label: 'Go', value: 'go'},
+        {label: 'Python', value: 'python'},
+        {label: 'Rust', value: 'rust'},
+    ]}
+>
+
+<TabItem value="typescript">
+
+**Temporal** — `samples-typescript/continue-as-new/src/workflows.ts`:
+
+```typescript
+export async function loopingWorkflow(iteration = 0): Promise<void> {
+  if (iteration === 10) return;
+  await sleep(1000);
+  await continueAsNew<typeof loopingWorkflow>(iteration + 1);
+}
+```
+
+**Resonate** — `example-infinite-workflow-ts/src/workflow.ts`:
+
+```typescript
+function* healthMonitor(ctx: Context, config: MonitorConfig): Generator<any, MonitorResult, any> {
+  let iteration = 0;
+  // No continueAsNew — Resonate has no history limit.
+  while (iteration < config.maxIterations) {
+    iteration++;
+    yield* ctx.run(checkAllServices, config.services, iteration);
+    if (iteration < config.maxIterations) yield* ctx.sleep(config.intervalMs);
+  }
+  // ...
+}
+```
+
+For a genuinely unbounded loop, split per-iteration with `ctx.detached` (from the SDK docblock):
+
+```typescript
+function* playGame(ctx: Context, n: number) {
+  // ...one iteration of work...
+  yield* ctx.detached(playGame, n + 1);   // tail call, then return
+}
+```
+
+<SeeItInAction repo="example-infinite-workflow-ts" />
+
+</TabItem>
+
+<TabItem value="go">
+
+**Temporal** — `samples-go/child-workflow-continue-as-new/child_workflow.go`:
+
+```go
+func SampleChildWorkflow(ctx workflow.Context, totalCount, runCount int) (string, error) {
+    if runCount <= 0 {
+        return "", errors.New("invalid run count")
+    }
+    totalCount++
+    runCount--
+    if runCount == 0 {
+        return fmt.Sprintf("completed after %v runs", totalCount), nil
+    }
+    return "", workflow.NewContinueAsNewError(ctx, SampleChildWorkflow, totalCount, runCount)
+}
+```
+
+**Resonate** — `example-infinite-workflow-go/main.go`:
+
+```go
+func heartbeatWorkflow(ctx *resonate.Context, args WorkflowArgs) (WorkflowResult, error) {
+    for i := 0; args.Iterations == 0 || i < args.Iterations; i++ {
+        tickF, err := ctx.Run(heartbeatTick, TickArgs{Tick: i + 1})
+        if err != nil { return WorkflowResult{}, err }
+        if err := tickF.Await(nil); err != nil { return WorkflowResult{}, err }
+
+        sleepF, err := ctx.Sleep(time.Duration(args.IntervalSec) * time.Second)
+        if err != nil { return WorkflowResult{}, err }
+        if err := sleepF.Await(nil); err != nil { return WorkflowResult{}, err }
+    }
+    return WorkflowResult{Ticks: args.Iterations}, nil
+}
+```
+
+The Go SDK also has `ctx.Detached` for the unbounded case; the shipped example uses a plain `for` loop.
+
+<SeeItInAction repo="example-infinite-workflow-go" />
+
+</TabItem>
+
+<TabItem value="python">
+
+<Callout type="caution" title="No Resonate Python infinite-workflow example yet">
+`example-infinite-workflow-py` does not exist. Temporal's source is `samples-python/hello/hello_continue_as_new.py` (`workflow.continue_as_new(iteration + 1)`). The Resonate equivalent is a plain generator loop (`while … : yield ctx.run(...) ; yield ctx.sleep(...)`), with `ctx.detached(self, n + 1)` for the unbounded case — but until an example ships, treat this as a known gap.
+</Callout>
+
+</TabItem>
+
+<TabItem value="rust">
+
+<Callout type="caution" title="No Resonate Rust infinite-workflow example yet">
+`example-infinite-workflow-rs` does not exist yet. Temporal's Rust `continue_as_new` example (`sdk-rust/crates/sdk/examples/continue_as_new`) maps to a plain Resonate `loop`/`while` with `ctx.detached` for the unbounded case — treat the missing Resonate example as a known gap until one ships.
+</Callout>
+
+</TabItem>
+
+</Tabs>
+
+## Distributed mutex
+
+Temporal's `mutex` sample is ~130 lines across two workflows: a lock-manager workflow with a signal queue, `uuid4()` release tokens, `continueAsNew` for history management, and timeout-based deadlock prevention. In Resonate, the generator itself is the lock.
+
+<Callout type="info" title="TypeScript only">
+This pattern currently has a Resonate example in TypeScript only.
+</Callout>
+
+**Temporal** — `samples-typescript/mutex/src/workflows.ts` (excerpt):
+
+```typescript
+export async function lockWorkflow(requests = Array<LockRequest>()): Promise<void> {
+  setHandler(lockRequestSignal, (req) => { requests.push(req); });
+  while (!workflowInfo().continueAsNewSuggested) {
+    await condition(() => requests.length > 0);
+    const req = requests.shift()!;
+    const releaseSignalName = uuid4();
+    await getExternalWorkflowHandle(req.initiatorId).signal(lockAcquiredSignal, { releaseSignalName });
+    let released = false;
+    setHandler(defineSignal(releaseSignalName), () => { released = true; });
+    await condition(() => released, req.timeoutMs);   // auto-release on timeout
+  }
+  if (requests.length > 0) await continueAsNew<typeof lockWorkflow>(requests);
+}
+```
+
+**Resonate** — `example-distributed-mutex-ts/src/workflow.ts`:
+
+```typescript
+function* exclusiveResourceAccess(ctx: Context, resource: string, workers: string[]): Generator<any, MutexResult, any> {
+  const results: WorkResult[] = [];
+  // The generator IS the lock: each yield* blocks until the previous completes,
+  // so no two workers touch the resource at once.
+  for (let i = 0; i < workers.length; i++) {
+    const result = yield* ctx.run(accessResource, resource, workers[i]!);
+    results.push(result);
+  }
+  return { resource, processed: results };
+}
+```
+
+No lock-manager workflow, no dynamic signal names, no `uuid4()` tokens, no `continueAsNew`, no deadlock surface. Sequential `yield* ctx.run()` calls are serialized by the runtime, with crash recovery built in.
+
+<SeeItInAction repo="example-distributed-mutex-ts" />
+
+## Encryption
+
+Temporal encrypts payloads with a `PayloadCodec` (`encode`/`decode` over `Payload[]`), a `DataConverter` wrapping it, and a separate codec server so the Web UI can decrypt. Resonate takes a single `Encryptor` as one constructor option; workflow code is untouched.
+
+<Callout type="info" title="TypeScript only">
+This pattern currently has a Resonate example in TypeScript only.
+</Callout>
+
+**Temporal** — `samples-typescript/encryption/src/encryption-codec.ts` (excerpt):
+
+```typescript
+export class EncryptionCodec implements PayloadCodec {
+  async encode(payloads: Payload[]): Promise<Payload[]> {
+    return Promise.all(payloads.map(async (payload) => ({
+      metadata: {
+        [METADATA_ENCODING_KEY]: encode(ENCODING),
+        [METADATA_ENCRYPTION_KEY_ID]: encode(this.defaultKeyId),
+      },
+      data: await encrypt(temporal.api.common.v1.Payload.encode(payload).finish(), this.keys.get(this.defaultKeyId)!),
+    })));
+  }
+  async decode(payloads: Payload[]): Promise<Payload[]> { /* …mirror of encode… */ }
+}
+```
+
+**Resonate** — `example-encryption-ts/src/encryptor.ts` + `index.ts`:
+
+```typescript
+export class AesGcmEncryptor implements Encryptor {
+  encrypt(plaintext: Value): Value {
+    if (!plaintext.data) return plaintext;
+    const iv = randomBytes(IV_LENGTH);
+    const cipher = createCipheriv(ALGORITHM, this.rawKey, iv);
+    const packed = Buffer.concat([iv, cipher.update(plaintext.data, "utf8"), cipher.final(), cipher.getAuthTag()]);
+    return { headers: { ...plaintext.headers, "x-encrypted": "true" }, data: packed.toString("base64") };
+  }
+  decrypt(ciphertext: Value): Value { /* …mirror of encrypt… */ }
+}
+
+// wired once at startup — workflow code is unchanged:
+const resonate = new Resonate({ encryptor: new AesGcmEncryptor(ENCRYPTION_KEY, "demo-key-v1") });
+```
+
+Temporal: a `PayloadCodec` over protobuf `Payload[]`, a `DataConverter`, and a codec server (~7 files). Resonate: one `Encryptor` (`encrypt(Value): Value`) passed as a constructor option. The SDK handles promise-store serialization transparently.
+
+<SeeItInAction repo="example-encryption-ts" />
+
+<Callout type="info" title="What doesn't map yet">
+A few coverage gaps to plan around: **saga in Go** has no example yet
+(`example-money-transfer-go` / `example-saga-booking-go`); **long-running loops in
+Python and Rust** have no example yet (`example-infinite-workflow-py` / `-rs`);
+**distributed mutex** and **encryption** are TypeScript-only. The
+[examples library](https://github.com/resonatehq-examples) is the source of truth
+for what exists today.
+</Callout>
 
 ## Distributed execution
 
