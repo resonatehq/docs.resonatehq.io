@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # Cancel superseded PR runs, but never cancel a push to main mid-commit.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build, link-check & llms sync
+    runs-on: ubuntu-latest
+    permissions:
+      # Write is used only by the auto-regen commit on push to main.
+      # Pull-request runs (including forks) get read-only and never push.
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `npm run build` also runs `postbuild` (scripts/check-links.mjs), which
+      # boots `next start` and crawls every page. Internal broken links fail the
+      # build; unreachable external links (e.g. localhost metrics/tracing demos)
+      # are warn-only. It also regenerates public/llms.txt and llms-full.txt.
+      - name: Build, generate llms corpus, and check links
+        run: npm run build
+
+      # Pull requests: the build just regenerated the corpus. If it differs from
+      # what the PR committed, the author forgot to regenerate — fail with a fix.
+      - name: Verify llms corpus is in sync (pull requests)
+        if: github.event_name == 'pull_request'
+        run: |
+          if ! git diff --exit-code public/llms.txt public/llms-full.txt; then
+            echo "::error::public/llms.txt and/or public/llms-full.txt are stale. Run 'npm run build' locally and commit the regenerated llms files."
+            exit 1
+          fi
+          echo "llms corpus is in sync."
+
+      # Push to main: self-heal a merge that forgot to regenerate the corpus by
+      # committing the freshly built files back. [skip ci] prevents a loop.
+      - name: Regenerate llms corpus if drifted (push to main)
+        if: github.event_name == 'push'
+        run: |
+          if git diff --quiet public/llms.txt public/llms-full.txt; then
+            echo "llms corpus already in sync; nothing to commit."
+            exit 0
+          fi
+          git config user.name "resonate-docs-bot"
+          git config user.email "cullywakelin@gmail.com"
+          git add public/llms.txt public/llms-full.txt
+          git commit -m "chore(docs): regenerate llms corpus [skip ci]"
+          if ! git push; then
+            echo "::warning::Could not push regenerated llms corpus to main (branch protection may block Actions pushing to main). The pull-request sync check remains the enforcing gate."
+          fi
+
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Run gitleaks from its pinned image — no license key required, unlike the
+      # gitleaks GitHub Action under an organization. Scans the working tree
+      # (--no-git) against .gitleaks.toml, which allowlists doc placeholders.
+      - name: Run gitleaks
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/repo" \
+            -w /repo \
+            ghcr.io/gitleaks/gitleaks:v8.18.4 \
+            detect --no-git --config /repo/.gitleaks.toml --redact --no-banner --verbose

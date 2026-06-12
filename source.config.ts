@@ -22,6 +22,21 @@ export default defineConfig({
         light: "github-light",
         dark: "github-dark",
       },
+      // Shiki bakes the language into inline styles and drops the
+      // `language-x` class, so the code-block chrome had no way to label an
+      // untitled block and fell back to a meaningless "code". Stamp the
+      // language onto the <pre> as `data-language` so CodeBlock can show it.
+      transformers: [
+        {
+          name: "stamp-language",
+          pre(node) {
+            const lang = this.options.lang;
+            if (lang && lang !== "plaintext") {
+              node.properties["data-language"] = lang;
+            }
+          },
+        },
+      ],
     },
   },
 });

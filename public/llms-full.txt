@@ -20,7 +20,7 @@ Troubleshooting steps are categorized by error code ranges:
 
 ## Server request errors
 
-These are the errors you may encounter when making requests to Resonate Server v0.9.7.
+These are the errors you may encounter when making requests to Resonate Server v0.9.8.
 Request errors signify problems with the request itself — retrying the same request will not resolve the issue.
 
 **Range: HTTP 4XX**
@@ -118,7 +118,7 @@ Raised when a store operation against the Resonate Server (or the in-process loc
 - `100.40399` — state-machine transition error
 - `100.0` — transport-level failure (request timed out, failed to connect, unknown exception)
 
-The current Rust server (v0.9.7) does not emit these structured sub-codes — it returns standard HTTP status codes (see [Server request errors](#server-request-errors) above). When the Python SDK adds Rust-server compatibility, this section will be updated.
+The current Rust server (v0.9.8) does not emit these structured sub-codes — it returns standard HTTP status codes (see [Server request errors](#server-request-errors) above). When the Python SDK adds Rust-server compatibility, this section will be updated.
 
 ### `ResonateCanceledError` (code `200`)
 
@@ -319,7 +319,7 @@ pg_isready -h localhost -p 5432
 type = "postgres"
 
 [storage.postgres]
-url = "postgres://:@localhost:5432/resonate"
+url = "postgres://<USER>:<PASSWORD>@localhost:5432/resonate"
 ```
 
 Or set `RESONATE_STORAGE__POSTGRES__URL` in the environment. Check the host, port, database, user, and password all match what your Postgres instance expects.
@@ -351,7 +351,7 @@ Another process is using port 8001 (HTTP).
 lsof -i :8001
 
 # Kill the process if needed
-kill -9 
+kill -9 <PID>
 ```
 
 2. **Use a different port:**
@@ -655,7 +655,7 @@ time curl -s http://resonate-server:8001/health
 2. **Tune connection pool:**
 ```toml title="resonate.toml"
 [storage.postgres]
-url = "postgres://:@localhost:5432/resonate"
+url = "postgres://<USER>:<PASSWORD>@localhost:5432/resonate"
 pool_size = 50  # Increase pool size (default: 10)
 ```
 
@@ -773,7 +773,7 @@ Use PostgreSQL for any deployment with concurrent writers:
 type = "postgres"
 
 [storage.postgres]
-url = "postgres://:@localhost:5432/resonate"
+url = "postgres://<USER>:<PASSWORD>@localhost:5432/resonate"
 ```
 
 SQLite is best for development and single-tenant deployments where there is no concurrent write contention against the server.
@@ -861,14 +861,14 @@ For shared, multi-tenant deployments, PostgreSQL provides better concurrency and
 ```bash title="Start server with PostgreSQL"
 resonate serve \
   --storage-type postgres \
-  --storage-postgres-url "postgres://:@localhost:5432/resonate" \
+  --storage-postgres-url "postgres://<USER>:<PASSWORD>@localhost:5432/resonate" \
   --storage-postgres-pool-size 20
 ```
 
 For SSL connections, include `sslmode` in the connection string:
 
 ```bash
---storage-postgres-url "postgres://:@postgres.example.com:5432/resonate?sslmode=require"
+--storage-postgres-url "postgres://<USER>:<PASSWORD>@postgres.example.com:5432/resonate?sslmode=require"
 ```
 
 ## PostgreSQL high availability
@@ -1097,14 +1097,14 @@ services:
       retries: 5
 
   resonate-server:
-    image: resonatehqio/resonate:v0.9.7
+    image: resonatehqio/resonate:v0.9.8
     ports:
       - "8001:8001"
       - "9090:9090"
     environment:
       RESONATE_SERVER__BIND: "0.0.0.0"
       RESONATE_STORAGE__TYPE: postgres
-      RESONATE_STORAGE__POSTGRES__URL: postgres://:@postgres:5432/resonate
+      RESONATE_STORAGE__POSTGRES__URL: postgres://<USER>:<PASSWORD>@postgres:5432/resonate
     depends_on:
       postgres:
         condition: service_healthy
@@ -1167,7 +1167,7 @@ spec:
     spec:
       containers:
         - name: server
-          image: resonatehqio/resonate:v0.9.7
+          image: resonatehqio/resonate:v0.9.8
           ports:
             - containerPort: 8001
               name: http
@@ -1309,6 +1309,8 @@ Cloud Run workers stay alive polling for tasks and scale automatically based on 
 Lambda workers can run as functions that poll for tasks or respond to events:
 
 ```typescript title="lambda-worker.ts"
+import { Resonate } from "@resonatehq/sdk";
+
 const resonate = new Resonate({
   url: process.env.RESONATE_URL!,
   group: "lambda-workers",
@@ -1324,6 +1326,9 @@ export async function handler(event: any) {
 **Deployment (using AWS CDK):**
 
 ```typescript title="worker-stack.ts"
+import * as cdk from "aws-cdk-lib";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+
 export class ResonateWorkerStack extends cdk.Stack {
   constructor(scope: cdk.App, id: string) {
     super(scope, id);
@@ -1670,7 +1675,7 @@ services:
       replicas: 5
 ```
 
-**Why:** Simple, cheap, easy to manage. Perfect for small teams.
+**Why:** Simple, low-cost, easy to manage. Perfect for small teams.
 
 ### Medium production (10-100 workers)
 
@@ -1782,6 +1787,9 @@ Resonate does not ship a native Kafka transport in the current server. The suppo
 Use a regular Kafka consumer (`kafkajs`, `confluent-kafka-python`, `rdkafka`, etc.) and call `beginRun` on each message. A stable per-message identifier becomes the Resonate promise ID, so the dispatch is idempotent — duplicate deliveries reconnect to the in-flight execution rather than starting over.
 
 ```ts title="src/consumer.ts"
+import { Kafka } from "kafkajs";
+import { resonate } from "./workflow";
+
 const kafka = new Kafka({ brokers: ["localhost:9092"] });
 const consumer = kafka.consumer({ groupId: "workers" });
 
@@ -1934,6 +1942,8 @@ The Resonate SDKs also emit logs for observing application behavior.
 The TypeScript SDK uses console logging by default:
 
 ```typescript
+import { Resonate } from "@resonatehq/sdk";
+
 const resonate = new Resonate({
   url: "http://localhost:8001",
   logLevel: "debug",  // debug | info | warn | error
@@ -1987,7 +1997,7 @@ In production, collect logs from all servers and workers into a centralized syst
 ```yaml
 services:
   resonate-server:
-    image: resonatehqio/resonate:v0.9.7
+    image: resonatehqio/resonate:v0.9.8
     logging:
       driver: "json-file"
       options:
@@ -2010,7 +2020,7 @@ metadata:
 spec:
   containers:
   - name: server
-    image: resonatehqio/resonate:v0.9.7
+    image: resonatehqio/resonate:v0.9.8
 ```
 
 Or use Fluent Bit / Fluentd as a DaemonSet to forward logs to your aggregation system.
@@ -2202,7 +2212,7 @@ url: /deploy/message-transports
 title: Message transports
 ---
 
-The Resonate Server delivers task messages to workers over a configurable set of transports. As of v0.9.7, four transports ship in the server binary:
+The Resonate Server delivers task messages to workers over a configurable set of transports. As of v0.9.8, four transports ship in the server binary:
 
 | Transport | Address scheme | Enable flag | Default |
 |---|---|---|---|
@@ -2458,7 +2468,7 @@ Open http://localhost:9091 to query metrics and build dashboards.
 version: '3.8'
 services:
   resonate-server:
-    image: resonatehqio/resonate:v0.9.7
+    image: resonatehqio/resonate:v0.9.8
     ports:
       - "8001:8001"
       - "9090:9090"  # Metrics endpoint
@@ -2905,10 +2915,10 @@ Both default ports can be changed.
 ## Run with Docker
 
 The Resonate Server is published as an official image on Docker Hub at [`resonatehqio/resonate`](https://hub.docker.com/r/resonatehqio/resonate).
-Tags track the server release versions (e.g. `v0.9.7`) plus a rolling `latest`.
+Tags track the server release versions (e.g. `v0.9.8`) plus a rolling `latest`.
 
 ```shell title="Run the Resonate Server in Docker"
-docker run --rm -p 8001:8001 -p 9090:9090 resonatehqio/resonate:v0.9.7
+docker run --rm -p 8001:8001 -p 9090:9090 resonatehqio/resonate:v0.9.8
 ```
 
 `resonate serve` is the default command. Override only when you need to change behavior:
@@ -2916,8 +2926,8 @@ docker run --rm -p 8001:8001 -p 9090:9090 resonatehqio/resonate:v0.9.7
 ```shell title="Use Postgres storage"
 docker run --rm -p 8001:8001 -p 9090:9090 \
   -e RESONATE_STORAGE__TYPE=postgres \
-  -e RESONATE_STORAGE__POSTGRES__URL="postgres://:@host:5432/resonate" \
-  resonatehqio/resonate:v0.9.7
+  -e RESONATE_STORAGE__POSTGRES__URL="postgres://<USER>:<PASSWORD>@host:5432/resonate" \
+  resonatehqio/resonate:v0.9.8
 ```
 
 The image exposes both `8001` (HTTP API) and `9090` (Prometheus metrics).
@@ -2960,7 +2970,7 @@ For Postgres, swap the `[storage]` section:
 type = "postgres"
 
 [storage.postgres]
-url = "postgres://:@host:5432/resonate"
+url = "postgres://<USER>:<PASSWORD>@host:5432/resonate"
 pool_size = 20
 ```
 
@@ -2971,7 +2981,7 @@ For MySQL, the equivalent block is:
 type = "mysql"
 
 [storage.mysql]
-url = "mysql://:@host:3306/resonate"
+url = "mysql://<USER>:<PASSWORD>@host:3306/resonate"
 pool_size = 20
 ```
 
@@ -2984,13 +2994,13 @@ publickey = "/etc/resonate/auth/public.pem"
 
 ### Environment variables
 
-Every config field is also reachable as an environment variable. The convention is `RESONATE___`, with `__` separating nested keys:
+Every config field is also reachable as an environment variable. The convention is `RESONATE_<SECTION>__<FIELD>`, with `__` separating nested keys:
 
 ```shell
 RESONATE_LEVEL=info
 RESONATE_SERVER__PORT=8001
 RESONATE_STORAGE__TYPE=postgres
-RESONATE_STORAGE__POSTGRES__URL=postgres://:@host:5432/resonate
+RESONATE_STORAGE__POSTGRES__URL=postgres://<USER>:<PASSWORD>@host:5432/resonate
 RESONATE_AUTH__PUBLICKEY=/etc/resonate/auth/public.pem
 ```
 
@@ -3005,7 +3015,7 @@ Most settings can also be passed as CLI flags — useful for ad-hoc overrides:
 ```shell
 resonate serve \
   --storage-type postgres \
-  --storage-postgres-url "postgres://:@localhost:5432/resonate" \
+  --storage-postgres-url "postgres://<USER>:<PASSWORD>@localhost:5432/resonate" \
   --storage-postgres-pool-size 20
 ```
 
@@ -3068,7 +3078,7 @@ With a `resonate.toml` (recommended):
 type = "postgres"
 
 [storage.postgres]
-url = "postgres://:@localhost:5432/resonate"
+url = "postgres://<USER>:<PASSWORD>@localhost:5432/resonate"
 pool_size = 20
 ```
 
@@ -3077,7 +3087,7 @@ Or with CLI flags:
 ```shell
 resonate serve \
   --storage-type postgres \
-  --storage-postgres-url "postgres://:@localhost:5432/resonate" \
+  --storage-postgres-url "postgres://<USER>:<PASSWORD>@localhost:5432/resonate" \
   --storage-postgres-pool-size 20
 ```
 
@@ -3096,7 +3106,7 @@ With a `resonate.toml` (recommended):
 type = "mysql"
 
 [storage.mysql]
-url = "mysql://:@localhost:3306/resonate"
+url = "mysql://<USER>:<PASSWORD>@localhost:3306/resonate"
 pool_size = 20
 ```
 
@@ -3105,7 +3115,7 @@ Or with CLI flags:
 ```shell
 resonate serve \
   --storage-type mysql \
-  --storage-mysql-url "mysql://:@localhost:3306/resonate" \
+  --storage-mysql-url "mysql://<USER>:<PASSWORD>@localhost:3306/resonate" \
   --storage-mysql-pool-size 20
 ```
 
@@ -3113,7 +3123,7 @@ Or with environment variables:
 
 ```shell
 RESONATE_STORAGE__TYPE=mysql
-RESONATE_STORAGE__MYSQL__URL=mysql://:@localhost:3306/resonate
+RESONATE_STORAGE__MYSQL__URL=mysql://<USER>:<PASSWORD>@localhost:3306/resonate
 RESONATE_STORAGE__MYSQL__POOL_SIZE=20
 ```
 
@@ -3124,7 +3134,7 @@ A minimal Docker Compose stack that boots the server against a MySQL service:
 ```yaml title="docker-compose.yml — MySQL"
 services:
   resonate-server:
-    image: resonatehqio/resonate:v0.9.7
+    image: resonatehqio/resonate:v0.9.8
     ports:
       - "8001:8001"
       - "9090:9090"
@@ -3164,7 +3174,7 @@ Cloud Run can pull the official image directly:
 
 ```shell
 gcloud run deploy resonate-server \
-  --image=resonatehqio/resonate:v0.9.7 \
+  --image=resonatehqio/resonate:v0.9.8 \
   --region=<your-region> \
   --port=8001 \
   --allow-unauthenticated \
@@ -3210,7 +3220,7 @@ spec:
     spec:
       containers:
         - name: resonate
-          image: resonatehqio/resonate:v0.9.7
+          image: resonatehqio/resonate:v0.9.8
           env:
             - name: RESONATE_SERVER__BIND
               value: "0.0.0.0"
@@ -3325,6 +3335,8 @@ Workers register with the Resonate server using a **group name**. All workers in
 ### Worker registration
 
 ```typescript title="TypeScript worker registration"
+import { Resonate } from "@resonatehq/sdk";
+
 const resonate = new Resonate({
   url: "http://resonate-server:8001",
   group: "workers", // All workers in this group can handle the same tasks
@@ -3600,7 +3612,7 @@ gcloud run deploy resonate-worker \
 ```
 
 
-Containerized workers are easier to debug and cheaper at low scale. Move to serverless when you need auto-scaling or have highly variable load.
+Containerized workers are easier to debug and lower-cost at low scale. Move to serverless when you need auto-scaling or have highly variable load.
 
 
 ## Server scaling limitations
@@ -3716,6 +3728,8 @@ When auth is enabled, all API requests must include a valid JWT token in the `Au
 ### TypeScript SDK
 
 ```typescript title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
+
 const resonate = new Resonate({
   url: "http://localhost:8001",
   token: process.env.RESONATE_TOKEN,
@@ -3727,6 +3741,8 @@ The SDK sends the token as a `Bearer` token in the `Authorization` header automa
 #### Example: Secure production setup
 
 ```typescript title="resonate-client.ts"
+import { Resonate } from "@resonatehq/sdk";
+
 const token = process.env.RESONATE_TOKEN;
 
 if (!token) {
@@ -3753,7 +3769,7 @@ let resonate = Resonate::new(ResonateConfig {
 });
 ```
 
-`ResonateConfig::token` is `Option`, so `std::env::var("RESONATE_TOKEN").ok()` is the idiomatic way to populate it from the environment. `Resonate::new` returns `Resonate` directly (not a `Result`).
+`ResonateConfig::token` is `Option<String>`, so `std::env::var("RESONATE_TOKEN").ok()` is the idiomatic way to populate it from the environment. `Resonate::new` returns `Resonate` directly (not a `Result`).
 
 ## CORS (Cross-Origin Resource Sharing)
 
@@ -4010,6 +4026,9 @@ npm install @resonatehq/aws
 Instead of importing Resonate from the SDK package, import it from the AWS shim package.
 
 ```ts title="index.ts"
+import { Resonate } from "@resonatehq/aws";
+import { countdown } from "./count";
+
 const resonate = new Resonate();
 
 resonate.register("countdown", countdown);
@@ -4030,6 +4049,9 @@ npm install @resonatehq/cloudflare
 Instead of importing Resonate from the SDK package, import it from the Cloudflare shim package.
 
 ```ts title="index.ts"
+import { Resonate } from "@resonatehq/cloudflare";
+import { countdown } from "./count";
+
 const resonate = new Resonate();
 
 resonate.register("countdown", countdown);
@@ -4055,6 +4077,9 @@ npm install @resonatehq/gcp
 Instead of importing Resonate from the SDK package, import it from the GCP shim package.
 
 ```ts title="index.ts"
+import { Resonate } from "@resonatehq/gcp";
+import { countdown } from "./count";
+
 const resonate = new Resonate();
 
 resonate.register("countdown", countdown);
@@ -4080,6 +4105,9 @@ npm install @resonatehq/supabase
 Instead of importing Resonate from the SDK package, import it from the Supabase shim package.
 
 ```ts title="index.ts"
+import { Resonate } from "@resonatehq/supabase";
+import { countdown } from "./count";
+
 const resonate = new Resonate();
 resonate.register("countdown", countdown);
 
@@ -4127,6 +4155,8 @@ The split must happen *inside* the per-iteration function. A parent loop that ca
 The shim `Resonate` constructor accepts a `ttl` option (milliseconds):
 
 ```typescript
+import { Resonate } from "@resonatehq/gcp";
+
 const resonate = new Resonate({ ttl: 10 * 60 * 1000 }); // 10 min
 ```
 
@@ -4178,6 +4208,9 @@ npm install @resonatehq/opentelemetry
 ### Configure OpenTelemetry
 
 ```typescript
+import { ResonateOpenTelemetry } from "@resonatehq/opentelemetry";
+import { Resonate } from "@resonatehq/sdk";
+
 // Initialize OpenTelemetry
 const otel = new ResonateOpenTelemetry({
   serviceName: "my-resonate-app",
@@ -4246,6 +4279,8 @@ services:
 Commercial solution with powerful features:
 
 ```typescript
+import { ResonateOpenTelemetry } from "@resonatehq/opentelemetry";
+
 const otel = new ResonateOpenTelemetry({
   serviceName: "my-resonate-app",
   exporterEndpoint: "http://localhost:8126/v0.4/traces",  // Datadog Agent
@@ -4259,6 +4294,8 @@ Traces appear in Datadog APM UI automatically.
 Cloud-native observability platform:
 
 ```typescript
+import { ResonateOpenTelemetry } from "@resonatehq/opentelemetry";
+
 const otel = new ResonateOpenTelemetry({
   serviceName: "my-resonate-app",
   exporterEndpoint: "https://api.honeycomb.io/v1/traces",
@@ -4273,6 +4310,9 @@ const otel = new ResonateOpenTelemetry({
 AWS-native tracing:
 
 ```typescript
+import { AWSXRayPropagator } from "@opentelemetry/propagator-aws-xray";
+import { AWSXRayIdGenerator } from "@opentelemetry/id-generator-aws-xray";
+
 const otel = new ResonateOpenTelemetry({
   serviceName: "my-resonate-app",
   exporterEndpoint: "http://localhost:2000",  // X-Ray daemon
@@ -4414,6 +4454,8 @@ Understand the complete execution path.
 High-volume systems generate too many traces. Use sampling to reduce overhead:
 
 ```typescript
+import { ParentBasedSampler, TraceIdRatioBasedSampler } from "@opentelemetry/sdk-trace-base";
+
 const otel = new ResonateOpenTelemetry({
   serviceName: "my-resonate-app",
   sampler: new ParentBasedSampler({
@@ -4434,6 +4476,8 @@ Most backends support tail-based sampling (sample after seeing full trace).
 **Trace ID in logs:**
 
 ```typescript
+import { trace } from "@opentelemetry/api";
+
 const span = trace.getActiveSpan();
 const traceId = span?.spanContext().traceId;
 
@@ -6534,27 +6578,27 @@ The SDK detects the function kind from the first parameter:
 | `&Info` | **Leaf with metadata** | Read-only access to execution metadata (ID, parent, tags) |
 | *(anything else)* | **Pure leaf** | Stateless computation — no special environment |
 
-All durable functions must return `Result` (where `Result` is `resonate::error::Result`).
+All durable functions must return `Result<T>` (where `Result` is `resonate::error::Result`).
 
 ```rust
 use resonate::prelude::*;
 
 // Workflow — orchestrates sub-tasks
 #[resonate::function]
-async fn my_workflow(ctx: &Context, input: String) -> Result {
+async fn my_workflow(ctx: &Context, input: String) -> Result<String> {
     let result = ctx.run(my_leaf, input).await?;
     Ok(result)
 }
 
 // Pure leaf — stateless computation
 #[resonate::function]
-async fn my_leaf(input: String) -> Result {
+async fn my_leaf(input: String) -> Result<String> {
     Ok(format!("Processed: {input}"))
 }
 
 // Leaf with metadata — access to execution info
 #[resonate::function]
-async fn my_info_leaf(info: &Info, input: String) -> Result {
+async fn my_info_leaf(info: &Info, input: String) -> Result<String> {
     Ok(format!("ID: {}, Input: {input}", info.id()))
 }
 ```
@@ -6639,7 +6683,7 @@ schedule.delete().await?;
 Get a handle to an existing execution by its promise ID.
 
 ```rust
-let mut handle = resonate.get::("invocation-id").await?;
+let mut handle = resonate.get::<String>("invocation-id").await?;
 let result = handle.result().await?;
 ```
 
@@ -6648,23 +6692,26 @@ let result = handle.result().await?;
 The `.promises` sub-client lets you work directly with durable promises — useful for human-in-the-loop workflows, external coordination, and any pattern where you need to create a promise now and settle it later from a different process.
 
 ```rust
+use resonate::types::Value;
 use serde_json::json;
+use std::collections::HashMap;
 
 // Create a promise with a timeout, initial parameter, and tags
 // timeout_at is i64 milliseconds since the Unix epoch
-resonate.promises.create("promise-id", timeout_at, json!({}), json!({})).await?;
+// param is a Value; tags are a HashMap<String, String>
+resonate.promises.create("promise-id", timeout_at, Value::from_serializable(json!({}))?, HashMap::new()).await?;
 
 // Get a promise by ID
 let promise = resonate.promises.get("promise-id").await?;
 
 // Resolve a promise (value is serialized into the promise record)
-resonate.promises.resolve("promise-id", json!("approved")).await?;
+resonate.promises.resolve("promise-id", Value::from_serializable(json!("approved"))?).await?;
 
 // Reject a promise
-resonate.promises.reject("promise-id", json!("denied")).await?;
+resonate.promises.reject("promise-id", Value::from_serializable(json!("denied"))?).await?;
 
 // Cancel a promise (settles as "rejected_canceled")
-resonate.promises.cancel("promise-id", json!(null)).await?;
+resonate.promises.cancel("promise-id", Value::from_serializable(json!(null))?).await?;
 ```
 
 ### `.stop()`
@@ -6719,7 +6766,7 @@ By default, `.await` executes sequentially — the calling function blocks until
 
 ```rust
 #[resonate::function]
-async fn my_workflow(ctx: &Context) -> Result {
+async fn my_workflow(ctx: &Context) -> Result<String> {
     let result = ctx.run(my_leaf, "input".into()).await?;
     Ok(result)
 }
@@ -6747,8 +6794,8 @@ The calling function blocks until the remote function returns.
 
 ```rust
 #[resonate::function]
-async fn my_workflow(ctx: &Context) -> Result {
-    let result = ctx.rpc::("remote-func", "input".into()).await?;
+async fn my_workflow(ctx: &Context) -> Result<String> {
+    let result = ctx.rpc::<String>("remote-func", "input".into()).await?;
     Ok(result)
 }
 ```
@@ -6758,8 +6805,8 @@ Use `.spawn()` for parallel remote invocations:
 ```rust
 #[resonate::function]
 async fn my_workflow(ctx: &Context) -> Result<()> {
-    let f1 = ctx.rpc::("worker-a", "data".into()).spawn().await?;
-    let f2 = ctx.rpc::("worker-b", "data".into()).spawn().await?;
+    let f1 = ctx.rpc::<String>("worker-a", "data".into()).spawn().await?;
+    let f2 = ctx.rpc::<String>("worker-b", "data".into()).spawn().await?;
 
     f1.await?;
     f2.await?;
@@ -6794,7 +6841,7 @@ All Context execution methods support builder options before `.await` or `.spawn
 use std::time::Duration;
 
 #[resonate::function]
-async fn my_workflow(ctx: &Context) -> Result {
+async fn my_workflow(ctx: &Context) -> Result<String> {
     let result = ctx.run(my_leaf, "input".into())
         .timeout(Duration::from_secs(30))
         .await?;
@@ -6807,7 +6854,7 @@ async fn my_workflow(ctx: &Context) -> Result {
 | `.timeout(Duration)` | Execution timeout |
 | `.target(&str)` | Target worker group — only valid on `ctx.rpc()` builders |
 
-)`. These are not available on Context builders.">
+
 
 
 
@@ -6909,6 +6956,8 @@ Once installed, you can import the Resonate SDK into your TypeScript files, and 
 Initializing a Resonate Client gives you the APIs needed to register, activate, and await on functions.
 
 ```ts title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
+
 const resonate = new Resonate();
 ```
 
@@ -6921,6 +6970,8 @@ Upon initialization, the Resonate Client will look for [environment variables](#
 For example, to specify a Resonate Server and process group, pass the url and group in the options.
 
 ```ts title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
+
 const resonate = new Resonate({
   // ...
   url: "https://localhost:8001", // Resonate Server URL
@@ -6941,6 +6992,8 @@ This is ideal for getting started quickly or for integrating Resonate into an ex
 Resonate will automatically operate in "local development mode" when no URL is provided via constructor options or [environment variables](#environment-variables).
 
 ```ts title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
+
 const resonate = new Resonate();
 ```
 
@@ -6957,6 +7010,8 @@ The TypeScript SDK supports both **token-based** and **basic** authentication wh
 Use JWT bearer tokens for production deployments:
 
 ```ts title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
+
 const resonate = new Resonate({
   url: "https://localhost:8001",
   token: process.env.RESONATE_TOKEN, // Load from environment
@@ -6993,6 +7048,9 @@ See [Message transports](/deploy/message-transports) for the transports the curr
 There is no native Kafka transport in the current server. The supported pattern is a normal Kafka consumer that dispatches a Resonate workflow per message — a stable per-message identifier becomes the durable promise ID, so duplicate deliveries reconnect to the in-flight execution rather than starting over.
 
 ```ts title="src/consumer.ts"
+import { Kafka } from "kafkajs";
+import { resonate } from "./workflow";
+
 const kafka = new Kafka({ brokers: ["localhost:9092"] });
 const consumer = kafka.consumer({ groupId: "workers" });
 
@@ -7052,6 +7110,8 @@ This is convenient for unit tests or quick experiments that do not require a Res
   ```
 
   ```ts
+  import { Resonate } from "@resonatehq/sdk";
+
   const resonate = new Resonate(); // picks up RESONATE_URL automatically
   ```
 
@@ -7362,6 +7422,8 @@ await resonate.stop();
 **When to call it.** Call `.stop()` from any process that should exit after its work finishes — demo scripts, one-shot jobs, examples, CI tasks. Without it, the client keeps the Node.js event loop alive via the long-poll connection and the subscription refresh interval, and the process hangs after `main()` returns.
 
 ```ts title="src/index.ts"
+import { Resonate } from "@resonatehq/sdk";
+
 async function main() {
   const resonate = new Resonate();
   resonate.register("greet", (ctx, name) => `Hello, ${name}!`);
@@ -7612,6 +7674,8 @@ The options object is useful when you want to build the wake-up time conditional
 **Sleep for a fixed duration.**
 
 ```ts
+import { Context, Resonate } from "@resonatehq/sdk";
+
 const resonate = new Resonate();
 
 resonate.register("send-reminder", function* (ctx: Context, userId: string) {
@@ -7625,6 +7689,8 @@ resonate.register("send-reminder", function* (ctx: Context, userId: string) {
 **Sleep until a calendar time.**
 
 ```ts
+import { Context, Resonate } from "@resonatehq/sdk";
+
 const resonate = new Resonate();
 
 resonate.register("schedule-digest", function* (ctx: Context, userId: string) {
@@ -8083,7 +8149,7 @@ This page reflects `@resonatehq/sdk` v0.10.2 (TypeScript, current on npm), `reso
 
 
 
-DBOS blocks below are excerpted from the official `dbos-inc/dbos-demo-apps` repo and the DBOS SDK repos (`dbos-transact-{py,ts,golang}`) — trimmed for focus, elisions marked, never rewritten. They reflect `dbos` v2.23.0 (Python), `@dbos-inc/dbos-sdk` v4.19.8 (TypeScript), and `dbos-transact-golang` v0.16.0 (Go). Resonate blocks come from the [examples library](https://github.com/resonatehq-examples), pinned to the latest released SDKs. DBOS ships SDKs for TypeScript, Python, Go, and Java; it has no Rust SDK, so the Rust tabs below show Resonate only. Some patterns don't have a Resonate example in every language yet; those gaps are noted inline.
+DBOS blocks below are excerpted from the official `dbos-inc/dbos-demo-apps` repo and the DBOS SDK repos (`dbos-transact-{py,ts,golang}`) — trimmed for focus, elisions marked, never rewritten. They reflect `dbos` v2.23.0 (Python), `@dbos-inc/dbos-sdk` v4.19.8 (TypeScript), and `dbos-transact-golang` v0.17.0 (Go). Resonate blocks come from the [examples library](https://github.com/resonatehq-examples), pinned to the latest released SDKs (the Rust examples track the SDK's `main` branch). DBOS ships SDKs for TypeScript, Python, Go, and Java; it has no Rust SDK, so the Rust tabs below show Resonate only. Some patterns don't have a Resonate example in every language yet; those gaps are noted inline.
 
 
 **Are you coming from DBOS?**
@@ -8113,9 +8179,7 @@ Here is the most basic migration — a workflow that runs a few steps, and the e
 
 
 
-**DBOS** — `dbos-demo-apps/python/dbos-app-starter/app/main.py`:
-
-```python
+```python title="DBOS — dbos-demo-apps/python/dbos-app-starter/app/main.py"
 @DBOS.step()
 def step_one():
     time.sleep(5)
@@ -8127,9 +8191,7 @@ def workflow():
     # ... step_two(), step_three() ...
 ```
 
-**Resonate** — `example-hello-world-py/main.py`:
-
-```python
+```python title="Resonate — example-hello-world-py/main.py"
 def bar(_: Context, greetee: str) -> str:
     return f"Hello {greetee} from bar!"
 
@@ -8151,9 +8213,7 @@ See it in action: [example-hello-world-py](https://github.com/resonatehq-example
 
 
 
-**DBOS** — `dbos-demo-apps/typescript/dbos-node-starter/src/main.ts`:
-
-```typescript
+```typescript title="DBOS — dbos-demo-apps/typescript/dbos-node-starter/src/main.ts"
 async function stepOne() {
   await sleep(5000);
   console.log("Completed step 1!");
@@ -8167,9 +8227,7 @@ async function exampleWorkflow() {
 const registeredWorkflow = DBOS.registerWorkflow(exampleWorkflow);
 ```
 
-**Resonate** — `example-hello-world-ts/index.ts`:
-
-```typescript
+```typescript title="Resonate — example-hello-world-ts/index.ts"
 async function bar(_: Context, greetee: string): Promise<string> {
   return `Hello ${greetee} from bar!`;
 }
@@ -8199,17 +8257,15 @@ See it in action: [example-hello-world-ts](https://github.com/resonatehq-example
 DBOS ships SDKs for TypeScript, Python, Go, and Java. There is no DBOS Rust SDK, so there is no DBOS code to place beside Resonate here. The Resonate Rust equivalent:
 
 
-**Resonate** — `example-hello-world-rs/src/main.rs`:
-
-```rust
+```rust title="Resonate — example-hello-world-rs/src/main.rs"
 #[resonate::function]
-async fn greet(ctx: &Context, name: String) -> Result {
+async fn greet(ctx: &Context, name: String) -> Result<String> {
     let greeting = ctx.run(format_greeting, name).await?;
     Ok(greeting)
 }
 
 #[resonate::function]
-async fn format_greeting(name: String) -> Result {
+async fn format_greeting(name: String) -> Result<String> {
     Ok(format!("Hello, {name}!"))
 }
 ```
@@ -8220,9 +8276,7 @@ See it in action: [example-hello-world-rs](https://github.com/resonatehq-example
 
 
 
-**DBOS** — `dbos-demo-apps/golang/dbos-go-starter/main.go`:
-
-```go
+```go title="DBOS — dbos-demo-apps/golang/dbos-go-starter/main.go"
 func ExampleWorkflow(ctx dbos.DBOSContext, _ string) (string, error) {
     _, err := dbos.RunAsStep(ctx, func(stepCtx context.Context) (string, error) {
         return stepOne(stepCtx)
@@ -8243,9 +8297,7 @@ func stepOne(ctx context.Context) (string, error) {
 
 In `main()`, register it with `dbos.RegisterWorkflow(dbosCtx, ExampleWorkflow)`.
 
-**Resonate** — `example-hello-world-go/main.go`:
-
-```go
+```go title="Resonate — example-hello-world-go/main.go"
 func greet(_ *resonate.Context, args GreetArgs) (string, error) {
     return fmt.Sprintf("hello, %s!", args.Name), nil
 }
@@ -8348,7 +8400,11 @@ async fn factorial(ctx: &Context, n: u64) -> Result<u64> {
 
 #[tokio::main]
 async fn main() {
-    let resonate = Resonate::local();
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        group: Some("factorial-workers".into()),
+        ..Default::default()
+    });
     resonate.register(factorial).unwrap();
 
     let result: u64 = resonate.run("factorial-5", factorial, 5).await.unwrap();
@@ -8373,7 +8429,7 @@ func factorial(ctx *resonate.Context, args Args) (int, error) {
 	if args.N <= 1 {
 		return 1, nil
 	}
-	f, err := ctx.RPC("factorial", Args{N: args.N - 1})
+	f, err := ctx.RPC("Factorial", Args{N: args.N - 1})
 	if err != nil {
 		return 0, err
 	}
@@ -8388,7 +8444,7 @@ func main() {
 	r, _ := resonate.New(resonate.Config{URL: "http://localhost:8001"})
 	defer func() { _ = r.Stop() }()
 
-	factorialFn, _ := resonate.Register(r, "factorial", factorial)
+	factorialFn, _ := resonate.Register(r, "Factorial", factorial)
 
 	h, _ := factorialFn.Run(context.Background(), "factorial-5", Args{N: 5})
 	result, _ := h.Result(context.Background())
@@ -8451,6 +8507,8 @@ await DBOS.launch(/* { conductorKey } */);
 **Resonate** — no database, no server:
 
 ```typescript
+import { Resonate } from "@resonatehq/sdk";
+
 const resonate = new Resonate();
 
 // ...
@@ -8537,9 +8595,7 @@ def process_tasks(tasks):
     return [handle.get_result() for handle in task_handles]
 ```
 
-**Resonate** — `example-fan-out-fan-in-py/workflow.py`:
-
-```python
+```python title="Resonate — example-fan-out-fan-in-py/workflow.py"
 # fan-out: rfi() returns a handle immediately
 email_p = yield ctx.rfi(send_email, event).options(id=f"{ctx.id}.email")
 sms_p   = yield ctx.rfi(send_sms, event).options(id=f"{ctx.id}.sms")
@@ -8569,9 +8625,7 @@ async function queueFunction() {
 }
 ```
 
-**Resonate** — `example-fan-out-fan-in-ts/src/workflow.ts`:
-
-```typescript
+```typescript title="Resonate — example-fan-out-fan-in-ts/src/workflow.ts"
 // fan-out: beginRun returns a future immediately
 const emailFuture = yield* ctx.beginRun(sendEmail, event);
 const smsFuture   = yield* ctx.beginRun(sendSms, event);
@@ -8589,9 +8643,7 @@ See it in action: [example-fan-out-fan-in-ts](https://github.com/resonatehq-exam
 The Resonate Rust equivalent fans out with `.spawn()`:
 
 
-**Resonate** — `example-fan-out-fan-in-rs/src/main.rs`:
-
-```rust
+```rust title="Resonate — example-fan-out-fan-in-rs/src/main.rs"
 // fan-out: .spawn() returns a handle immediately
 let h1 = ctx.run(process_item, items[0].clone()).spawn().await?;
 let h2 = ctx.run(process_item, items[1].clone()).spawn().await?;
@@ -8631,17 +8683,22 @@ for i, handle := range handles {                         // fan-in
 }
 ```
 
-**Resonate** — `example-fan-out-fan-in-go/main.go`:
-
-```go
+```go title="Resonate — example-fan-out-fan-in-go/main.go"
 futures := make([]*resonate.Future, 0, len(args.Channels))
 for _, ch := range args.Channels {                       // fan-out
-    f, _ := ctx.RPC("send", SendArgs{Channel: ch, Message: args.Message})
+    f, err := ctx.RPC("send", SendArgs{Channel: ch, Message: args.Message})
+    if err != nil {
+        return FanoutResult{}, err
+    }
     futures = append(futures, f)
 }
-for _, f := range futures {                              // fan-in
+for i, f := range futures {                              // fan-in
     var d Delivery
-    _ = f.Await(&d)
+    if err := f.Await(&d); err != nil {
+        out.Delivered = append(out.Delivered, Delivery{Channel: args.Channels[i], OK: false, Reason: err.Error()})
+        continue
+    }
+    out.Delivered = append(out.Delivered, d)
 }
 ```
 
@@ -8663,9 +8720,7 @@ Both systems vary the unit by SDK. DBOS: TypeScript `DBOS.sleep` takes **millise
 
 
 
-**DBOS** — `dbos-demo-apps/python/widget-store/widget_store/main.py`:
-
-```python
+```python title="DBOS — dbos-demo-apps/python/widget-store/widget_store/main.py"
 @DBOS.workflow()
 def dispatch_order_workflow(order_id):
     for _ in range(10):
@@ -8673,9 +8728,7 @@ def dispatch_order_workflow(order_id):
         update_order_progress(order_id)
 ```
 
-**Resonate** — `example-durable-sleep-py/worker.py`:
-
-```python
+```python title="Resonate — example-durable-sleep-py/worker.py"
 @resonate.register
 def sleeping_workflow(ctx: Context, wf_id: str, secs: float):
     print(f"Workflow {wf_id} starting, will sleep for {secs} seconds.")
@@ -8689,9 +8742,7 @@ See it in action: [example-durable-sleep-py](https://github.com/resonatehq-examp
 
 
 
-**DBOS** — `dbos-demo-apps/typescript/widget-store/src/shop.ts`:
-
-```typescript
+```typescript title="DBOS — dbos-demo-apps/typescript/widget-store/src/shop.ts"
 export const dispatchOrder = DBOS.registerWorkflow(
   async (order_id: number) => {
     for (let i = 0; i < 10; i++) {
@@ -8703,9 +8754,7 @@ export const dispatchOrder = DBOS.registerWorkflow(
 );
 ```
 
-**Resonate** — `example-durable-sleep-ts/worker.ts`:
-
-```typescript
+```typescript title="Resonate — example-durable-sleep-ts/worker.ts"
 function* sleepingWorkflow(ctx: Context, ms: number) {
   yield* ctx.run((ctx: Context) => console.log(`Sleeping for ${ms / 1000} seconds...`));
   yield* ctx.sleep(ms);                        // milliseconds
@@ -8723,11 +8772,9 @@ See it in action: [example-durable-sleep-ts](https://github.com/resonatehq-examp
 The Resonate Rust equivalent sleeps on a native `Duration`:
 
 
-**Resonate** — `example-durable-sleep-rs/src/bin/worker.rs`:
-
-```rust
+```rust title="Resonate — example-durable-sleep-rs/src/bin/worker.rs"
 #[resonate::function]
-async fn sleeping_workflow(ctx: &Context, secs: u64) -> Result {
+async fn sleeping_workflow(ctx: &Context, secs: u64) -> Result<String> {
     ctx.sleep(Duration::from_secs(secs)).await?;   // std::time::Duration
     Ok(format!("Slept for {secs} seconds"))
 }
@@ -8739,9 +8786,7 @@ See it in action: [example-durable-sleep-rs](https://github.com/resonatehq-examp
 
 
 
-**DBOS** — `dbos-demo-apps/golang/widget-store/workflows.go`:
-
-```go
+```go title="DBOS — dbos-demo-apps/golang/widget-store/workflows.go"
 func dispatchOrderWorkflow(ctx dbos.DBOSContext, orderID int) (string, error) {
     for range 10 {
         _, err := dbos.Sleep(ctx, time.Second)     // time.Duration
@@ -8754,9 +8799,7 @@ func dispatchOrderWorkflow(ctx dbos.DBOSContext, orderID int) (string, error) {
 }
 ```
 
-**Resonate** — `example-durable-sleep-go/main.go`:
-
-```go
+```go title="Resonate — example-durable-sleep-go/main.go"
 func sleepingWorkflow(ctx *resonate.Context, args SleepArgs) (string, error) {
     d := time.Duration(args.Secs) * time.Second
     f, err := ctx.Sleep(d)                       // time.Duration
@@ -8779,12 +8822,14 @@ See it in action: [example-durable-sleep-go](https://github.com/resonatehq-examp
 For recurring work, DBOS schedules a workflow on a cron expression — either the `@DBOS.scheduled(cron)` decorator (the workflow receives the scheduled and actual fire times) or the database-backed `DBOS.create_schedule(...)` / `apply_schedules(...)` API. Resonate registers a schedule with `resonate.schedule(...)` (TypeScript and Rust) or `resonate.schedules.create(...)` (Python), and the Resonate Server fires the promise on the cron.
 
 
+DBOS uses a **6-field** cron with a leading seconds component — `* * * * * *` means *every second*. Resonate takes a **standard 5-field** cron — `* * * * *` means *every minute*. Drop the leading seconds field when migrating, or a `* * * * * *` copied across fires far more often than you intend.
 
 
 
-**DBOS** — `dbos-transact-py/tests/test_scheduler_decorator.py`:
 
-```python
+
+
+```python title="DBOS — dbos-transact-py/tests/test_scheduler_decorator.py"
 @DBOS.scheduled("* * * * * *")
 @DBOS.workflow()
 def test_workflow(scheduled: datetime, actual: datetime) -> None:
@@ -8799,7 +8844,7 @@ resonate.schedules.create(
     id="my-schedule",
     cron="* * * * *",
     promise_id="my-schedule.{{.timestamp}}",
-    # ...
+    # ... also required: promise_timeout, promise_data (the function-invoke payload), promise_tags
 )
 ```
 
@@ -8809,9 +8854,7 @@ See it in action: [example-schedule-py](https://github.com/resonatehq-examples/e
 
 
 
-**DBOS** — `dbos-transact-ts/tests/scheduler_decorator.test.ts`:
-
-```typescript
+```typescript title="DBOS — dbos-transact-ts/tests/scheduler_decorator.test.ts"
 @DBOS.scheduled({ crontab: '* * * * * *', mode: SchedulerMode.ExactlyOncePerIntervalWhenActive })
 @DBOS.workflow()
 static async scheduledDefault(schedTime: Date, startTime: Date) {
@@ -8819,9 +8862,7 @@ static async scheduledDefault(schedTime: Date, startTime: Date) {
 }
 ```
 
-**Resonate** — `example-schedule-ts/src/schedule.ts`:
-
-```typescript
+```typescript title="Resonate — example-schedule-ts/src/schedule.ts"
 await resonate.schedule("my-schedule", "* * * * *", myFunction /* , ...args */);
 ```
 
@@ -8835,9 +8876,7 @@ See it in action: [example-schedule-ts](https://github.com/resonatehq-examples/e
 The Resonate Rust equivalent registers the schedule with the server:
 
 
-**Resonate** — `example-schedule-rs/src/bin/schedule.rs`:
-
-```rust
+```rust title="Resonate — example-schedule-rs/src/bin/schedule.rs"
 let result = resonate
     .schedule(
         "daily_report",    // schedule ID
@@ -8880,9 +8919,7 @@ With Resonate, you achieve the same effect by creating a Durable Promise that is
 
 
 
-**DBOS** — `dbos-demo-apps/python/widget-store/widget_store/main.py`:
-
-```python
+```python title="DBOS — dbos-demo-apps/python/widget-store/widget_store/main.py"
 @DBOS.workflow()
 def checkout_workflow():
     # ...
@@ -8894,9 +8931,7 @@ def checkout_workflow():
 DBOS.send(payment_id, payment_status, PAYMENT_STATUS)
 ```
 
-**Resonate** — `example-human-in-the-loop-py`:
-
-```python
+```python title="Resonate — example-human-in-the-loop-py"
 # worker.py
 @resonate.register()
 def foo(ctx, workflow_id):
@@ -8919,9 +8954,7 @@ resonate.promises.resolve(id=promise_id, ikey=promise_id)
 
 
 
-**DBOS** — `dbos-demo-apps/typescript/widget-store/src/main.ts`:
-
-```typescript
+```typescript title="DBOS — dbos-demo-apps/typescript/widget-store/src/main.ts"
 export const checkoutWorkflow = DBOS.registerWorkflow(
   async () => {
     // ...
@@ -8936,9 +8969,7 @@ export const checkoutWorkflow = DBOS.registerWorkflow(
 await DBOS.send(key, status, PAYMENT_TOPIC);
 ```
 
-**Resonate** — `example-human-in-the-loop-ts`:
-
-```typescript
+```typescript title="Resonate — example-human-in-the-loop-ts"
 function* fooWorkflow(ctx: Context, workflowId: string) {
   const blockingPromise = yield* ctx.promise({});
   yield* ctx.run(sendEmail, blockingPromise.id);
@@ -8996,9 +9027,7 @@ resonate
 
 
 
-**DBOS** — `dbos-demo-apps/golang/widget-store/workflows.go`:
-
-```go
+```go title="DBOS — dbos-demo-apps/golang/widget-store/workflows.go"
 func checkoutWorkflow(ctx dbos.DBOSContext, _ string) (string, error) {
     // ...
     err = dbos.SetEvent(ctx, PAYMENT_ID, workflowID)                       // publish status
@@ -9007,9 +9036,7 @@ func checkoutWorkflow(ctx dbos.DBOSContext, _ string) (string, error) {
 }
 ```
 
-**Resonate** — `example-human-in-the-loop-go`:
-
-```go
+```go title="Resonate — example-human-in-the-loop-go"
 func foo(ctx *resonate.Context, _ struct{}) (string, error) {
 	// Latent durable promise — no function backing it. Resolved externally.
 	f, err := ctx.Promise()
@@ -9051,9 +9078,7 @@ A saga runs a sequence of steps and, on failure, runs **compensations** to undo 
 
 
 
-**DBOS** — `dbos-demo-apps/python/widget-store/widget_store/main.py`:
-
-```python
+```python title="DBOS — dbos-demo-apps/python/widget-store/widget_store/main.py"
 @DBOS.workflow()
 def checkout_workflow():
     order_id = create_order()
@@ -9072,9 +9097,7 @@ def checkout_workflow():
         update_order_status(order_id=order_id, status=OrderStatus.CANCELLED.value)
 ```
 
-**Resonate** — `example-money-transfer-py/main.py`:
-
-```python
+```python title="Resonate — example-money-transfer-py/main.py"
 def transfer_money(ctx, transfer_id, source, target, amount, *, simulate_credit_failure=False):
     yield ctx.run(apply_entry, f"{transfer_id}-debit", source, -amount, "debit")
     try:
@@ -9095,9 +9118,7 @@ See it in action: [example-money-transfer-py](https://github.com/resonatehq-exam
 
 
 
-**DBOS** — `dbos-demo-apps/typescript/widget-store/src/main.ts`:
-
-```typescript
+```typescript title="DBOS — dbos-demo-apps/typescript/widget-store/src/main.ts"
 export const checkoutWorkflow = DBOS.registerWorkflow(
   async () => {
     try {
@@ -9120,9 +9141,7 @@ export const checkoutWorkflow = DBOS.registerWorkflow(
 );
 ```
 
-**Resonate** — `example-saga-booking-ts/src/workflow.ts`:
-
-```typescript
+```typescript title="Resonate — example-saga-booking-ts/src/workflow.ts"
 let flightId: string | undefined;
 let hotelId: string | undefined;
 try {
@@ -9148,11 +9167,9 @@ See it in action: [example-saga-booking-ts](https://github.com/resonatehq-exampl
 The Resonate Rust equivalent compensates inline in the error branch:
 
 
-**Resonate** — `example-money-transfer-rs/src/main.rs`:
-
-```rust
+```rust title="Resonate — example-money-transfer-rs/src/main.rs"
 #[resonate::function]
-async fn transfer_money(ctx: &Context, args: TransferArgs) -> Result {
+async fn transfer_money(ctx: &Context, args: TransferArgs) -> Result<TransferResult> {
     let debit_id = format!("{}-debit", args.transfer_id);
     let credit_id = format!("{}-credit", args.transfer_id);
     let reversal_id = format!("{}-reversal", args.transfer_id);
@@ -9188,9 +9205,7 @@ See it in action: [example-money-transfer-rs](https://github.com/resonatehq-exam
 
 
 
-**DBOS** — `dbos-demo-apps/golang/widget-store/workflows.go`:
-
-```go
+```go title="DBOS — dbos-demo-apps/golang/widget-store/workflows.go"
 func checkoutWorkflow(ctx dbos.DBOSContext, _ string) (string, error) {
     // ... reserve inventory, await payment ...
     payment_status, err := dbos.Recv[string](ctx, PAYMENT_STATUS, 60*time.Second)
@@ -9418,6 +9433,8 @@ Restate has three service types you must choose between:
     
 
 ```typescript title="Restate Basic Service"
+import * as restate from "@restatedev/restate-sdk";
+
 export const myService = restate.service({
   name: "MyService",
   handlers: {
@@ -9437,6 +9454,8 @@ restate.serve({ services: [myService] });
     
 
 ```typescript title="Resonate - just a function"
+import { Resonate, Context } from "@resonatehq/sdk";
+
 const resonate = new Resonate();
 
 function* processOrder(ctx: Context, order: Order) {
@@ -9779,9 +9798,7 @@ Here is the most basic migration — a Workflow that calls one Activity, and the
 
 
 
-**Temporal** — `samples-python/hello/hello_activity.py`:
-
-```python
+```python title="Temporal — samples-python/hello/hello_activity.py"
 @activity.defn
 def compose_greeting(input: ComposeGreetingInput) -> str:
     return f"{input.greeting}, {input.name}!"
@@ -9797,9 +9814,7 @@ class GreetingWorkflow:
         )
 ```
 
-**Resonate** — `example-hello-world-py/main.py`:
-
-```python
+```python title="Resonate — example-hello-world-py/main.py"
 def bar(_: Context, greetee: str) -> str:
     return f"Hello {greetee} from bar!"
 
@@ -9815,9 +9830,7 @@ See it in action: [example-hello-world-py](https://github.com/resonatehq-example
 
 
 
-**Temporal** — `samples-typescript/hello-world/src/workflows.ts` + `activities.ts`:
-
-```typescript
+```typescript title="Temporal — samples-typescript/hello-world/src/workflows.ts + activities.ts"
 // activities.ts
 export async function greet(name: string): Promise<string> {
   return `Hello, ${name}!`;
@@ -9833,9 +9846,7 @@ export async function example(name: string): Promise<string> {
 }
 ```
 
-**Resonate** — `example-hello-world-ts/index.ts`:
-
-```typescript
+```typescript title="Resonate — example-hello-world-ts/index.ts"
 async function bar(_: Context, greetee: string): Promise<string> {
   return `Hello ${greetee} from bar!`;
 }
@@ -9854,16 +9865,14 @@ See it in action: [example-hello-world-ts](https://github.com/resonatehq-example
 
 
 
-**Temporal** — `sdk-rust/crates/sdk/examples/hello_world/workflows.rs`:
-
-```rust
+```rust title="Temporal — sdk-rust/crates/sdk/examples/hello_world/workflows.rs"
 #[workflow]
 pub struct HelloWorldWorkflow;
 
 #[workflow_methods]
 impl HelloWorldWorkflow {
     #[run]
-    pub async fn run(ctx: &mut WorkflowContext, name: String) -> WorkflowResult {
+    pub async fn run(ctx: &mut WorkflowContext<Self>, name: String) -> WorkflowResult<String> {
         ctx.start_activity(
             GreetingActivities::greet, name,
             ActivityOptions::start_to_close_timeout(Duration::from_secs(10)),
@@ -9874,23 +9883,21 @@ impl HelloWorldWorkflow {
 #[activities]
 impl GreetingActivities {
     #[activity]
-    pub async fn greet(_ctx: ActivityContext, name: String) -> Result {
+    pub async fn greet(_ctx: ActivityContext, name: String) -> Result<String, ActivityError> {
         Ok(format!("Hello, {}!", name))
     }
 }
 ```
 
-**Resonate** — `example-hello-world-rs/src/main.rs`:
-
-```rust
+```rust title="Resonate — example-hello-world-rs/src/main.rs"
 #[resonate::function]
-async fn greet(ctx: &Context, name: String) -> Result {
+async fn greet(ctx: &Context, name: String) -> Result<String> {
     let greeting = ctx.run(format_greeting, name).await?;
     Ok(greeting)
 }
 
 #[resonate::function]
-async fn format_greeting(name: String) -> Result {
+async fn format_greeting(name: String) -> Result<String> {
     Ok(format!("Hello, {name}!"))
 }
 ```
@@ -9901,9 +9908,7 @@ See it in action: [example-hello-world-rs](https://github.com/resonatehq-example
 
 
 
-**Temporal** — `samples-go/helloworld/helloworld.go`:
-
-```go
+```go title="Temporal — samples-go/helloworld/helloworld.go"
 func Workflow(ctx workflow.Context, name string) (string, error) {
     ao := workflow.ActivityOptions{StartToCloseTimeout: 10 * time.Second}
     ctx = workflow.WithActivityOptions(ctx, ao)
@@ -9918,9 +9923,7 @@ func Activity(ctx context.Context, name string) (string, error) {
 }
 ```
 
-**Resonate** — `example-hello-world-go/main.go`:
-
-```go
+```go title="Resonate — example-hello-world-go/main.go"
 func greet(_ *resonate.Context, args GreetArgs) (string, error) {
     return fmt.Sprintf("hello, %s!", args.Name), nil
 }
@@ -10100,6 +10103,8 @@ resonate = Resonate.local()
     
 
 ```typescript
+import { Resonate } from "@resonatehq/sdk";
+
 const resonate = new Resonate();
 
 // ...
@@ -10205,13 +10210,13 @@ pub struct MessagePassingWorkflow { counter: i32 }
 #[workflow_methods]
 impl MessagePassingWorkflow {
     #[run]
-    pub async fn run(ctx: &mut WorkflowContext, target: i32) -> WorkflowResult<i32> {
+    pub async fn run(ctx: &mut WorkflowContext<Self>, target: i32) -> WorkflowResult<i32> {
         ctx.wait_condition(|s| s.counter >= target).await;   // blocks here
         Ok(ctx.state(|s| s.counter))
     }
 
     #[signal]
-    pub fn increment(&mut self, _ctx: &mut SyncWorkflowContext, amount: i32) {
+    pub fn increment(&mut self, _ctx: &mut SyncWorkflowContext<Self>, amount: i32) {
         self.counter += amount;
     }
 }
@@ -10379,16 +10384,12 @@ Temporal accepts human strings (`'30 days'`) or a `timedelta`. Resonate's units 
 
 
 
-**Temporal** — `samples-python/sleep_for_days/workflows.py`:
-
-```python
+```python title="Temporal — samples-python/sleep_for_days/workflows.py"
 # raced against a completion signal inside asyncio.wait(...):
 await workflow.sleep(timedelta(days=30))   # timedelta
 ```
 
-**Resonate** — `example-durable-sleep-py/worker.py`:
-
-```python
+```python title="Resonate — example-durable-sleep-py/worker.py"
 @resonate.register
 def sleeping_workflow(ctx: Context, wf_id: str, secs: float):
     yield ctx.sleep(secs)                   # seconds (float)
@@ -10401,15 +10402,11 @@ See it in action: [example-durable-sleep-py](https://github.com/resonatehq-examp
 
 
 
-**Temporal** — `samples-typescript/sleep-for-days/src/workflows.ts`:
-
-```typescript
+```typescript title="Temporal — samples-typescript/sleep-for-days/src/workflows.ts"
 await Promise.race([sleep('30 days'), condition(() => isComplete)]);
 ```
 
-**Resonate** — `example-durable-sleep-ts/worker.ts`:
-
-```typescript
+```typescript title="Resonate — example-durable-sleep-ts/worker.ts"
 function* sleepingWorkflow(ctx: Context, ms: number) {
   yield* ctx.sleep(ms);                     // milliseconds
   return `Slept for ${ms / 1000} seconds`;
@@ -10422,21 +10419,17 @@ See it in action: [example-durable-sleep-ts](https://github.com/resonatehq-examp
 
 
 
-**Temporal** — `sdk-rust/crates/sdk/examples/timer_examples/workflows.rs`:
-
-```rust
+```rust title="Temporal — sdk-rust/crates/sdk/examples/timer_examples/workflows.rs"
 #[run]
-pub async fn run(ctx: &mut WorkflowContext) -> WorkflowResult {
+pub async fn run(ctx: &mut WorkflowContext<Self>) -> WorkflowResult<String> {
     ctx.timer(Duration::from_secs(1)).await;   // durable timer
     // …select! race + cancellable-timer demo omitted…
 }
 ```
 
-**Resonate** — `example-durable-sleep-rs/src/bin/worker.rs`:
-
-```rust
+```rust title="Resonate — example-durable-sleep-rs/src/bin/worker.rs"
 #[resonate::function]
-async fn sleeping_workflow(ctx: &Context, secs: u64) -> Result {
+async fn sleeping_workflow(ctx: &Context, secs: u64) -> Result<String> {
     ctx.sleep(Duration::from_secs(secs)).await?;   // std::time::Duration
     Ok(format!("Slept for {secs} seconds"))
 }
@@ -10448,18 +10441,14 @@ See it in action: [example-durable-sleep-rs](https://github.com/resonatehq-examp
 
 
 
-**Temporal** — `samples-go/sleep-for-days/sleepfordays_workflow.go`:
-
-```go
+```go title="Temporal — samples-go/sleep-for-days/sleepfordays_workflow.go"
 selector := workflow.NewSelector(ctx)
 selector.AddFuture(workflow.NewTimer(ctx, time.Hour*24*30), func(f workflow.Future) {})
 selector.AddReceive(sigChan, func(c workflow.ReceiveChannel, more bool) { isComplete = true })
 selector.Select(ctx)
 ```
 
-**Resonate** — `example-durable-sleep-go/main.go`:
-
-```go
+```go title="Resonate — example-durable-sleep-go/main.go"
 func sleepingWorkflow(ctx *resonate.Context, args SleepArgs) (string, error) {
     d := time.Duration(args.Secs) * time.Second
     f, err := ctx.Sleep(d)                   // time.Duration
@@ -10491,9 +10480,7 @@ The non-blocking spawn primitive's name — TS `ctx.beginRun`, Python `ctx.rfi`,
 
 
 
-**Temporal** — `samples-python/hello/hello_parallel_activity.py`:
-
-```python
+```python title="Temporal — samples-python/hello/hello_parallel_activity.py"
 results = await asyncio.gather(
     workflow.execute_activity(say_hello_activity, "user1", start_to_close_timeout=timedelta(seconds=5)),
     workflow.execute_activity(say_hello_activity, "user2", start_to_close_timeout=timedelta(seconds=5)),
@@ -10501,9 +10488,7 @@ results = await asyncio.gather(
 )
 ```
 
-**Resonate** — `example-fan-out-fan-in-py/workflow.py`:
-
-```python
+```python title="Resonate — example-fan-out-fan-in-py/workflow.py"
 # fan-out: rfi() returns a handle immediately
 email_p = yield ctx.rfi(send_email, event).options(id=f"{ctx.id}.email")
 sms_p   = yield ctx.rfi(send_sms, event).options(id=f"{ctx.id}.sms")
@@ -10518,17 +10503,13 @@ See it in action: [example-fan-out-fan-in-py](https://github.com/resonatehq-exam
 
 
 
-**Temporal** — `samples-typescript/child-workflows/src/workflows.ts`:
-
-```typescript
+```typescript title="Temporal — samples-typescript/child-workflows/src/workflows.ts"
 const responseArray = await Promise.all(
   names.map((name) => executeChild(childWorkflow, { args: [name] })),
 );
 ```
 
-**Resonate** — `example-fan-out-fan-in-ts/src/workflow.ts`:
-
-```typescript
+```typescript title="Resonate — example-fan-out-fan-in-ts/src/workflow.ts"
 // fan-out: beginRun returns a future immediately
 const emailFuture = yield* ctx.beginRun(sendEmail, event);
 const smsFuture   = yield* ctx.beginRun(sendSms, event);
@@ -10544,9 +10525,7 @@ See it in action: [example-fan-out-fan-in-ts](https://github.com/resonatehq-exam
 
 **Temporal Rust has no dedicated fan-out sample** — its `child_workflows` example starts children sequentially. The Resonate Rust equivalent fans out with `.spawn()`:
 
-**Resonate** — `example-fan-out-fan-in-rs/src/main.rs`:
-
-```rust
+```rust title="Resonate — example-fan-out-fan-in-rs/src/main.rs"
 // fan-out: .spawn() returns a handle immediately
 let h1 = ctx.run(process_item, items[0].clone()).spawn().await?;
 let h2 = ctx.run(process_item, items[1].clone()).spawn().await?;
@@ -10561,9 +10540,7 @@ See it in action: [example-fan-out-fan-in-rs](https://github.com/resonatehq-exam
 
 
 
-**Temporal** — `samples-go/splitmerge-future/splitmerge_workflow.go`:
-
-```go
+```go title="Temporal — samples-go/splitmerge-future/splitmerge_workflow.go"
 var results []workflow.Future
 for i := 0; i < processorCount; i++ {                    // fan-out
     results = append(results, workflow.ExecuteActivity(ctx, ChunkProcessingActivity, i+1))
@@ -10574,9 +10551,7 @@ for i := 0; i < processorCount; i++ {                    // fan-in
 }
 ```
 
-**Resonate** — `example-fan-out-fan-in-go/main.go`:
-
-```go
+```go title="Resonate — example-fan-out-fan-in-go/main.go"
 futures := make([]*resonate.Future, 0, len(args.Channels))
 for _, ch := range args.Channels {                       // fan-out
     f, _ := ctx.RPC("send", SendArgs{Channel: ch, Message: args.Message})
@@ -10612,9 +10587,7 @@ async def workflow_compensation(self):
     )
 ```
 
-**Resonate** — `example-money-transfer-py/main.py`:
-
-```python
+```python title="Resonate — example-money-transfer-py/main.py"
 def transfer_money(ctx, transfer_id, source, target, amount, *, simulate_credit_failure=False):
     yield ctx.run(apply_entry, f"{transfer_id}-debit", source, -amount, "debit")
     try:
@@ -10635,9 +10608,7 @@ See it in action: [example-money-transfer-py](https://github.com/resonatehq-exam
 
 
 
-**Temporal** — `samples-typescript/saga/src/workflows.ts`:
-
-```typescript
+```typescript title="Temporal — samples-typescript/saga/src/workflows.ts"
 const compensations: Compensation[] = [];
 try {
   await addAddress({ accountId, address });
@@ -10652,9 +10623,7 @@ try {
 }
 ```
 
-**Resonate** — `example-saga-booking-ts/src/workflow.ts`:
-
-```typescript
+```typescript title="Resonate — example-saga-booking-ts/src/workflow.ts"
 let flightId: string | undefined;
 let hotelId: string | undefined;
 try {
@@ -10678,11 +10647,9 @@ See it in action: [example-saga-booking-ts](https://github.com/resonatehq-exampl
 
 
 
-**Temporal** — `sdk-rust/crates/sdk/examples/saga/workflows.rs`:
-
-```rust
+```rust title="Temporal — sdk-rust/crates/sdk/examples/saga/workflows.rs"
 #[run]
-pub async fn run(ctx: &mut WorkflowContext, trip_id: String) -> WorkflowResult> {
+pub async fn run(ctx: &mut WorkflowContext<Self>, trip_id: String) -> WorkflowResult<Vec<String>> {
     let mut saga = Saga::new(ctx, activity_opts());
     match Self::book_trip(&mut saga, trip_id).await {
         Ok(ids) => Ok(ids),
@@ -10692,11 +10659,9 @@ pub async fn run(ctx: &mut WorkflowContext, trip_id: String) -> WorkflowResult> 
 // book_trip: saga.step(book_hotel, …, cancel_hotel).await? — one step + compensation per booking
 ```
 
-**Resonate** — `example-money-transfer-rs/src/main.rs`:
-
-```rust
+```rust title="Resonate — example-money-transfer-rs/src/main.rs"
 #[resonate::function]
-async fn transfer_money(ctx: &Context, args: TransferArgs) -> Result {
+async fn transfer_money(ctx: &Context, args: TransferArgs) -> Result<TransferResult> {
     // Step 1 — debit the source (durable checkpoint).
     ctx.run(apply_entry, EntryArgs {
         op_id: format!("{}-debit", args.transfer_id),
@@ -10781,9 +10746,7 @@ For bounded loops, the Resonate example is a plain `while`/`for` — no `continu
 
 
 
-**Temporal** — `samples-typescript/continue-as-new/src/workflows.ts`:
-
-```typescript
+```typescript title="Temporal — samples-typescript/continue-as-new/src/workflows.ts"
 export async function loopingWorkflow(iteration = 0): Promise<void> {
   if (iteration === 10) return;
   await sleep(1000);
@@ -10791,9 +10754,7 @@ export async function loopingWorkflow(iteration = 0): Promise<void> {
 }
 ```
 
-**Resonate** — `example-infinite-workflow-ts/src/workflow.ts`:
-
-```typescript
+```typescript title="Resonate — example-infinite-workflow-ts/src/workflow.ts"
 function* healthMonitor(ctx: Context, config: MonitorConfig): Generator<any, MonitorResult, any> {
   let iteration = 0;
   // No continueAsNew — Resonate has no history limit.
@@ -10821,9 +10782,7 @@ See it in action: [example-infinite-workflow-ts](https://github.com/resonatehq-e
 
 
 
-**Temporal** — `samples-go/child-workflow-continue-as-new/child_workflow.go`:
-
-```go
+```go title="Temporal — samples-go/child-workflow-continue-as-new/child_workflow.go"
 func SampleChildWorkflow(ctx workflow.Context, totalCount, runCount int) (string, error) {
     if runCount <= 0 {
         return "", errors.New("invalid run count")
@@ -10837,9 +10796,7 @@ func SampleChildWorkflow(ctx workflow.Context, totalCount, runCount int) (string
 }
 ```
 
-**Resonate** — `example-infinite-workflow-go/main.go`:
-
-```go
+```go title="Resonate — example-infinite-workflow-go/main.go"
 func heartbeatWorkflow(ctx *resonate.Context, args WorkflowArgs) (WorkflowResult, error) {
     for i := 0; args.Iterations == 0 || i < args.Iterations; i++ {
         tickF, err := ctx.Run(heartbeatTick, TickArgs{Tick: i + 1})
@@ -10886,10 +10843,8 @@ Temporal's `mutex` sample is ~130 lines across two workflows: a lock-manager wor
 This pattern currently has a Resonate example in TypeScript only.
 
 
-**Temporal** — `samples-typescript/mutex/src/workflows.ts` (excerpt):
-
-```typescript
-export async function lockWorkflow(requests = Array()): Promise<void> {
+```typescript title="Temporal — samples-typescript/mutex/src/workflows.ts (excerpt)"
+export async function lockWorkflow(requests = Array<LockRequest>()): Promise<void> {
   setHandler(lockRequestSignal, (req) => { requests.push(req); });
   while (!workflowInfo().continueAsNewSuggested) {
     await condition(() => requests.length > 0);
@@ -10904,9 +10859,7 @@ export async function lockWorkflow(requests = Array()): Promise<void> {
 }
 ```
 
-**Resonate** — `example-distributed-mutex-ts/src/workflow.ts`:
-
-```typescript
+```typescript title="Resonate — example-distributed-mutex-ts/src/workflow.ts"
 function* exclusiveResourceAccess(ctx: Context, resource: string, workers: string[]): Generator<any, MutexResult, any> {
   const results: WorkResult[] = [];
   // The generator IS the lock: each yield* blocks until the previous completes,
@@ -10931,11 +10884,9 @@ Temporal encrypts payloads with a `PayloadCodec` (`encode`/`decode` over `Payloa
 This pattern currently has a Resonate example in TypeScript only.
 
 
-**Temporal** — `samples-typescript/encryption/src/encryption-codec.ts` (excerpt):
-
-```typescript
+```typescript title="Temporal — samples-typescript/encryption/src/encryption-codec.ts (excerpt)"
 export class EncryptionCodec implements PayloadCodec {
-  async encode(payloads: Payload[]): Promise {
+  async encode(payloads: Payload[]): Promise<Payload[]> {
     return Promise.all(payloads.map(async (payload) => ({
       metadata: {
         [METADATA_ENCODING_KEY]: encode(ENCODING),
@@ -10944,13 +10895,11 @@ export class EncryptionCodec implements PayloadCodec {
       data: await encrypt(temporal.api.common.v1.Payload.encode(payload).finish(), this.keys.get(this.defaultKeyId)!),
     })));
   }
-  async decode(payloads: Payload[]): Promise { /* …mirror of encode… */ }
+  async decode(payloads: Payload[]): Promise<Payload[]> { /* …mirror of encode… */ }
 }
 ```
 
-**Resonate** — `example-encryption-ts/src/encryptor.ts` + `index.ts`:
-
-```typescript
+```typescript title="Resonate — example-encryption-ts/src/encryptor.ts + index.ts"
 export class AesGcmEncryptor implements Encryptor {
   encrypt(plaintext: Value): Value {
     if (!plaintext.data) return plaintext;
@@ -11376,7 +11325,7 @@ resonate dev \
 ```
 
 
-`--transports-bash-exec-enabled` requires `true` or `false`. A bare flag will error with `a value is required for '--transports-bash-exec-enabled '`.
+`--transports-bash-exec-enabled` requires `true` or `false`. A bare flag will error with `a value is required for '--transports-bash-exec-enabled <BOOL>'`.
 
 
 Verify in another shell:
@@ -11635,7 +11584,7 @@ See `resonate dev --help` for options.
 ```shell title="Start with PostgreSQL"
 resonate serve \
   --storage-type postgres \
-  --storage-postgres-url "postgres://:@localhost:5432/resonate"
+  --storage-postgres-url "postgres://<USER>:<PASSWORD>@localhost:5432/resonate"
 ```
 
 See `resonate serve --help` for all flags, or [Run a server](/deploy/run-server) for the full configuration story (`resonate.toml` + env vars + flags).
@@ -11720,7 +11669,7 @@ The Resonate server is configured by layering, in this order: defaults → `reso
 resonate serve \
   --auth-publickey /etc/resonate/auth/public.pem \
   --storage-type postgres \
-  --storage-postgres-url "postgres://:@localhost:5432/resonate"
+  --storage-postgres-url "postgres://<USER>:<PASSWORD>@localhost:5432/resonate"
 ```
 
 The same configuration as a [`resonate.toml`](/deploy/run-server#resonatetoml):
@@ -11733,7 +11682,7 @@ publickey = "/etc/resonate/auth/public.pem"
 type = "postgres"
 
 [storage.postgres]
-url = "postgres://:@localhost:5432/resonate"
+url = "postgres://<USER>:<PASSWORD>@localhost:5432/resonate"
 ```
 
 Run `resonate serve --help` for all available flags.
@@ -11892,7 +11841,7 @@ def weather_data(ctx, latitude, longitude, year, month, timezone="America/Edmont
 use resonate::prelude::*;
 
 #[resonate::function]
-async fn get_forecast(ctx: &Context, lat: f64, lon: f64) -> Result {
+async fn get_forecast(ctx: &Context, lat: f64, lon: f64) -> Result<String> {
     // ctx.run checkpoints the HTTP call — a retry of the MCP tool with the
     // same lat/lon reconnects to this workflow rather than re-fetching.
     let json = ctx.run(fetch_nws, (lat, lon)).await?;
@@ -11900,7 +11849,7 @@ async fn get_forecast(ctx: &Context, lat: f64, lon: f64) -> Result {
 }
 
 #[resonate::function]
-async fn fetch_nws(lat: f64, lon: f64) -> Result {
+async fn fetch_nws(lat: f64, lon: f64) -> Result<String> {
     let url = format!("https://api.weather.gov/points/{lat},{lon}");
     // ...HTTP call returning the response body.
 }
@@ -11955,7 +11904,7 @@ def await_result(job_names):
 #[tool_router(server_handler)]
 impl WeatherBridge {
     #[tool(description = "Get the forecast for the given lat/lon.")]
-    async fn get_forecast(&self, Parameters(p): Parameters) -> Result {
+    async fn get_forecast(&self, Parameters(p): Parameters<ForecastArgs>) -> Result<CallToolResult> {
         let id = format!("forecast-{}-{}", p.lat, p.lon);
         // Same id reconnects to an in-flight execution rather than re-fetching.
         let result: String = self.resonate
@@ -12093,6 +12042,10 @@ Two processes: a **gateway** that accepts HTTP requests and a **worker** that ru
 
 
 ```typescript title="gateway.ts"
+import express from "express";
+import { randomUUID } from "node:crypto";
+import { Resonate } from "@resonatehq/sdk";
+
 const app = express();
 app.use(express.json());
 
@@ -12175,12 +12128,12 @@ use axum::{routing::{get, post}, Json, Router};
 use resonate::prelude::*;
 use uuid::Uuid;
 
-async fn begin(State(r): State, Json(body): Json) -> impl IntoResponse {
+async fn begin(State(r): State<Resonate>, Json(body): Json<Value>) -> impl IntoResponse {
     let id = body.get("id").and_then(|v| v.as_str()).map(String::from)
         .unwrap_or_else(|| Uuid::new_v4().to_string());
 
     // .spawn() returns a handle without blocking on completion.
-    let _: ResonateHandle = r
+    let _: ResonateHandle<Value> = r
         .rpc(&id, "foo", body.clone())
         .target("poll://any@worker")
         .spawn()
@@ -12190,9 +12143,9 @@ async fn begin(State(r): State, Json(body): Json) -> impl IntoResponse {
     Json(json!({ "promise": id, "status": "pending", "wait": format!("/wait?id={id}") }))
 }
 
-async fn wait(State(r): State, Query(q): Query>) -> impl IntoResponse {
+async fn wait(State(r): State<Resonate>, Query(q): Query<HashMap<String, String>>) -> impl IntoResponse {
     let id = q.get("id").cloned().unwrap_or_default();
-    let handle: ResonateHandle = r.get(&id).await.unwrap();
+    let handle: ResonateHandle<Value> = r.get(&id).await.unwrap();
     if handle.done().await.unwrap() {
         let result = handle.result().await.unwrap();
         return Json(json!({ "status": "resolved", "promise_id": id, "result": result }));
@@ -12214,6 +12167,8 @@ async fn wait(State(r): State, Query(q): Query>) -> impl IntoResponse {
 
 
 ```typescript title="worker.ts"
+import { Resonate, type Context } from "@resonatehq/sdk";
+
 const resonate = new Resonate({ url: "http://localhost:8001", group: "worker" });
 
 // Inputs and return value must be JSON-serializable.
@@ -12257,7 +12212,7 @@ use resonate::prelude::*;
 use serde_json::Value;
 
 #[resonate::function]
-async fn foo(_: &Context, data: Value) -> Result {
+async fn foo(_: &Context, data: Value) -> Result<Value> {
     // Real workloads call ctx.run(stepFn, ...) for checkpointed side effects.
     Ok(json!({ "result": format!("Processed: {data}"), "timestamp": now() }))
 }
@@ -12377,7 +12332,7 @@ You'll see `pending` until the worker completes, then `resolved` with the result
 
 ## Try the dedup story
 
-Call `/begin` twice with the same `id`. Resonate doesn't run the work twice — the second call reconnects to the in-flight execution and the polling endpoint returns the same eventual result. This is the same idempotency primitive that makes safe retries cheap.
+Call `/begin` twice with the same `id`. Resonate doesn't run the work twice — the second call reconnects to the in-flight execution and the polling endpoint returns the same eventual result. This is the same idempotency primitive that makes safe retries inexpensive.
 
 ## Related
 
@@ -12739,7 +12694,7 @@ def research(ctx: Context, topic: str, depth: int):
 
 ```rust title="src/main.rs"
 #[resonate::function]
-async fn research(ctx: &Context, topic: String, depth: u32) -> Result {
+async fn research(ctx: &Context, topic: String, depth: u32) -> Result<String> {
     let mut messages = vec![
         json!({"role": "system", "content": SYSTEM_PROMPT}),
         json!({"role": "user", "content": format!("Research {topic}")}),
@@ -12897,6 +12852,8 @@ The whole workflow is a generator. The Cloud Function entry point is one line: r
 ### The countdown workflow
 
 ```typescript title="src/count.ts"
+import type { Context } from "@resonatehq/sdk";
+
 export function* countdown(
   ctx: Context,
   count: number,
@@ -12920,6 +12877,9 @@ async function notify(_ctx: Context, url: string, msg: string) {
 ### The Cloud Function entry point
 
 ```typescript title="src/index.ts"
+import { Resonate } from "@resonatehq/gcp";
+import { countdown } from "./count";
+
 const resonate = new Resonate();
 resonate.register("countdown", countdown);
 
@@ -13009,6 +12969,9 @@ Two pieces inside the Lambda handler — start the workflow, poll its status —
 
 
 ```typescript title="src/handler.ts"
+import { Resonate } from "@resonatehq/sdk";
+import { processDocument, type DocumentJob } from "./workflow.js";
+
 // Module-level: created once per cold start, reused across warm invocations.
 const resonate = new Resonate({ url: process.env["RESONATE_URL"] });
 resonate.register("processDocument", processDocument);
@@ -13081,6 +13044,8 @@ Same `jobId` deduplicates retries — API Gateway can re-fire the request withou
 
 
 ```typescript title="src/workflow.ts"
+import type { Context } from "@resonatehq/sdk";
+
 export function* processDocument(ctx: Context, job: DocumentJob) {
   // Each ctx.run is a checkpoint. Crash mid-step, resume from the next.
   const pageCount = yield* ctx.run(downloadDocument, job);
@@ -13244,6 +13209,9 @@ The whole pattern is one line: `yield* ctx.sleep(ms)`. Everything around it is j
 
 
 ```typescript title="worker.ts"
+import { Resonate } from "@resonatehq/sdk";
+import type { Context } from "@resonatehq/sdk";
+
 const resonate = new Resonate({
   url: "http://localhost:8001",
   group: "workers",
@@ -13290,7 +13258,7 @@ use resonate::prelude::*;
 use std::time::Duration;
 
 #[resonate::function]
-async fn sleeping_workflow(ctx: &Context, secs: u64) -> Result {
+async fn sleeping_workflow(ctx: &Context, secs: u64) -> Result<String> {
     println!("sleeping for {secs} seconds...");
     ctx.sleep(Duration::from_secs(secs)).await?;
     Ok(format!("slept for {secs} seconds"))
@@ -13310,6 +13278,8 @@ The client uses async RPC to dispatch by ID. Reusing the same ID reconnects to a
 
 
 ```typescript title="client.ts"
+import { Resonate } from "@resonatehq/sdk";
+
 const resonate = new Resonate({
   url: "http://localhost:8001",
   group: "client",
@@ -13504,6 +13474,9 @@ The fan-out is N spawn calls. The fan-in is N awaits. The fact that each is dura
 
 
 ```typescript title="src/workflow.ts"
+import type { Context } from "@resonatehq/sdk";
+import { sendEmail, sendSms, sendSlack, sendPush, type OrderEvent } from "./channels";
+
 export function* notifyAll(ctx: Context, event: OrderEvent, simulateCrash: boolean) {
   const start = Date.now();
 
@@ -13579,7 +13552,7 @@ struct WorkItem { id: u32, data: String }
 struct WorkResult { id: u32, output: String }
 
 #[resonate::function]
-async fn fan_out_fan_in(ctx: &Context, items: Vec) -> Result> {
+async fn fan_out_fan_in(ctx: &Context, items: Vec<WorkItem>) -> Result<Vec<WorkResult>> {
     // Fan-out: spawn three items in parallel.
     let h1 = ctx.run(process_item, items[0].clone()).spawn().await?;
     let h2 = ctx.run(process_item, items[1].clone()).spawn().await?;
@@ -13593,7 +13566,7 @@ async fn fan_out_fan_in(ctx: &Context, items: Vec) -> Result> {
 }
 
 #[resonate::function]
-async fn process_item(item: WorkItem) -> Result {
+async fn process_item(item: WorkItem) -> Result<WorkResult> {
     Ok(WorkResult {
         id: item.id,
         output: format!("Processed: {} (item #{})", item.data, item.id),
@@ -13824,6 +13797,9 @@ The workflow is a generator (TypeScript and Python) or `#[resonate::function]` a
 
 
 ```typescript title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
+import type { Context } from "@resonatehq/sdk";
+
 const resonate = new Resonate();
 
 async function bar(_: Context, greetee: string) {
@@ -13887,13 +13863,13 @@ print(result)
 use resonate::prelude::*;
 
 #[resonate::function]
-async fn greet(ctx: &Context, name: String) -> Result {
+async fn greet(ctx: &Context, name: String) -> Result<String> {
     let greeting = ctx.run(format_greeting, name).await?;
     Ok(greeting)
 }
 
 #[resonate::function]
-async fn format_greeting(name: String) -> Result {
+async fn format_greeting(name: String) -> Result<String> {
     Ok(format!("Hello, {name}! Welcome to durable execution."))
 }
 
@@ -14091,7 +14067,7 @@ def foo(ctx, workflow_id):
 use resonate::prelude::*;
 
 #[resonate::function]
-async fn foo(ctx: &Context, workflow_id: String) -> Result {
+async fn foo(ctx: &Context, workflow_id: String) -> Result<String> {
     // Latent durable promise — resolved externally.
     let blocking_promise = ctx.promise::<bool>();
     let promise_id = blocking_promise.id().await?;
@@ -14171,6 +14147,7 @@ def unblock_workflow():
 ```rust title="src/bin/gateway.rs"
 use axum::{extract::{Path, State}, response::IntoResponse, Json};
 use resonate::prelude::*;
+use resonate::types::Value;
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -14179,11 +14156,11 @@ use std::sync::Arc;
 struct StartReq { workflow_id: String }
 
 #[derive(Clone)]
-struct AppState { resonate: Arc }
+struct AppState { resonate: Arc<Resonate> }
 
 async fn start_workflow(
-    State(state): State,
-    Json(req): Json,
+    State(state): State<AppState>,
+    Json(req): Json<StartReq>,
 ) -> impl IntoResponse {
     // Same workflow_id reconnects to a PENDING execution rather than starting a new one.
     let result: String = state.resonate
@@ -14195,10 +14172,10 @@ async fn start_workflow(
 }
 
 async fn resolve(
-    State(state): State,
-    Path(promise_id): Path,
+    State(state): State<AppState>,
+    Path(promise_id): Path<String>,
 ) -> impl IntoResponse {
-    state.resonate.promises.resolve(&promise_id, json!(true)).await.unwrap();
+    state.resonate.promises.resolve(&promise_id, Value::from_serializable(json!(true)).unwrap()).await.unwrap();
     Json(json!({ "message": "promise resolved" }))
 }
 ```
@@ -14394,6 +14371,8 @@ The pattern is a small consume loop that hands each message to `workflow.begin_r
 
 
 ```typescript title="src/workflow.ts"
+import { Resonate, type Context } from "@resonatehq/sdk";
+
 export const resonate = new Resonate({
   url: "http://localhost:8001",
   group: "workers",
@@ -14697,6 +14676,9 @@ Each worker process is identical except for the `group` it joins. Run as many as
 
 
 ```typescript title="worker.ts"
+import { Resonate } from "@resonatehq/sdk";
+import type { Context } from "@resonatehq/sdk";
+
 const resonate = new Resonate({
   url: "http://localhost:8001",
   group: "workers",
@@ -14822,6 +14804,9 @@ The caller picks a target with the `poll://any@<group>` schema. `any` means "whi
 
 
 ```typescript title="client.ts"
+import { Resonate } from "@resonatehq/sdk";
+import { v4 as uuid } from "uuid";
+
 const resonate = new Resonate({
   url: "http://localhost:8001",
   group: "client",
@@ -15159,7 +15144,7 @@ The deterministic `op_id` (`{transfer_id}-debit`, `-credit`, `-reversal`) plus a
 async fn transfer_money(
     ctx: &Context, transfer_id: String, source: String, target: String,
     amount: f64, simulate_credit_failure: bool,
-) -> Result {
+) -> Result<TransferResult> {
     let debit_id = format!("{transfer_id}-debit");
     let credit_id = format!("{transfer_id}-credit");
     let reversal_id = format!("{transfer_id}-reversal");
@@ -15181,13 +15166,13 @@ async fn transfer_money(
 }
 ```
 
-The Rust example uses `Resonate.local()` (embedded mode, no server required) plus `with_dependency::>(...)` to inject the SQLite handle. `ctx.run(...).await` returns a `Result`, so saga compensation is just an `if let Err`.
+The Rust example uses `Resonate.local()` (embedded mode, no server required) plus `with_dependency::<Mutex<Connection>>(...)` to inject the SQLite handle. `ctx.run(...).await` returns a `Result`, so saga compensation is just an `if let Err`.
 
 
 
 
 
-`ctx.getDependency('db')` / `ctx.get_dependency("db")` / `info.get_dependency::()` (Rust) lets the step functions see the database without exposing it as a workflow argument — important, because workflow arguments must be serializable, and a DB handle is not.
+`ctx.getDependency('db')` / `ctx.get_dependency("db")` / `info.get_dependency::<T>()` (Rust) lets the step functions see the database without exposing it as a workflow argument — important, because workflow arguments must be serializable, and a DB handle is not.
 
 ## Run it locally
 
@@ -15308,6 +15293,9 @@ The orchestrator is one generator function that calls three plain agent function
 
 
 ```typescript title="src/workflow.ts"
+import type { Context } from "@resonatehq/sdk";
+import { researcher, writer, reviewer } from "./agents";
+
 export function* orchestrate(
   ctx: Context,
   topic: string,
@@ -15510,6 +15498,8 @@ The pattern is one self-recursive function plus a client that kicks it off.
 
 
 ```typescript title="factorialWorker.ts"
+import { Resonate, type Context } from "@resonatehq/sdk";
+
 const resonate = new Resonate({
   url: "http://localhost:8001",
   group: "factorial-workers",
@@ -15662,6 +15652,8 @@ The client looks identical to any other RPC call — Resonate doesn't care that 
 
 
 ```typescript title="factorialClient.ts"
+import { Resonate } from "@resonatehq/sdk";
+
 const resonate = new Resonate({
   url: "http://localhost:8001",
   group: "factorial-client",
@@ -15904,6 +15896,9 @@ Two scripts: a one-shot **schedule registration** that tells the server about th
 
 
 ```typescript title="src/schedule.ts"
+import { Resonate } from "@resonatehq/sdk";
+import { generateReport } from "./report";
+
 const resonate = new Resonate({ url: "http://localhost:8001" });
 resonate.register("generateReport", generateReport);
 
@@ -15978,6 +15973,9 @@ The schedule lives on the server, not in the worker. You can run the registratio
 
 
 ```typescript title="src/worker.ts"
+import { Resonate } from "@resonatehq/sdk";
+import { generateReport } from "./report";
+
 const resonate = new Resonate({ url: "http://localhost:8001" });
 resonate.register("generateReport", generateReport);
 console.log("Worker started. Waiting for scheduled executions...");
@@ -16418,6 +16416,8 @@ A countdown loop that survives restarts — minutes, hours, or days.
 
 
 ```typescript title="countdown.ts"
+import { Resonate, type Context } from "@resonatehq/sdk";
+
 function* countdown(context: Context, count: number, delay: number) {
   for (let i = count; i > 0; i--) {
     // Run a function, persist its result
@@ -16848,12 +16848,12 @@ resonate serve
 # Postgres
 resonate serve \
   --storage-type postgres \
-  --storage-postgres-url "postgres://:@localhost:5432/resonate"
+  --storage-postgres-url "postgres://<USER>:<PASSWORD>@localhost:5432/resonate"
 
 # MySQL
 resonate serve \
   --storage-type mysql \
-  --storage-mysql-url "mysql://:@localhost:3306/resonate"
+  --storage-mysql-url "mysql://<USER>:<PASSWORD>@localhost:3306/resonate"
 ```
 
 Source: [`resonate/src/cli.rs:338-356`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L338-L356). Loading order: built-in defaults → optional `resonate.toml` → environment variables → CLI flags ([`resonate/src/cli.rs:10-13`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L10-L13)).
@@ -17212,7 +17212,7 @@ resonate schedules search --limit 100 | jq '.schedules | max_by(.createdAt)'
 
 ## Environment variables
 
-The CLI itself reads no env vars — every flag is explicit. But the **server** (when started via `resonate serve` / `resonate dev`) reads `RESONATE___` for every config field. See:
+The CLI itself reads no env vars — every flag is explicit. But the **server** (when started via `resonate serve` / `resonate dev`) reads `RESONATE_<SECTION>__<FIELD>` for every config field. See:
 
 - [Defaults reference › Environment variables](/reference/defaults#environment-variables) — SDK + shared env vars
 - [Run a server › Environment variables](/deploy/run-server#environment-variables) — server-side `RESONATE_*` map
@@ -17509,7 +17509,7 @@ The SDKs share a common set of `RESONATE_*` environment variables. Defaults belo
 | `RESONATE_TIMEOUT` | `10000` ms (TS HTTP only) | TS: `resonate-sdk-ts/src/network/http.ts:60-62` |
 | `RESONATE_URL` HTTP fallback | `"http://localhost:8001"` (TS `HttpNetwork` constructor) | `resonate-sdk-ts/src/network/http.ts:58` |
 
-Server-side `RESONATE_*` environment variables (storage, auth, transports) follow the `RESONATE___` convention. See [Run a server › Environment variables](/deploy/run-server#environment-variables) for the complete list — those defaults track the server flag table above.
+Server-side `RESONATE_*` environment variables (storage, auth, transports) follow the `RESONATE_<SECTION>__<FIELD>` convention. See [Run a server › Environment variables](/deploy/run-server#environment-variables) for the complete list — those defaults track the server flag table above.
 
 ---
 
@@ -17668,7 +17668,7 @@ The only guarantee is that if a process experiences a receive event, there is a 
 Every component may issue a `Send(address, message)` command that emits a `Send(address, message)` event.
 
 ```text
-command Send(address : Address, message : T)
+command Send<T>(address : Address, message : T)
 ```
 
 The Send command is the foundation of Distributed Async Await's failover mechanics: Send's anycast semantics enable both routing and transparent rerouting in case of failure. This allows distributed executions to adapt dynamically to changes in process topology.

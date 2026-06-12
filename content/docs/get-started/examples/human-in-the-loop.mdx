@@ -197,6 +197,7 @@ def unblock_workflow():
 ```rust title="src/bin/gateway.rs"
 use axum::{extract::{Path, State}, response::IntoResponse, Json};
 use resonate::prelude::*;
+use resonate::types::Value;
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -224,7 +225,7 @@ async fn resolve(
     State(state): State<AppState>,
     Path(promise_id): Path<String>,
 ) -> impl IntoResponse {
-    state.resonate.promises.resolve(&promise_id, json!(true)).await.unwrap();
+    state.resonate.promises.resolve(&promise_id, Value::from_serializable(json!(true)).unwrap()).await.unwrap();
     Json(json!({ "message": "promise resolved" }))
 }
 ```
