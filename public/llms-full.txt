@@ -8083,7 +8083,7 @@ This page reflects `@resonatehq/sdk` v0.10.2 (TypeScript, current on npm), `reso
 
 
 
-DBOS blocks below are excerpted from the official `dbos-inc/dbos-demo-apps` repo and the DBOS SDK repos (`dbos-transact-{py,ts,golang}`) — trimmed for focus, elisions marked, never rewritten. They reflect `dbos` v2.23.0 (Python), `@dbos-inc/dbos-sdk` v4.19.8 (TypeScript), and `dbos-transact-golang` v0.16.0 (Go). Resonate blocks come from the [examples library](https://github.com/resonatehq-examples), pinned to the latest released SDKs. DBOS ships SDKs for TypeScript, Python, Go, and Java; it has no Rust SDK, so the Rust tabs below show Resonate only. Some patterns don't have a Resonate example in every language yet; those gaps are noted inline.
+DBOS blocks below are excerpted from the official `dbos-inc/dbos-demo-apps` repo and the DBOS SDK repos (`dbos-transact-{py,ts,golang}`) — trimmed for focus, elisions marked, never rewritten. They reflect `dbos` v2.23.0 (Python), `@dbos-inc/dbos-sdk` v4.19.8 (TypeScript), and `dbos-transact-golang` v0.17.0 (Go). Resonate blocks come from the [examples library](https://github.com/resonatehq-examples), pinned to the latest released SDKs (the Rust examples track the SDK's `main` branch). DBOS ships SDKs for TypeScript, Python, Go, and Java; it has no Rust SDK, so the Rust tabs below show Resonate only. Some patterns don't have a Resonate example in every language yet; those gaps are noted inline.
 
 
 **Are you coming from DBOS?**
@@ -8348,7 +8348,11 @@ async fn factorial(ctx: &Context, n: u64) -> Result<u64> {
 
 #[tokio::main]
 async fn main() {
-    let resonate = Resonate::local();
+    let resonate = Resonate::new(ResonateConfig {
+        url: Some("http://localhost:8001".into()),
+        group: Some("factorial-workers".into()),
+        ..Default::default()
+    });
     resonate.register(factorial).unwrap();
 
     let result: u64 = resonate.run("factorial-5", factorial, 5).await.unwrap();
@@ -8373,7 +8377,7 @@ func factorial(ctx *resonate.Context, args Args) (int, error) {
 	if args.N <= 1 {
 		return 1, nil
 	}
-	f, err := ctx.RPC("factorial", Args{N: args.N - 1})
+	f, err := ctx.RPC("Factorial", Args{N: args.N - 1})
 	if err != nil {
 		return 0, err
 	}
@@ -8388,7 +8392,7 @@ func main() {
 	r, _ := resonate.New(resonate.Config{URL: "http://localhost:8001"})
 	defer func() { _ = r.Stop() }()
 
-	factorialFn, _ := resonate.Register(r, "factorial", factorial)
+	factorialFn, _ := resonate.Register(r, "Factorial", factorial)
 
 	h, _ := factorialFn.Run(context.Background(), "factorial-5", Args{N: 5})
 	result, _ := h.Result(context.Background())
@@ -8636,12 +8640,19 @@ for i, handle := range handles {                         // fan-in
 ```go
 futures := make([]*resonate.Future, 0, len(args.Channels))
 for _, ch := range args.Channels {                       // fan-out
-    f, _ := ctx.RPC("send", SendArgs{Channel: ch, Message: args.Message})
+    f, err := ctx.RPC("send", SendArgs{Channel: ch, Message: args.Message})
+    if err != nil {
+        return FanoutResult{}, err
+    }
     futures = append(futures, f)
 }
-for _, f := range futures {                              // fan-in
+for i, f := range futures {                              // fan-in
     var d Delivery
-    _ = f.Await(&d)
+    if err := f.Await(&d); err != nil {
+        out.Delivered = append(out.Delivered, Delivery{Channel: args.Channels[i], OK: false, Reason: err.Error()})
+        continue
+    }
+    out.Delivered = append(out.Delivered, d)
 }
 ```
 
@@ -8779,6 +8790,10 @@ See it in action: [example-durable-sleep-go](https://github.com/resonatehq-examp
 For recurring work, DBOS schedules a workflow on a cron expression — either the `@DBOS.scheduled(cron)` decorator (the workflow receives the scheduled and actual fire times) or the database-backed `DBOS.create_schedule(...)` / `apply_schedules(...)` API. Resonate registers a schedule with `resonate.schedule(...)` (TypeScript and Rust) or `resonate.schedules.create(...)` (Python), and the Resonate Server fires the promise on the cron.
 
 
+DBOS uses a **6-field** cron with a leading seconds component — `* * * * * *` means *every second*. Resonate takes a **standard 5-field** cron — `* * * * *` means *every minute*. Drop the leading seconds field when migrating, or a `* * * * * *` copied across fires far more often than you intend.
+
+
+
 
 
 
@@ -8799,7 +8814,7 @@ resonate.schedules.create(
     id="my-schedule",
     cron="* * * * *",
     promise_id="my-schedule.{{.timestamp}}",
-    # ...
+    # ... also required: promise_timeout, promise_data (the function-invoke payload), promise_tags
 )
 ```
 
