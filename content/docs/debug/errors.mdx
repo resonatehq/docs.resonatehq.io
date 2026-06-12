@@ -21,7 +21,7 @@ Troubleshooting steps are categorized by error code ranges:
 
 ## Server request errors
 
-These are the errors you may encounter when making requests to Resonate Server v0.9.7.
+These are the errors you may encounter when making requests to Resonate Server v0.9.8.
 Request errors signify problems with the request itself — retrying the same request will not resolve the issue.
 
 **Range: HTTP 4XX**
@@ -119,7 +119,7 @@ Raised when a store operation against the Resonate Server (or the in-process loc
 - `100.40399` — state-machine transition error
 - `100.0` — transport-level failure (request timed out, failed to connect, unknown exception)
 
-The current Rust server (v0.9.7) does not emit these structured sub-codes — it returns standard HTTP status codes (see [Server request errors](#server-request-errors) above). When the Python SDK adds Rust-server compatibility, this section will be updated.
+The current Rust server (v0.9.8) does not emit these structured sub-codes — it returns standard HTTP status codes (see [Server request errors](#server-request-errors) above). When the Python SDK adds Rust-server compatibility, this section will be updated.
 
 ### `ResonateCanceledError` (code `200`)
 
