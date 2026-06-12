@@ -8179,9 +8179,7 @@ Here is the most basic migration — a workflow that runs a few steps, and the e
 
 
 
-**DBOS** — `dbos-demo-apps/python/dbos-app-starter/app/main.py`:
-
-```python
+```python title="DBOS — dbos-demo-apps/python/dbos-app-starter/app/main.py"
 @DBOS.step()
 def step_one():
     time.sleep(5)
@@ -8193,9 +8191,7 @@ def workflow():
     # ... step_two(), step_three() ...
 ```
 
-**Resonate** — `example-hello-world-py/main.py`:
-
-```python
+```python title="Resonate — example-hello-world-py/main.py"
 def bar(_: Context, greetee: str) -> str:
     return f"Hello {greetee} from bar!"
 
@@ -8217,9 +8213,7 @@ See it in action: [example-hello-world-py](https://github.com/resonatehq-example
 
 
 
-**DBOS** — `dbos-demo-apps/typescript/dbos-node-starter/src/main.ts`:
-
-```typescript
+```typescript title="DBOS — dbos-demo-apps/typescript/dbos-node-starter/src/main.ts"
 async function stepOne() {
   await sleep(5000);
   console.log("Completed step 1!");
@@ -8233,9 +8227,7 @@ async function exampleWorkflow() {
 const registeredWorkflow = DBOS.registerWorkflow(exampleWorkflow);
 ```
 
-**Resonate** — `example-hello-world-ts/index.ts`:
-
-```typescript
+```typescript title="Resonate — example-hello-world-ts/index.ts"
 async function bar(_: Context, greetee: string): Promise<string> {
   return `Hello ${greetee} from bar!`;
 }
@@ -8265,9 +8257,7 @@ See it in action: [example-hello-world-ts](https://github.com/resonatehq-example
 DBOS ships SDKs for TypeScript, Python, Go, and Java. There is no DBOS Rust SDK, so there is no DBOS code to place beside Resonate here. The Resonate Rust equivalent:
 
 
-**Resonate** — `example-hello-world-rs/src/main.rs`:
-
-```rust
+```rust title="Resonate — example-hello-world-rs/src/main.rs"
 #[resonate::function]
 async fn greet(ctx: &Context, name: String) -> Result<String> {
     let greeting = ctx.run(format_greeting, name).await?;
@@ -8286,9 +8276,7 @@ See it in action: [example-hello-world-rs](https://github.com/resonatehq-example
 
 
 
-**DBOS** — `dbos-demo-apps/golang/dbos-go-starter/main.go`:
-
-```go
+```go title="DBOS — dbos-demo-apps/golang/dbos-go-starter/main.go"
 func ExampleWorkflow(ctx dbos.DBOSContext, _ string) (string, error) {
     _, err := dbos.RunAsStep(ctx, func(stepCtx context.Context) (string, error) {
         return stepOne(stepCtx)
@@ -8309,9 +8297,7 @@ func stepOne(ctx context.Context) (string, error) {
 
 In `main()`, register it with `dbos.RegisterWorkflow(dbosCtx, ExampleWorkflow)`.
 
-**Resonate** — `example-hello-world-go/main.go`:
-
-```go
+```go title="Resonate — example-hello-world-go/main.go"
 func greet(_ *resonate.Context, args GreetArgs) (string, error) {
     return fmt.Sprintf("hello, %s!", args.Name), nil
 }
@@ -8609,9 +8595,7 @@ def process_tasks(tasks):
     return [handle.get_result() for handle in task_handles]
 ```
 
-**Resonate** — `example-fan-out-fan-in-py/workflow.py`:
-
-```python
+```python title="Resonate — example-fan-out-fan-in-py/workflow.py"
 # fan-out: rfi() returns a handle immediately
 email_p = yield ctx.rfi(send_email, event).options(id=f"{ctx.id}.email")
 sms_p   = yield ctx.rfi(send_sms, event).options(id=f"{ctx.id}.sms")
@@ -8641,9 +8625,7 @@ async function queueFunction() {
 }
 ```
 
-**Resonate** — `example-fan-out-fan-in-ts/src/workflow.ts`:
-
-```typescript
+```typescript title="Resonate — example-fan-out-fan-in-ts/src/workflow.ts"
 // fan-out: beginRun returns a future immediately
 const emailFuture = yield* ctx.beginRun(sendEmail, event);
 const smsFuture   = yield* ctx.beginRun(sendSms, event);
@@ -8661,9 +8643,7 @@ See it in action: [example-fan-out-fan-in-ts](https://github.com/resonatehq-exam
 The Resonate Rust equivalent fans out with `.spawn()`:
 
 
-**Resonate** — `example-fan-out-fan-in-rs/src/main.rs`:
-
-```rust
+```rust title="Resonate — example-fan-out-fan-in-rs/src/main.rs"
 // fan-out: .spawn() returns a handle immediately
 let h1 = ctx.run(process_item, items[0].clone()).spawn().await?;
 let h2 = ctx.run(process_item, items[1].clone()).spawn().await?;
@@ -8703,9 +8683,7 @@ for i, handle := range handles {                         // fan-in
 }
 ```
 
-**Resonate** — `example-fan-out-fan-in-go/main.go`:
-
-```go
+```go title="Resonate — example-fan-out-fan-in-go/main.go"
 futures := make([]*resonate.Future, 0, len(args.Channels))
 for _, ch := range args.Channels {                       // fan-out
     f, err := ctx.RPC("send", SendArgs{Channel: ch, Message: args.Message})
@@ -8742,9 +8720,7 @@ Both systems vary the unit by SDK. DBOS: TypeScript `DBOS.sleep` takes **millise
 
 
 
-**DBOS** — `dbos-demo-apps/python/widget-store/widget_store/main.py`:
-
-```python
+```python title="DBOS — dbos-demo-apps/python/widget-store/widget_store/main.py"
 @DBOS.workflow()
 def dispatch_order_workflow(order_id):
     for _ in range(10):
@@ -8752,9 +8728,7 @@ def dispatch_order_workflow(order_id):
         update_order_progress(order_id)
 ```
 
-**Resonate** — `example-durable-sleep-py/worker.py`:
-
-```python
+```python title="Resonate — example-durable-sleep-py/worker.py"
 @resonate.register
 def sleeping_workflow(ctx: Context, wf_id: str, secs: float):
     print(f"Workflow {wf_id} starting, will sleep for {secs} seconds.")
@@ -8768,9 +8742,7 @@ See it in action: [example-durable-sleep-py](https://github.com/resonatehq-examp
 
 
 
-**DBOS** — `dbos-demo-apps/typescript/widget-store/src/shop.ts`:
-
-```typescript
+```typescript title="DBOS — dbos-demo-apps/typescript/widget-store/src/shop.ts"
 export const dispatchOrder = DBOS.registerWorkflow(
   async (order_id: number) => {
     for (let i = 0; i < 10; i++) {
@@ -8782,9 +8754,7 @@ export const dispatchOrder = DBOS.registerWorkflow(
 );
 ```
 
-**Resonate** — `example-durable-sleep-ts/worker.ts`:
-
-```typescript
+```typescript title="Resonate — example-durable-sleep-ts/worker.ts"
 function* sleepingWorkflow(ctx: Context, ms: number) {
   yield* ctx.run((ctx: Context) => console.log(`Sleeping for ${ms / 1000} seconds...`));
   yield* ctx.sleep(ms);                        // milliseconds
@@ -8802,9 +8772,7 @@ See it in action: [example-durable-sleep-ts](https://github.com/resonatehq-examp
 The Resonate Rust equivalent sleeps on a native `Duration`:
 
 
-**Resonate** — `example-durable-sleep-rs/src/bin/worker.rs`:
-
-```rust
+```rust title="Resonate — example-durable-sleep-rs/src/bin/worker.rs"
 #[resonate::function]
 async fn sleeping_workflow(ctx: &Context, secs: u64) -> Result<String> {
     ctx.sleep(Duration::from_secs(secs)).await?;   // std::time::Duration
@@ -8818,9 +8786,7 @@ See it in action: [example-durable-sleep-rs](https://github.com/resonatehq-examp
 
 
 
-**DBOS** — `dbos-demo-apps/golang/widget-store/workflows.go`:
-
-```go
+```go title="DBOS — dbos-demo-apps/golang/widget-store/workflows.go"
 func dispatchOrderWorkflow(ctx dbos.DBOSContext, orderID int) (string, error) {
     for range 10 {
         _, err := dbos.Sleep(ctx, time.Second)     // time.Duration
@@ -8833,9 +8799,7 @@ func dispatchOrderWorkflow(ctx dbos.DBOSContext, orderID int) (string, error) {
 }
 ```
 
-**Resonate** — `example-durable-sleep-go/main.go`:
-
-```go
+```go title="Resonate — example-durable-sleep-go/main.go"
 func sleepingWorkflow(ctx *resonate.Context, args SleepArgs) (string, error) {
     d := time.Duration(args.Secs) * time.Second
     f, err := ctx.Sleep(d)                       // time.Duration
@@ -8865,9 +8829,7 @@ DBOS uses a **6-field** cron with a leading seconds component — `* * * * * *` 
 
 
 
-**DBOS** — `dbos-transact-py/tests/test_scheduler_decorator.py`:
-
-```python
+```python title="DBOS — dbos-transact-py/tests/test_scheduler_decorator.py"
 @DBOS.scheduled("* * * * * *")
 @DBOS.workflow()
 def test_workflow(scheduled: datetime, actual: datetime) -> None:
@@ -8892,9 +8854,7 @@ See it in action: [example-schedule-py](https://github.com/resonatehq-examples/e
 
 
 
-**DBOS** — `dbos-transact-ts/tests/scheduler_decorator.test.ts`:
-
-```typescript
+```typescript title="DBOS — dbos-transact-ts/tests/scheduler_decorator.test.ts"
 @DBOS.scheduled({ crontab: '* * * * * *', mode: SchedulerMode.ExactlyOncePerIntervalWhenActive })
 @DBOS.workflow()
 static async scheduledDefault(schedTime: Date, startTime: Date) {
@@ -8902,9 +8862,7 @@ static async scheduledDefault(schedTime: Date, startTime: Date) {
 }
 ```
 
-**Resonate** — `example-schedule-ts/src/schedule.ts`:
-
-```typescript
+```typescript title="Resonate — example-schedule-ts/src/schedule.ts"
 await resonate.schedule("my-schedule", "* * * * *", myFunction /* , ...args */);
 ```
 
@@ -8918,9 +8876,7 @@ See it in action: [example-schedule-ts](https://github.com/resonatehq-examples/e
 The Resonate Rust equivalent registers the schedule with the server:
 
 
-**Resonate** — `example-schedule-rs/src/bin/schedule.rs`:
-
-```rust
+```rust title="Resonate — example-schedule-rs/src/bin/schedule.rs"
 let result = resonate
     .schedule(
         "daily_report",    // schedule ID
@@ -8963,9 +8919,7 @@ With Resonate, you achieve the same effect by creating a Durable Promise that is
 
 
 
-**DBOS** — `dbos-demo-apps/python/widget-store/widget_store/main.py`:
-
-```python
+```python title="DBOS — dbos-demo-apps/python/widget-store/widget_store/main.py"
 @DBOS.workflow()
 def checkout_workflow():
     # ...
@@ -8977,9 +8931,7 @@ def checkout_workflow():
 DBOS.send(payment_id, payment_status, PAYMENT_STATUS)
 ```
 
-**Resonate** — `example-human-in-the-loop-py`:
-
-```python
+```python title="Resonate — example-human-in-the-loop-py"
 # worker.py
 @resonate.register()
 def foo(ctx, workflow_id):
@@ -9002,9 +8954,7 @@ resonate.promises.resolve(id=promise_id, ikey=promise_id)
 
 
 
-**DBOS** — `dbos-demo-apps/typescript/widget-store/src/main.ts`:
-
-```typescript
+```typescript title="DBOS — dbos-demo-apps/typescript/widget-store/src/main.ts"
 export const checkoutWorkflow = DBOS.registerWorkflow(
   async () => {
     // ...
@@ -9019,9 +8969,7 @@ export const checkoutWorkflow = DBOS.registerWorkflow(
 await DBOS.send(key, status, PAYMENT_TOPIC);
 ```
 
-**Resonate** — `example-human-in-the-loop-ts`:
-
-```typescript
+```typescript title="Resonate — example-human-in-the-loop-ts"
 function* fooWorkflow(ctx: Context, workflowId: string) {
   const blockingPromise = yield* ctx.promise({});
   yield* ctx.run(sendEmail, blockingPromise.id);
@@ -9079,9 +9027,7 @@ resonate
 
 
 
-**DBOS** — `dbos-demo-apps/golang/widget-store/workflows.go`:
-
-```go
+```go title="DBOS — dbos-demo-apps/golang/widget-store/workflows.go"
 func checkoutWorkflow(ctx dbos.DBOSContext, _ string) (string, error) {
     // ...
     err = dbos.SetEvent(ctx, PAYMENT_ID, workflowID)                       // publish status
@@ -9090,9 +9036,7 @@ func checkoutWorkflow(ctx dbos.DBOSContext, _ string) (string, error) {
 }
 ```
 
-**Resonate** — `example-human-in-the-loop-go`:
-
-```go
+```go title="Resonate — example-human-in-the-loop-go"
 func foo(ctx *resonate.Context, _ struct{}) (string, error) {
 	// Latent durable promise — no function backing it. Resolved externally.
 	f, err := ctx.Promise()
@@ -9134,9 +9078,7 @@ A saga runs a sequence of steps and, on failure, runs **compensations** to undo 
 
 
 
-**DBOS** — `dbos-demo-apps/python/widget-store/widget_store/main.py`:
-
-```python
+```python title="DBOS — dbos-demo-apps/python/widget-store/widget_store/main.py"
 @DBOS.workflow()
 def checkout_workflow():
     order_id = create_order()
@@ -9155,9 +9097,7 @@ def checkout_workflow():
         update_order_status(order_id=order_id, status=OrderStatus.CANCELLED.value)
 ```
 
-**Resonate** — `example-money-transfer-py/main.py`:
-
-```python
+```python title="Resonate — example-money-transfer-py/main.py"
 def transfer_money(ctx, transfer_id, source, target, amount, *, simulate_credit_failure=False):
     yield ctx.run(apply_entry, f"{transfer_id}-debit", source, -amount, "debit")
     try:
@@ -9178,9 +9118,7 @@ See it in action: [example-money-transfer-py](https://github.com/resonatehq-exam
 
 
 
-**DBOS** — `dbos-demo-apps/typescript/widget-store/src/main.ts`:
-
-```typescript
+```typescript title="DBOS — dbos-demo-apps/typescript/widget-store/src/main.ts"
 export const checkoutWorkflow = DBOS.registerWorkflow(
   async () => {
     try {
@@ -9203,9 +9141,7 @@ export const checkoutWorkflow = DBOS.registerWorkflow(
 );
 ```
 
-**Resonate** — `example-saga-booking-ts/src/workflow.ts`:
-
-```typescript
+```typescript title="Resonate — example-saga-booking-ts/src/workflow.ts"
 let flightId: string | undefined;
 let hotelId: string | undefined;
 try {
@@ -9231,9 +9167,7 @@ See it in action: [example-saga-booking-ts](https://github.com/resonatehq-exampl
 The Resonate Rust equivalent compensates inline in the error branch:
 
 
-**Resonate** — `example-money-transfer-rs/src/main.rs`:
-
-```rust
+```rust title="Resonate — example-money-transfer-rs/src/main.rs"
 #[resonate::function]
 async fn transfer_money(ctx: &Context, args: TransferArgs) -> Result<TransferResult> {
     let debit_id = format!("{}-debit", args.transfer_id);
@@ -9271,9 +9205,7 @@ See it in action: [example-money-transfer-rs](https://github.com/resonatehq-exam
 
 
 
-**DBOS** — `dbos-demo-apps/golang/widget-store/workflows.go`:
-
-```go
+```go title="DBOS — dbos-demo-apps/golang/widget-store/workflows.go"
 func checkoutWorkflow(ctx dbos.DBOSContext, _ string) (string, error) {
     // ... reserve inventory, await payment ...
     payment_status, err := dbos.Recv[string](ctx, PAYMENT_STATUS, 60*time.Second)
@@ -9866,9 +9798,7 @@ Here is the most basic migration — a Workflow that calls one Activity, and the
 
 
 
-**Temporal** — `samples-python/hello/hello_activity.py`:
-
-```python
+```python title="Temporal — samples-python/hello/hello_activity.py"
 @activity.defn
 def compose_greeting(input: ComposeGreetingInput) -> str:
     return f"{input.greeting}, {input.name}!"
@@ -9884,9 +9814,7 @@ class GreetingWorkflow:
         )
 ```
 
-**Resonate** — `example-hello-world-py/main.py`:
-
-```python
+```python title="Resonate — example-hello-world-py/main.py"
 def bar(_: Context, greetee: str) -> str:
     return f"Hello {greetee} from bar!"
 
@@ -9902,9 +9830,7 @@ See it in action: [example-hello-world-py](https://github.com/resonatehq-example
 
 
 
-**Temporal** — `samples-typescript/hello-world/src/workflows.ts` + `activities.ts`:
-
-```typescript
+```typescript title="Temporal — samples-typescript/hello-world/src/workflows.ts + activities.ts"
 // activities.ts
 export async function greet(name: string): Promise<string> {
   return `Hello, ${name}!`;
@@ -9920,9 +9846,7 @@ export async function example(name: string): Promise<string> {
 }
 ```
 
-**Resonate** — `example-hello-world-ts/index.ts`:
-
-```typescript
+```typescript title="Resonate — example-hello-world-ts/index.ts"
 async function bar(_: Context, greetee: string): Promise<string> {
   return `Hello ${greetee} from bar!`;
 }
@@ -9941,9 +9865,7 @@ See it in action: [example-hello-world-ts](https://github.com/resonatehq-example
 
 
 
-**Temporal** — `sdk-rust/crates/sdk/examples/hello_world/workflows.rs`:
-
-```rust
+```rust title="Temporal — sdk-rust/crates/sdk/examples/hello_world/workflows.rs"
 #[workflow]
 pub struct HelloWorldWorkflow;
 
@@ -9967,9 +9889,7 @@ impl GreetingActivities {
 }
 ```
 
-**Resonate** — `example-hello-world-rs/src/main.rs`:
-
-```rust
+```rust title="Resonate — example-hello-world-rs/src/main.rs"
 #[resonate::function]
 async fn greet(ctx: &Context, name: String) -> Result<String> {
     let greeting = ctx.run(format_greeting, name).await?;
@@ -9988,9 +9908,7 @@ See it in action: [example-hello-world-rs](https://github.com/resonatehq-example
 
 
 
-**Temporal** — `samples-go/helloworld/helloworld.go`:
-
-```go
+```go title="Temporal — samples-go/helloworld/helloworld.go"
 func Workflow(ctx workflow.Context, name string) (string, error) {
     ao := workflow.ActivityOptions{StartToCloseTimeout: 10 * time.Second}
     ctx = workflow.WithActivityOptions(ctx, ao)
@@ -10005,9 +9923,7 @@ func Activity(ctx context.Context, name string) (string, error) {
 }
 ```
 
-**Resonate** — `example-hello-world-go/main.go`:
-
-```go
+```go title="Resonate — example-hello-world-go/main.go"
 func greet(_ *resonate.Context, args GreetArgs) (string, error) {
     return fmt.Sprintf("hello, %s!", args.Name), nil
 }
@@ -10468,16 +10384,12 @@ Temporal accepts human strings (`'30 days'`) or a `timedelta`. Resonate's units 
 
 
 
-**Temporal** — `samples-python/sleep_for_days/workflows.py`:
-
-```python
+```python title="Temporal — samples-python/sleep_for_days/workflows.py"
 # raced against a completion signal inside asyncio.wait(...):
 await workflow.sleep(timedelta(days=30))   # timedelta
 ```
 
-**Resonate** — `example-durable-sleep-py/worker.py`:
-
-```python
+```python title="Resonate — example-durable-sleep-py/worker.py"
 @resonate.register
 def sleeping_workflow(ctx: Context, wf_id: str, secs: float):
     yield ctx.sleep(secs)                   # seconds (float)
@@ -10490,15 +10402,11 @@ See it in action: [example-durable-sleep-py](https://github.com/resonatehq-examp
 
 
 
-**Temporal** — `samples-typescript/sleep-for-days/src/workflows.ts`:
-
-```typescript
+```typescript title="Temporal — samples-typescript/sleep-for-days/src/workflows.ts"
 await Promise.race([sleep('30 days'), condition(() => isComplete)]);
 ```
 
-**Resonate** — `example-durable-sleep-ts/worker.ts`:
-
-```typescript
+```typescript title="Resonate — example-durable-sleep-ts/worker.ts"
 function* sleepingWorkflow(ctx: Context, ms: number) {
   yield* ctx.sleep(ms);                     // milliseconds
   return `Slept for ${ms / 1000} seconds`;
@@ -10511,9 +10419,7 @@ See it in action: [example-durable-sleep-ts](https://github.com/resonatehq-examp
 
 
 
-**Temporal** — `sdk-rust/crates/sdk/examples/timer_examples/workflows.rs`:
-
-```rust
+```rust title="Temporal — sdk-rust/crates/sdk/examples/timer_examples/workflows.rs"
 #[run]
 pub async fn run(ctx: &mut WorkflowContext<Self>) -> WorkflowResult<String> {
     ctx.timer(Duration::from_secs(1)).await;   // durable timer
@@ -10521,9 +10427,7 @@ pub async fn run(ctx: &mut WorkflowContext<Self>) -> WorkflowResult<String> {
 }
 ```
 
-**Resonate** — `example-durable-sleep-rs/src/bin/worker.rs`:
-
-```rust
+```rust title="Resonate — example-durable-sleep-rs/src/bin/worker.rs"
 #[resonate::function]
 async fn sleeping_workflow(ctx: &Context, secs: u64) -> Result<String> {
     ctx.sleep(Duration::from_secs(secs)).await?;   // std::time::Duration
@@ -10537,18 +10441,14 @@ See it in action: [example-durable-sleep-rs](https://github.com/resonatehq-examp
 
 
 
-**Temporal** — `samples-go/sleep-for-days/sleepfordays_workflow.go`:
-
-```go
+```go title="Temporal — samples-go/sleep-for-days/sleepfordays_workflow.go"
 selector := workflow.NewSelector(ctx)
 selector.AddFuture(workflow.NewTimer(ctx, time.Hour*24*30), func(f workflow.Future) {})
 selector.AddReceive(sigChan, func(c workflow.ReceiveChannel, more bool) { isComplete = true })
 selector.Select(ctx)
 ```
 
-**Resonate** — `example-durable-sleep-go/main.go`:
-
-```go
+```go title="Resonate — example-durable-sleep-go/main.go"
 func sleepingWorkflow(ctx *resonate.Context, args SleepArgs) (string, error) {
     d := time.Duration(args.Secs) * time.Second
     f, err := ctx.Sleep(d)                   // time.Duration
@@ -10580,9 +10480,7 @@ The non-blocking spawn primitive's name — TS `ctx.beginRun`, Python `ctx.rfi`,
 
 
 
-**Temporal** — `samples-python/hello/hello_parallel_activity.py`:
-
-```python
+```python title="Temporal — samples-python/hello/hello_parallel_activity.py"
 results = await asyncio.gather(
     workflow.execute_activity(say_hello_activity, "user1", start_to_close_timeout=timedelta(seconds=5)),
     workflow.execute_activity(say_hello_activity, "user2", start_to_close_timeout=timedelta(seconds=5)),
@@ -10590,9 +10488,7 @@ results = await asyncio.gather(
 )
 ```
 
-**Resonate** — `example-fan-out-fan-in-py/workflow.py`:
-
-```python
+```python title="Resonate — example-fan-out-fan-in-py/workflow.py"
 # fan-out: rfi() returns a handle immediately
 email_p = yield ctx.rfi(send_email, event).options(id=f"{ctx.id}.email")
 sms_p   = yield ctx.rfi(send_sms, event).options(id=f"{ctx.id}.sms")
@@ -10607,17 +10503,13 @@ See it in action: [example-fan-out-fan-in-py](https://github.com/resonatehq-exam
 
 
 
-**Temporal** — `samples-typescript/child-workflows/src/workflows.ts`:
-
-```typescript
+```typescript title="Temporal — samples-typescript/child-workflows/src/workflows.ts"
 const responseArray = await Promise.all(
   names.map((name) => executeChild(childWorkflow, { args: [name] })),
 );
 ```
 
-**Resonate** — `example-fan-out-fan-in-ts/src/workflow.ts`:
-
-```typescript
+```typescript title="Resonate — example-fan-out-fan-in-ts/src/workflow.ts"
 // fan-out: beginRun returns a future immediately
 const emailFuture = yield* ctx.beginRun(sendEmail, event);
 const smsFuture   = yield* ctx.beginRun(sendSms, event);
@@ -10633,9 +10525,7 @@ See it in action: [example-fan-out-fan-in-ts](https://github.com/resonatehq-exam
 
 **Temporal Rust has no dedicated fan-out sample** — its `child_workflows` example starts children sequentially. The Resonate Rust equivalent fans out with `.spawn()`:
 
-**Resonate** — `example-fan-out-fan-in-rs/src/main.rs`:
-
-```rust
+```rust title="Resonate — example-fan-out-fan-in-rs/src/main.rs"
 // fan-out: .spawn() returns a handle immediately
 let h1 = ctx.run(process_item, items[0].clone()).spawn().await?;
 let h2 = ctx.run(process_item, items[1].clone()).spawn().await?;
@@ -10650,9 +10540,7 @@ See it in action: [example-fan-out-fan-in-rs](https://github.com/resonatehq-exam
 
 
 
-**Temporal** — `samples-go/splitmerge-future/splitmerge_workflow.go`:
-
-```go
+```go title="Temporal — samples-go/splitmerge-future/splitmerge_workflow.go"
 var results []workflow.Future
 for i := 0; i < processorCount; i++ {                    // fan-out
     results = append(results, workflow.ExecuteActivity(ctx, ChunkProcessingActivity, i+1))
@@ -10663,9 +10551,7 @@ for i := 0; i < processorCount; i++ {                    // fan-in
 }
 ```
 
-**Resonate** — `example-fan-out-fan-in-go/main.go`:
-
-```go
+```go title="Resonate — example-fan-out-fan-in-go/main.go"
 futures := make([]*resonate.Future, 0, len(args.Channels))
 for _, ch := range args.Channels {                       // fan-out
     f, _ := ctx.RPC("send", SendArgs{Channel: ch, Message: args.Message})
@@ -10701,9 +10587,7 @@ async def workflow_compensation(self):
     )
 ```
 
-**Resonate** — `example-money-transfer-py/main.py`:
-
-```python
+```python title="Resonate — example-money-transfer-py/main.py"
 def transfer_money(ctx, transfer_id, source, target, amount, *, simulate_credit_failure=False):
     yield ctx.run(apply_entry, f"{transfer_id}-debit", source, -amount, "debit")
     try:
@@ -10724,9 +10608,7 @@ See it in action: [example-money-transfer-py](https://github.com/resonatehq-exam
 
 
 
-**Temporal** — `samples-typescript/saga/src/workflows.ts`:
-
-```typescript
+```typescript title="Temporal — samples-typescript/saga/src/workflows.ts"
 const compensations: Compensation[] = [];
 try {
   await addAddress({ accountId, address });
@@ -10741,9 +10623,7 @@ try {
 }
 ```
 
-**Resonate** — `example-saga-booking-ts/src/workflow.ts`:
-
-```typescript
+```typescript title="Resonate — example-saga-booking-ts/src/workflow.ts"
 let flightId: string | undefined;
 let hotelId: string | undefined;
 try {
@@ -10767,9 +10647,7 @@ See it in action: [example-saga-booking-ts](https://github.com/resonatehq-exampl
 
 
 
-**Temporal** — `sdk-rust/crates/sdk/examples/saga/workflows.rs`:
-
-```rust
+```rust title="Temporal — sdk-rust/crates/sdk/examples/saga/workflows.rs"
 #[run]
 pub async fn run(ctx: &mut WorkflowContext<Self>, trip_id: String) -> WorkflowResult<Vec<String>> {
     let mut saga = Saga::new(ctx, activity_opts());
@@ -10781,9 +10659,7 @@ pub async fn run(ctx: &mut WorkflowContext<Self>, trip_id: String) -> WorkflowRe
 // book_trip: saga.step(book_hotel, …, cancel_hotel).await? — one step + compensation per booking
 ```
 
-**Resonate** — `example-money-transfer-rs/src/main.rs`:
-
-```rust
+```rust title="Resonate — example-money-transfer-rs/src/main.rs"
 #[resonate::function]
 async fn transfer_money(ctx: &Context, args: TransferArgs) -> Result<TransferResult> {
     // Step 1 — debit the source (durable checkpoint).
@@ -10870,9 +10746,7 @@ For bounded loops, the Resonate example is a plain `while`/`for` — no `continu
 
 
 
-**Temporal** — `samples-typescript/continue-as-new/src/workflows.ts`:
-
-```typescript
+```typescript title="Temporal — samples-typescript/continue-as-new/src/workflows.ts"
 export async function loopingWorkflow(iteration = 0): Promise<void> {
   if (iteration === 10) return;
   await sleep(1000);
@@ -10880,9 +10754,7 @@ export async function loopingWorkflow(iteration = 0): Promise<void> {
 }
 ```
 
-**Resonate** — `example-infinite-workflow-ts/src/workflow.ts`:
-
-```typescript
+```typescript title="Resonate — example-infinite-workflow-ts/src/workflow.ts"
 function* healthMonitor(ctx: Context, config: MonitorConfig): Generator<any, MonitorResult, any> {
   let iteration = 0;
   // No continueAsNew — Resonate has no history limit.
@@ -10910,9 +10782,7 @@ See it in action: [example-infinite-workflow-ts](https://github.com/resonatehq-e
 
 
 
-**Temporal** — `samples-go/child-workflow-continue-as-new/child_workflow.go`:
-
-```go
+```go title="Temporal — samples-go/child-workflow-continue-as-new/child_workflow.go"
 func SampleChildWorkflow(ctx workflow.Context, totalCount, runCount int) (string, error) {
     if runCount <= 0 {
         return "", errors.New("invalid run count")
@@ -10926,9 +10796,7 @@ func SampleChildWorkflow(ctx workflow.Context, totalCount, runCount int) (string
 }
 ```
 
-**Resonate** — `example-infinite-workflow-go/main.go`:
-
-```go
+```go title="Resonate — example-infinite-workflow-go/main.go"
 func heartbeatWorkflow(ctx *resonate.Context, args WorkflowArgs) (WorkflowResult, error) {
     for i := 0; args.Iterations == 0 || i < args.Iterations; i++ {
         tickF, err := ctx.Run(heartbeatTick, TickArgs{Tick: i + 1})
@@ -10975,9 +10843,7 @@ Temporal's `mutex` sample is ~130 lines across two workflows: a lock-manager wor
 This pattern currently has a Resonate example in TypeScript only.
 
 
-**Temporal** — `samples-typescript/mutex/src/workflows.ts` (excerpt):
-
-```typescript
+```typescript title="Temporal — samples-typescript/mutex/src/workflows.ts (excerpt)"
 export async function lockWorkflow(requests = Array<LockRequest>()): Promise<void> {
   setHandler(lockRequestSignal, (req) => { requests.push(req); });
   while (!workflowInfo().continueAsNewSuggested) {
@@ -10993,9 +10859,7 @@ export async function lockWorkflow(requests = Array<LockRequest>()): Promise<voi
 }
 ```
 
-**Resonate** — `example-distributed-mutex-ts/src/workflow.ts`:
-
-```typescript
+```typescript title="Resonate — example-distributed-mutex-ts/src/workflow.ts"
 function* exclusiveResourceAccess(ctx: Context, resource: string, workers: string[]): Generator<any, MutexResult, any> {
   const results: WorkResult[] = [];
   // The generator IS the lock: each yield* blocks until the previous completes,
@@ -11020,9 +10884,7 @@ Temporal encrypts payloads with a `PayloadCodec` (`encode`/`decode` over `Payloa
 This pattern currently has a Resonate example in TypeScript only.
 
 
-**Temporal** — `samples-typescript/encryption/src/encryption-codec.ts` (excerpt):
-
-```typescript
+```typescript title="Temporal — samples-typescript/encryption/src/encryption-codec.ts (excerpt)"
 export class EncryptionCodec implements PayloadCodec {
   async encode(payloads: Payload[]): Promise<Payload[]> {
     return Promise.all(payloads.map(async (payload) => ({
@@ -11037,9 +10899,7 @@ export class EncryptionCodec implements PayloadCodec {
 }
 ```
 
-**Resonate** — `example-encryption-ts/src/encryptor.ts` + `index.ts`:
-
-```typescript
+```typescript title="Resonate — example-encryption-ts/src/encryptor.ts + index.ts"
 export class AesGcmEncryptor implements Encryptor {
   encrypt(plaintext: Value): Value {
     if (!plaintext.data) return plaintext;
@@ -11208,13 +11068,13 @@ Resonate applications, on the other hand, can use multiple Resonate Servers to d
 
     
 
-![Temporal architecture](/images/temporal-system-arch.svg)
+
 
     
 
     
 
-![Resonate architecture](/images/resonate-system-arch.svg)
+
 
     
 
