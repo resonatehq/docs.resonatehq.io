@@ -32,9 +32,11 @@ function extractFrontmatter(content) {
   return { title, description, body };
 }
 
-function stripJsx(content) {
-  // Remove JSX component tags but keep their text children.
-  return content
+function stripProse(text) {
+  // Remove JSX component tags but keep their text children. Only ever run on
+  // prose segments — never on code (see stripJsx), or it would eat angle
+  // brackets that are legitimate syntax (e.g. Rust generics).
+  return text
     // Components that carry link content the LLM corpus needs must be expanded
     // to markdown BEFORE the generic tag strip below, or they vanish entirely.
     .replace(
@@ -43,7 +45,29 @@ function stripJsx(content) {
         `See it in action: [${repo}](${href ?? `https://github.com/resonatehq-examples/${repo}`})`
     )
     .replace(/<\/?[A-Z][A-Za-z]*[^>]*>/g, "")
-    .replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, "")
+    .replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, "");
+}
+
+function stripJsx(content) {
+  // Strip JSX from prose while preserving code verbatim. Code such as Rust
+  // generics — WorkflowResult<Vec<String>> or WorkflowContext<Self> — would
+  // otherwise be mangled by the tag regex (anything matching <[A-Z]...> gets
+  // deleted), corrupting the corpus.
+  //
+  // Replace every fenced code block (```...```) and inline code span (`...`)
+  // with an opaque placeholder BEFORE running the JSX stripper, then restore
+  // them after. Protecting code first (rather than splitting prose on code
+  // boundaries) keeps JSX tags intact even when an attribute value itself
+  // contains backticks — e.g. <Callout title="`localnet` requires ...">, which
+  // a split-on-code approach would tear apart so the tag could no longer be
+  // matched and stripped.
+  const code = [];
+  const protectedContent = content.replace(
+    /```[\s\S]*?```|`[^`\n]*`/g,
+    (match) => `\x00CODE${code.push(match) - 1}\x00`
+  );
+  return stripProse(protectedContent)
+    .replace(/\x00CODE(\d+)\x00/g, (_m, i) => code[Number(i)])
     .trim();
 }
 
