@@ -369,7 +369,7 @@ You'll see `pending` until the worker completes, then `resolved` with the result
 
 ## Try the dedup story
 
-Call `/begin` twice with the same `id`. Resonate doesn't run the work twice — the second call reconnects to the in-flight execution and the polling endpoint returns the same eventual result. This is the same idempotency primitive that makes safe retries cheap.
+Call `/begin` twice with the same `id`. Resonate doesn't run the work twice — the second call reconnects to the in-flight execution and the polling endpoint returns the same eventual result. This is the same idempotency primitive that makes safe retries inexpensive.
 
 ## Related
 
