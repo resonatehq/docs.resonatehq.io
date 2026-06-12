@@ -1,0 +1,29 @@
+# gitleaks configuration for docs.resonatehq.io
+#
+# Extends the built-in ruleset and allowlists the placeholder connection
+# strings that recur throughout the documentation examples. These are not
+# real credentials — they use literal <USER>/<PASSWORD> placeholders — but
+# generic database-URL rules tend to flag them.
+title = "docs.resonatehq.io"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documentation example placeholders, not real secrets"
+# Match against the whole line — a rule's extracted "secret" is usually only the
+# credential token, so a full connection-string regex must target the line.
+regexTarget = "line"
+regexes = [
+  # postgres://<USER>:<PASSWORD>@host:5432/resonate and friends
+  '''postgres(ql)?://<USER>:<PASSWORD>@''',
+  # any connection string whose credentials are angle-bracket placeholders
+  '''://<[A-Z_]+>:<[A-Z_]+>@''',
+]
+paths = [
+  # Build artifacts / dependencies — never part of the committed source.
+  # Next.js bakes preview-mode signing keys into .next/, which trip generic
+  # secret rules; these are not real, checked-in credentials.
+  '''^\.next/''',
+  '''^node_modules/''',
+]
