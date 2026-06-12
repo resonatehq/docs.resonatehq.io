@@ -295,23 +295,26 @@ let result = handle.result().await?;
 The `.promises` sub-client lets you work directly with durable promises — useful for human-in-the-loop workflows, external coordination, and any pattern where you need to create a promise now and settle it later from a different process.
 
 ```rust
+use resonate::types::Value;
 use serde_json::json;
+use std::collections::HashMap;
 
 // Create a promise with a timeout, initial parameter, and tags
 // timeout_at is i64 milliseconds since the Unix epoch
-resonate.promises.create("promise-id", timeout_at, json!({}), json!({})).await?;
+// param is a Value; tags are a HashMap<String, String>
+resonate.promises.create("promise-id", timeout_at, Value::from_serializable(json!({}))?, HashMap::new()).await?;
 
 // Get a promise by ID
 let promise = resonate.promises.get("promise-id").await?;
 
 // Resolve a promise (value is serialized into the promise record)
-resonate.promises.resolve("promise-id", json!("approved")).await?;
+resonate.promises.resolve("promise-id", Value::from_serializable(json!("approved"))?).await?;
 
 // Reject a promise
-resonate.promises.reject("promise-id", json!("denied")).await?;
+resonate.promises.reject("promise-id", Value::from_serializable(json!("denied"))?).await?;
 
 // Cancel a promise (settles as "rejected_canceled")
-resonate.promises.cancel("promise-id", json!(null)).await?;
+resonate.promises.cancel("promise-id", Value::from_serializable(json!(null))?).await?;
 ```
 
 ### `.stop()`
