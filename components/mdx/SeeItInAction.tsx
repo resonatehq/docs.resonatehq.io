@@ -17,7 +17,7 @@ export default function SeeItInAction({ repo, href }: SeeItInActionProps) {
   // the `.docs-content a` prose rule (specificity 0,1,1) otherwise overrides the
   // utility colors (0,1,0) and this renders as a teal underlined body link.
   return (
-    <span className="not-prose mt-3 block">
+    <span className="not-prose mt-3 block pl-3">
       <a
         href={url}
         target="_blank"
