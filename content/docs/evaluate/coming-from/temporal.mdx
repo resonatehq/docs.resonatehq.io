@@ -440,9 +440,7 @@ In Temporal, you can use Signals to unblock a Workflow Execution with input from
 
 <TabItem value="python">
 
-`samples-python/hello/hello_signal.py`:
-
-```python
+```python title="Temporal — samples-python/hello/hello_signal.py"
 @workflow.defn
 class GreetingWorkflow:
     @workflow.run
@@ -460,15 +458,15 @@ class GreetingWorkflow:
         self._exit = True
 ```
 
-Unblock it externally: `await handle.signal(GreetingWorkflow.exit)`.
+```python title="Unblock it externally"
+await handle.signal(GreetingWorkflow.exit)
+```
 
 </TabItem>
 
 <TabItem value="typescript">
 
-`samples-typescript/signals-queries/src/workflows.ts`:
-
-```typescript
+```typescript title="Temporal — samples-typescript/signals-queries/src/workflows.ts"
 export const unblockSignal = wf.defineSignal('unblock');
 export const isBlockedQuery = wf.defineQuery<boolean>('isBlocked');
 
@@ -480,15 +478,15 @@ export async function unblockOrCancel(): Promise<void> {
 }
 ```
 
-Unblock it externally: `await handle.signal(unblockSignal);`.
+```typescript title="Unblock it externally"
+await handle.signal(unblockSignal);
+```
 
 </TabItem>
 
 <TabItem value="rust">
 
-`sdk-rust/crates/sdk/examples/message_passing/workflows.rs`:
-
-```rust
+```rust title="Temporal — sdk-rust/crates/sdk/examples/message_passing/workflows.rs"
 #[workflow]
 pub struct MessagePassingWorkflow { counter: i32 }
 
@@ -514,9 +512,7 @@ equivalent is in the tabs below.
 
 <TabItem value="go">
 
-`samples-go/await-signals/await_signals_workflow.go` (excerpt):
-
-```go
+```go title="Temporal — samples-go/await-signals/await_signals_workflow.go (excerpt)"
 func AwaitSignalsWorkflow(ctx workflow.Context) (err error) {
     var a AwaitSignals
     workflow.Go(ctx, a.Listen)                     // signal handlers in a goroutine
