@@ -40,13 +40,7 @@ npm install @resonatehq/sdk
 
 <TabItem value="python">
 
-<Callout type="note" title="The Resonate Python SDK requires **Python ≥3.12**.">
-
-</Callout>
-
-<Callout type="caution" title="Legacy server required">
-
-The Python SDK (v0.6.7) currently requires the legacy Resonate server (Go-based). It is not yet compatible with the current-generation Rust server that `resonate dev` starts. See the [Python SDK guide](/develop/python) for legacy server setup.
+<Callout type="note" title="The Resonate Python SDK (v0.7.0) requires **Python ≥3.12**.">
 
 </Callout>
 
@@ -120,28 +114,37 @@ resonate.register(countdown);
 <TabItem value="python">
 
 ```python title="countdown.py"
-from resonate import Resonate, Context
-from threading import Event
+import asyncio
+from datetime import timedelta
 
-def countdown(ctx: Context, count: int, delay: int):
+from resonate.context import Context
+from resonate.resonate import Resonate
+
+
+async def countdown(ctx: Context, count: int, delay: int) -> None:
     for i in range(count, 0, -1):
         # Run a function, persist its result
-        yield ctx.run(ntfy, i)
+        await ctx.run(ntfy, i)
         # Sleep
-        yield ctx.sleep(delay)
-    print("Done!")
+        await ctx.sleep(timedelta(seconds=delay))
 
 
-def ntfy(_: Context, i: int):
+async def ntfy(ctx: Context, i: int) -> None:
     print(f"Countdown: {i}")
 
 
-# Instantiate Resonate
-resonate = Resonate.remote()
-# Register the function
-resonate.register(countdown)
-resonate.start() # Start Resonate threads
-Event().wait()  # Keep the main thread alive
+async def main() -> None:
+    # Instantiate Resonate
+    resonate = Resonate(url="http://localhost:8001")
+    # Register the functions
+    resonate.register(countdown)
+    resonate.register(ntfy)
+    # Keep the worker alive to receive invocations
+    await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 [Working example](https://github.com/resonatehq-examples/example-quickstart-py)
@@ -347,7 +350,6 @@ Countdown: 4
 Countdown: 3
 Countdown: 2
 Countdown: 1
-Done!
 ```
 
 </TabItem>
