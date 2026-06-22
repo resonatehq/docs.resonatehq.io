@@ -21,7 +21,7 @@
 - [Constraints and gotchas](/develop/constraints): Understanding the rules and limitations when building with Resonate.
 - [Go SDK skills](/develop/go): APIs that stay simple, even when your use cases aren't
 - [Develop with Resonate](/develop): Build distributed applications without the distributed systems complexity.
-- [Python SDK skills](/develop/python): APIs that stay simple, even when your use cases aren’t
+- [Python SDK skills](/develop/python): APIs that stay simple, even when your use cases aren't
 - [Rust SDK skills](/develop/rust): APIs that stay simple, even when your use cases aren't
 - [TypeScript SDK skills](/develop/typescript): APIs that stay simple, even when your use cases aren’t
 - [BYODE](/evaluate/coming-from/byode): Compare Resonate with building your own durable execution stack.

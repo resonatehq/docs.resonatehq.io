@@ -16,7 +16,7 @@ keywords:
 A workflow blocks on a durable promise, prints a callback URL, and resumes the moment a human resolves it — from any process, any machine, any time.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development — published on crates.io as `resonate-sdk`; this example pulls it as a git dependency from `resonate-sdk-rs` to track `main`.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development — published on crates.io as `resonate-sdk`; this example pulls it as a git dependency from `resonate-sdk-rs` to track `main`.
 </Callout>
 
 <CloneRepoGrid>
@@ -87,19 +87,40 @@ resonate.register("foo-workflow", fooWorkflow);
 <TabItem value="python">
 
 ```python title="worker.py"
-@resonate.register()
-def foo(ctx, workflow_id):
+from __future__ import annotations
+
+import asyncio
+import os
+from typing import TYPE_CHECKING
+
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url, group="workers")
+
+
+async def send_email(ctx: Context, promise_id: str) -> None:
+    print(f"workflow blocked, waiting on human interaction (promise id: {promise_id!r})")
+
+
+async def foo(ctx: Context, workflow_id: str):
     # Latent durable promise — resolved externally.
-    blocking_promise = yield ctx.promise()
+    blocking_promise = ctx.promise()
+    promise_id = await blocking_promise.id()
 
     # Make the promise ID reachable from outside — email, webhook, log, etc.
-    yield ctx.lfc(send_email, blocking_promise.id)
-    print(f"workflow {workflow_id} blocked, waiting on human interaction")
+    await ctx.run(send_email, promise_id)
 
     # Suspend until the promise resolves. Survives crashes.
-    yield blocking_promise
+    data = await blocking_promise
     print(f"workflow {workflow_id} unblocked, promise resolved")
     return {"message": f"workflow {workflow_id} completed"}
+
+
+resonate.register(foo)
 ```
 
 </TabItem>
@@ -171,22 +192,34 @@ app.get("/unblock-workflow", async (req, res) => {
 <TabItem value="python">
 
 ```python title="gateway.py"
+from __future__ import annotations
+
+import asyncio
+import os
+
+from flask import Flask, jsonify, request
+from resonate.resonate import Resonate
+from resonate.types import Value
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url, group="gateway")
+app = Flask(__name__)
+
+
 @app.route("/start-workflow", methods=["POST"])
 def start_workflow():
     data = request.get_json()
     # Same workflow_id reconnects to a PENDING execution rather than starting a new one.
-    handle = resonate.options(target="poll://any@worker").begin_rpc(
+    handle = resonate.options(target="poll://any@workers").rpc(
         data["workflow_id"], "foo", data["workflow_id"]
     )
-    if handle.done():
-        return jsonify({"message": handle.result()})
     return jsonify({"message": f"workflow {data['workflow_id']} started"}), 200
 
 
 @app.route("/unblock-workflow", methods=["GET"])
 def unblock_workflow():
     promise_id = request.args.get("promise_id")
-    resonate.promises.resolve(id=promise_id, ikey=promise_id)
+    asyncio.run(resonate.promises.resolve(promise_id, Value(data="human_approval")))
     return jsonify({"message": "workflow unblocked"}), 200
 ```
 

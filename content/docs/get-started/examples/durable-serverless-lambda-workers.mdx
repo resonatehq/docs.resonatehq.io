@@ -16,7 +16,7 @@ keywords:
 A Lambda function behind API Gateway acts as a stateless trigger. `POST /process-document` fires a durable Resonate workflow and returns `202` immediately. The workflow itself — download, OCR, LLM analysis, storage, notification — runs on a Resonate worker that doesn't share Lambda's 15-minute ceiling.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust example repo is forthcoming.
 </Callout>
 
 <CloneRepoGrid>
@@ -96,18 +96,24 @@ async function handleStatus(event: APIGatewayEvent) {
 <TabItem value="python">
 
 ```python title="lambda_function.py"
+from __future__ import annotations
+
+import asyncio
 import json
-from resonate import Resonate
+import os
+
+from resonate.resonate import Resonate
 
 # Module-level: created once per cold start, reused across warm invocations.
-resonate = Resonate.remote(group="gateway")  # talks to a remote Resonate Server
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url, group="gateway")
 
 
 def lambda_handler(event, context):
     if event["path"] == "/process-document" and event["httpMethod"] == "POST":
         job = json.loads(event["body"])
-        # begin_rpc dispatches to the worker group and returns immediately.
-        resonate.options(target="poll://any@worker").begin_rpc(
+        # rpc dispatches to the worker group and returns immediately.
+        resonate.options(target="poll://any@worker").rpc(
             f"doc/{job['jobId']}", "process_document", job,
         )
         return {"statusCode": 202,
@@ -115,12 +121,16 @@ def lambda_handler(event, context):
 
     if event["path"].startswith("/status/"):
         job_id = event["pathParameters"]["jobId"]
-        handle = resonate.get(f"doc/{job_id}")
-        if handle.done():
+        handle = resonate.options(target="poll://any@worker").rpc(
+            f"doc/{job_id}", "process_document", {},
+        )
+        try:
+            result = asyncio.run(asyncio.wait_for(handle.result(), timeout=0.1))
             return {"statusCode": 200,
-                    "body": json.dumps({"status": "done", "result": handle.result()})}
-        return {"statusCode": 200,
-                "body": json.dumps({"status": "processing", "jobId": job_id})}
+                    "body": json.dumps({"status": "done", "result": result})}
+        except asyncio.TimeoutError:
+            return {"statusCode": 200,
+                    "body": json.dumps({"status": "processing", "jobId": job_id})}
 ```
 
 </TabItem>
@@ -161,20 +171,35 @@ export function* processDocument(ctx: Context, job: DocumentJob) {
 <TabItem value="python">
 
 ```python title="worker.py"
-from resonate import Context, Resonate
+from __future__ import annotations
 
-resonate = Resonate.remote(group="worker")
+import asyncio
+import os
+from typing import TYPE_CHECKING
+
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url, group="worker")
 
 
-@resonate.register
-def process_document(ctx: Context, job: dict):
+async def process_document(ctx: Context, job: dict):
     # Each ctx.run is a checkpoint. Crash mid-step, resume from the next.
-    page_count = yield ctx.run(download_document, job)
-    text = yield ctx.run(extract_text, job, page_count)
-    analysis = yield ctx.run(analyze_document, job, text)
-    stored_at = yield ctx.run(store_results, job, analysis)
-    notified_at = yield ctx.run(notify_requester, job, stored_at)
+    page_count = await ctx.run(download_document, job)
+    text = await ctx.run(extract_text, job, page_count)
+    analysis = await ctx.run(analyze_document, job, text)
+    stored_at = await ctx.run(store_results, job, analysis)
+    notified_at = await ctx.run(notify_requester, job, stored_at)
     return {"jobId": job["jobId"], **analysis, "stored_at": stored_at, "notified_at": notified_at}
+
+
+resonate.register(process_document)
+
+if __name__ == "__main__":
+    asyncio.get_event_loop().run_forever()
 ```
 
 </TabItem>
@@ -226,9 +251,9 @@ cd example-lambda-workers-py
 uv sync
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminal 2 — worker"

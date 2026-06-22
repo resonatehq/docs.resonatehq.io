@@ -15,7 +15,7 @@ keywords:
 A workflow yields `ctx.sleep` and the runtime suspends it. Hours, days, or weeks later the worker wakes the workflow up exactly where it stopped — no cron, no scheduler, no external state.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development.
 </Callout>
 
 <CloneRepoGrid>
@@ -88,22 +88,32 @@ resonate.register("sleepingWorkflow", sleepingWorkflow);
 <TabItem value="python">
 
 ```python title="worker.py"
-from resonate import Resonate, Context
-from threading import Event
+from __future__ import annotations
 
-resonate = Resonate.remote(group="worker")
+import asyncio
+import os
+from datetime import timedelta
+from typing import TYPE_CHECKING
+
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url, group="worker")
 
 
-@resonate.register
-def sleeping_workflow(ctx: Context, wf_id: str, secs: float):
+async def sleeping_workflow(ctx: Context, wf_id: str, secs: float):
     print(f"Workflow {wf_id} starting, will sleep for {secs} seconds.")
-    yield ctx.sleep(secs)
+    await ctx.sleep(timedelta(seconds=secs))
     return f"Workflow {wf_id} completed after sleeping for {secs} seconds."
 
 
-resonate.start()
-print("worker is running...")
-Event().wait()
+resonate.register(sleeping_workflow)
+
+if __name__ == "__main__":
+    asyncio.get_event_loop().run_forever()
 ```
 
 </TabItem>
@@ -164,14 +174,29 @@ await resonate.stop();
 <TabItem value="python">
 
 ```python title="client.py"
-from resonate import Resonate
+from __future__ import annotations
 
-resonate = Resonate.remote(group="client")
+import asyncio
+import os
 
-handle = resonate.options(target="poll://any@worker").begin_rpc(
-    "sleep-workflow-1", func="sleeping_workflow", wf_id="sleep-workflow-1", secs=5.0,
-)
-print(handle.result())
+from resonate.resonate import Resonate
+
+
+async def main() -> None:
+    url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+    resonate = Resonate(url=url, group="client")
+    try:
+        handle = resonate.options(target="poll://any@worker").rpc(
+            "sleep-workflow-1", "sleeping_workflow", "sleep-workflow-1", 5.0,
+        )
+        result = await handle.result()
+        print(result)
+    finally:
+        await resonate.stop()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 </TabItem>
@@ -252,9 +277,9 @@ cd example-durable-sleep-py
 uv sync
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminal 2 — worker"

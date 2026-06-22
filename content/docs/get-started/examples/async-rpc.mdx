@@ -16,7 +16,7 @@ keywords:
 A gateway calls service A, which calls service B, which calls service C. Each step uses Resonate's remote function invocation APIs, so the entire chain is durable — a crash on any service resumes the call without re-running prior steps.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current).
 </Callout>
 
 <CloneRepoGrid>
@@ -41,9 +41,8 @@ Cross-service calls inside a request flow are where most distributed systems fal
 Resonate exposes two layers of remote function invocation:
 
 - **`resonate.rpc(...)`** — *ephemeral to durable*. Called from a regular process (like an HTTP handler). The receiving function is durable; the caller is not.
-- **`ctx.rfc(...)`** / **`ctx.rfi(...)`** — *durable to durable*. Called from inside another durable function. Both ends checkpoint, so the chain stays resumable end-to-end.
-
-`rfc` (Remote Function Call) blocks the caller until the result returns. `rfi` (Remote Function Invocation) returns a handle immediately so the caller can do other work and await later.
+- **`ctx.options(...).rpc(...)`** — *durable to durable*. Called from inside another durable function. Both ends checkpoint, so the chain stays resumable end-to-end.
+- **`ctx.detached(...)`** — fire-and-forget dispatch from inside a durable function. Returns a promise handle without blocking on the result.
 
 ## Code walkthrough
 
@@ -86,9 +85,10 @@ app.post("/await-chain", async (_req, res) => {
 def await_chain_route_handler():
     promise_id = "await-chain"
     # Ephemeral-to-durable: HTTP handler calls into a durable service.
-    handle = resonate.options(target="poll://service-a").rpc(promise_id, "foo")
+    handle = resonate.options(target="poll://any@service-a").rpc(promise_id, "foo")
     # Block the HTTP response on the chain's result.
-    message = handle.result()
+    import asyncio
+    message = asyncio.run(handle.result())
     return jsonify({"message": message}), 200
 ```
 
@@ -96,7 +96,7 @@ def await_chain_route_handler():
 
 </Tabs>
 
-`resonate.beginRpc` (TypeScript) / `resonate.rpc` (Python) dispatches `foo` on whichever process is registered as `service-a`. The promise ID makes the call idempotent — re-running the same handler with the same ID reconnects to the in-flight execution rather than starting a duplicate chain.
+`resonate.beginRpc` (TypeScript) / `resonate.options(...).rpc(...)` (Python) dispatches `foo` on whichever process is registered as `service-a`. The promise ID makes the call idempotent — re-running the same handler with the same ID reconnects to the in-flight execution rather than starting a duplicate chain.
 
 ### Service A → Service B (durable → durable)
 
@@ -148,33 +148,36 @@ yield* ctx.detached("qux", ctx.options({ target: "poll://any@service-d" }));
 <TabItem value="python">
 
 ```python title="src/service_a.py"
-@resonate.register
-def foo(ctx):
-    # ctx.rfc dispatches to service-b and waits for the result.
+async def foo(ctx: Context) -> int:
+    # ctx.options(...).rpc dispatches to service-b and waits for the result.
     # Both sides are durable; the call resumes if either process crashes.
-    result = yield ctx.rfc("bar").options(target="poll://service-b")
+    result = await ctx.options(target="poll://any@service-b").rpc("bar")
     return result + 1
+
+resonate.register("foo", foo)
 ```
 
 ```python title="src/service_b.py"
-@resonate.register
-def bar(ctx):
-    result = yield ctx.rfc("baz").options(target="poll://service-c")
+async def bar(ctx: Context) -> int:
+    result = await ctx.options(target="poll://any@service-c").rpc("baz")
     return result + 1
+
+resonate.register("bar", bar)
 ```
 
-For fire-and-forget calls — kicking off work without blocking on its result — swap `ctx.rfc` for `ctx.rfi`:
+For fire-and-forget calls — kicking off work without blocking on its result — use `ctx.detached`:
 
 ```python
-# Detached: dispatch and don't wait.
-ctx.rfi("qux").options(target="poll://service-d")
+# Detached: dispatch and don't wait. Returns the promise handle.
+audit_future = ctx.detached("qux", target="poll://any@service-d")
+audit_id = await audit_future.id()
 ```
 
 </TabItem>
 
 </Tabs>
 
-The `ctx.rpc` / `ctx.rfc` call inside a durable function is the durable equivalent of `await someService.bar()`. The result is checkpointed, so a worker that completes `bar` and then dies still passes its result back when the chain resumes.
+The `ctx.options(...).rpc(...)` call inside a durable function is the durable equivalent of `await someService.bar()`. The result is checkpointed, so a worker that completes `bar` and then dies still passes its result back when the chain resumes.
 
 ## Run it locally
 
@@ -225,9 +228,9 @@ cd example-async-rpc-py
 uv sync
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 Start each service in its own terminal:
@@ -263,4 +266,4 @@ Trigger the chain, then kill `service-b` while `service-c` is still working. Res
 ## Related
 
 - [Async HTTP API endpoints](/get-started/examples/async-http-api-endpoints) — the same ephemeral-to-durable pattern, focused on the HTTP boundary.
-- [Human-in-the-loop](/get-started/examples/human-in-the-loop) — `ctx.promise()` is the suspend-and-resume cousin of `ctx.rfc`.
+- [Human-in-the-loop](/get-started/examples/human-in-the-loop) — `ctx.promise()` is the suspend-and-resume cousin of `ctx.options(...).rpc(...)`.

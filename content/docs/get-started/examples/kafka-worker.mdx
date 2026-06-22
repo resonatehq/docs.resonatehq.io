@@ -16,7 +16,7 @@ keywords:
 A consumer pulls messages from a Kafka topic and dispatches each one through a durable Resonate workflow. Per-message state lives in durable promises, so a worker that dies mid-batch resumes cleanly without redoing completed steps.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development.
 </Callout>
 
 <Callout type="note" title="Kafka or Redpanda — same code">
@@ -93,33 +93,46 @@ resonate.register("workflow", workflow);
 <TabItem value="python">
 
 ```python title="record_deletor/delete.py"
-from resonate import Resonate
+from __future__ import annotations
+
+import asyncio
 import json
+import os
+from datetime import timedelta
+from typing import TYPE_CHECKING
 
-resonate = Resonate.remote()
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url)
 
 
-def delete_batch(_, record_id, batch_size=10):
+async def delete_batch(ctx: Context, record_id: str, batch_size: int = 10) -> bool:
     # Real work goes here. Returns True if more batches remain.
     print(f"deleting a batch of rows for record {record_id}")
     # ...transient failures throw; durable retry handles them.
     return more_remaining
 
 
-def enqueue(_, msg_id, previous_offset):
+async def enqueue(ctx: Context, msg_id: str, previous_offset: int) -> None:
     # Emit a completion event to the downstream topic.
     payload = json.dumps((msg_id, previous_offset)).encode("utf-8")
     producer.produce("records_that_were_deleted", value=payload)
     producer.flush()
 
 
-@resonate.register
-def workflow(ctx, record_id, offset):
+async def workflow(ctx: Context, record_id: str, offset: int) -> None:
     print(f"processing record {record_id} (offset {offset})")
     # Loop until delete_batch reports no more rows.
-    while (yield ctx.run(delete_batch, record_id)):
-        yield ctx.sleep(5)
-    yield ctx.run(enqueue, record_id, offset)
+    while await ctx.run(delete_batch, record_id):
+        await ctx.sleep(timedelta(seconds=5))
+    await ctx.run(enqueue, record_id, offset)
+
+
+resonate.register(workflow)
 ```
 
 </TabItem>
@@ -180,7 +193,7 @@ await consumer.run({
 
 <TabItem value="python">
 
-```python title="record_deletor/delete.py"
+```python title="record_deletor/consumer.py"
 def consume():
     consumer.subscribe(["records_to_be_deleted"])
     try:
@@ -193,14 +206,9 @@ def consume():
                 record_id = [record_id]
             # The message ID is the workflow ID — same record reconnects
             # to its in-flight execution rather than starting over.
-            _ = workflow.begin_run(record_id[0], record_id[0], msg.offset())
+            resonate.run(record_id[0], workflow, record_id[0], msg.offset())
     finally:
         consumer.close()
-
-
-def main():
-    resonate.start()
-    consume()
 ```
 
 </TabItem>
@@ -229,7 +237,7 @@ while let Some(msg) = consumer.recv().await.ok() {
 
 </Tabs>
 
-`beginRun` / `begin_run` / `.spawn()` is non-blocking — the consumer keeps polling while the workflow runs in the background. The same `recordId` deduplicates retries by design.
+`beginRun` / `resonate.run(...)` / `.spawn()` is non-blocking — the consumer keeps polling while the workflow runs in the background. The same `recordId` deduplicates retries by design.
 
 ## Run it locally
 
@@ -285,9 +293,9 @@ uv sync
 cd redpanda && docker compose up
 ```
 
-```shell title="Terminal 2 — Resonate Server (legacy)"
+```shell title="Terminal 2 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminal 3 — the worker"
