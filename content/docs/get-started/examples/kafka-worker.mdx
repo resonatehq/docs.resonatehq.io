@@ -53,7 +53,7 @@ Each Kafka message becomes the ID of a durable workflow. Resonate runs the workf
 
 ## Code walkthrough
 
-The pattern is a small consume loop that hands each message to `workflow.begin_run`. The workflow itself does the per-message work — here, deleting batches of records until none remain, then emitting a completion event.
+The pattern is a small consume loop that hands each message to a durable workflow run. The workflow itself does the per-message work — here, deleting batches of records until none remain, then emitting a completion event.
 
 ### The durable workflow
 

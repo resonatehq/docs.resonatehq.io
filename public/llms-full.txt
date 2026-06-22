@@ -13478,7 +13478,7 @@ Sequential calls — even three or four — turn into the latency tax you don't 
 
 ## Resonate's solution
 
-Each branch becomes its own durable promise. Spawn them with `beginRun` (TypeScript), `asyncio.gather(ctx.run(...), ...)` (Python), `.spawn()` (Rust), or `ctx.RPC` (Go) — all branches run concurrently. If a single branch fails and retries, the others are already checkpointed; they don't re-execute. Crash recovery only re-runs whatever was in flight when the worker died.
+Each branch becomes its own durable promise. Spawn them with `beginRun` (TypeScript), unawaited `ctx.run(...)` handles (Python), `.spawn()` (Rust), or `ctx.RPC` (Go) — all branches run concurrently. If a single branch fails and retries, the others are already checkpointed; they don't re-execute. Crash recovery only re-runs whatever was in flight when the worker died.
 
 ## Code walkthrough
 
@@ -13526,7 +13526,6 @@ export function* notifyAll(ctx: Context, event: OrderEvent, simulateCrash: boole
 ```python title="workflow.py"
 from __future__ import annotations
 
-import asyncio
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -13536,15 +13535,19 @@ from channels import send_email, send_push, send_slack, send_sms
 
 
 async def notify_all(ctx: Context, event: dict, simulate_crash: bool):
-    # Fan-out: run all 4 channels concurrently, each a durable child.
-    # Fan-in: gather joins when all complete. If push retries, the others
-    # stay checkpointed and do NOT re-send.
-    email, sms, slack, push = await asyncio.gather(
-        ctx.run(send_email, event),
-        ctx.run(send_sms, event),
-        ctx.run(send_slack, event),
-        ctx.run(send_push, event, simulate_crash),
-    )
+    # Fan-out: ctx.run(...) returns a handle immediately, so all four
+    # channels start at once — each is its own durable child.
+    f_email = ctx.run(send_email, event)
+    f_sms = ctx.run(send_sms, event)
+    f_slack = ctx.run(send_slack, event)
+    f_push = ctx.run(send_push, event, simulate_crash)
+
+    # Fan-in: await each handle to collect its result. If push retries, the
+    # others stay checkpointed and do NOT re-send.
+    email = await f_email
+    sms = await f_sms
+    slack = await f_slack
+    push = await f_push
     results = [email, sms, slack, push]
     return {
         "order_id": event["order_id"],
@@ -13553,7 +13556,7 @@ async def notify_all(ctx: Context, event: dict, simulate_crash: bool):
     }
 ```
 
-In v0.7.0, parallel fan-out uses `asyncio.gather` with multiple `ctx.run` calls. Each `ctx.run` is a durable child checkpoint; if push retries, email/SMS/Slack stay checkpointed and do not re-execute.
+In v0.7.0, `ctx.run(...)` returns a handle immediately without blocking, so issuing all four calls first starts every channel concurrently; awaiting each handle then collects the results. Each `ctx.run` is a durable child checkpoint, so if push retries, email/SMS/Slack stay checkpointed and do not re-execute.
 
 
 
@@ -14434,7 +14437,7 @@ Each Kafka message becomes the ID of a durable workflow. Resonate runs the workf
 
 ## Code walkthrough
 
-The pattern is a small consume loop that hands each message to `workflow.begin_run`. The workflow itself does the per-message work — here, deleting batches of records until none remain, then emitting a completion event.
+The pattern is a small consume loop that hands each message to a durable workflow run. The workflow itself does the per-message work — here, deleting batches of records until none remain, then emitting a completion event.
 
 ### The durable workflow
 
