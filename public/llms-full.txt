@@ -5785,7 +5785,7 @@ url: /develop/python
 title: Python SDK skills
 ---
 
-This page reflects `resonate-sdk` v0.6.7 (current on PyPI). APIs are subject to change in future releases.
+This page reflects `resonate-sdk` v0.7.0 (current on PyPI). Python ≥3.12 required. The remote-mode examples below need a running server (`resonate dev`, Rust server v0.9.x+); `Resonate()` without a `url` runs entirely in-process and needs no server.
 
 
 Welcome to the Resonate Python SDK guide!
@@ -5841,21 +5841,18 @@ poetry add resonate-sdk
 
 **How to initialize a Resonate Client.**
 
-There are two ways to initialize Resonate, local and remote.
+There are two ways to initialize Resonate: local (in-process, no server) and remote (connected to a Resonate server).
 
 **Local initialization = zero-dependency development**
 
 Local initialization means that Resonate uses local memory for promise storage.
 
-This is ideal for getting started quickly or for integrating Resonate into an existing application without relying on dependencies.
+This is ideal for getting started quickly or for integrating Resonate into an existing application without relying on external dependencies.
 
 ```py
-from resonate import Resonate
+from resonate.resonate import Resonate
 
 resonate = Resonate()
-
-# or alternatively
-resonate = Resonate.local()
 ```
 
 
@@ -5867,70 +5864,30 @@ This makes it easy to incrementally adopt Resonate into your existing Python app
 
 **Remote initialization**
 
-Remote initialization means that promises are stored remotely, and that the Resonate Client receives messages from a remote source.
-This is how Resonate enables Durable Async RPC for building distributed applications that are reliable and scalable.
-
-The quickest way to get started with Remote initialization is to connect to a locally running instance of a Resonate Server.
+Remote initialization connects to a running Resonate server, enabling durable promise storage and cross-process RPC.
+Start a server locally with `resonate dev`, then connect:
 
 ```py
-from resonate import Resonate
+from resonate.resonate import Resonate
 
-resonate = Resonate.remote()
+resonate = Resonate(url="http://localhost:8001")
 ```
 
-The default configuration uses the Resonate Server as the promise store and uses an HTTP Long Poller as the message transport to receive messages directly from the Resonate Server.
+The `url` parameter takes precedence over the `RESONATE_URL` environment variable, which in turn takes precedence over the `RESONATE_HOST`/`RESONATE_PORT` fallback. If none of these are set, the client runs in local (in-process) mode.
 
-A Resonate Client can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
-The Poller is a great starting place however, as it will long-poll for messages from the Resonate Server without any additional setup.
-
-
-
-
-
-To connect to a specific host and port, pass them explicitly:
+To pass an auth token:
 
 ```py
-from resonate import Resonate
+from resonate.resonate import Resonate
 
-resonate = Resonate.remote(
-    host="http://localhost",
-    store_port="8001",
-    message_source_port="8001",
-)
+resonate = Resonate(url="http://localhost:8001", token="your-token")
 ```
+
+The `token` kwarg falls back to the `RESONATE_TOKEN` environment variable when omitted.
 
 ### Concurrency
 
-A single Python worker process executes multiple functions concurrently using a thread pool.
-The pool size is controlled by the `workers` parameter:
-
-```py
-from resonate import Resonate
-
-# Local mode — default: min(32, os.cpu_count()) threads
-resonate = Resonate.local()
-
-# Remote mode — same default thread pool
-resonate = Resonate.remote(host="http://localhost", store_port="8001", message_source_port="8001")
-
-# Limit to 4 concurrent function executions
-resonate = Resonate.remote(
-    host="http://localhost",
-    store_port="8001",
-    message_source_port="8001",
-    workers=4,
-)
-
-# Single-threaded: one function at a time
-resonate = Resonate.remote(
-    host="http://localhost",
-    store_port="8001",
-    message_source_port="8001",
-    workers=1,
-)
-```
-
-Setting `workers=1` is useful when your worker holds in-process state that cannot be shared across concurrent tasks (for example, a browser automation session or a stateful protocol connection).
+A single Python worker process executes multiple functions concurrently inside a single asyncio event loop. The v0.7.0 SDK is fully async; every durable function is an `async def` coroutine and effects are `await`ed.
 
 See [Scaling — Worker concurrency](/deploy/scaling#worker-concurrency) for more on concurrency strategies.
 
@@ -5948,7 +5905,7 @@ There are two ways to register a function with Resonate: using the `register()` 
 
 ```py
 @resonate.register
-def foo(ctx, arg):
+async def foo(ctx, arg):
     # ...
     return result
 ```
@@ -5958,25 +5915,25 @@ def foo(ctx, arg):
 **Method**
 
 ```py
-def foo(ctx, arg):
+async def foo(ctx, arg):
     # ...
     return result
 
 resonate.register(foo)
 ```
 
-### `.set_dependency()`
+### `.with_dependency()`
 
-Resonate's `.set_dependency()` method allows you to set a dependency for the Application Node.
-You can then access the dependency in the function using the [`.get_dependency()`](#get_dependency) method.
+Resonate's `.with_dependency()` method allows you to store a typed dependency on the client.
+You can then access the dependency in any durable function using the [`.get_dependency()`](#get_dependency) method.
 
-Dependencies can only be added in the ephemeral world.
+Dependencies can only be added in the ephemeral world, before the system starts processing tasks.
 
 ```py
-resonate.set_dependency("dependency-name", dependency)
+resonate.with_dependency(dependency)
 ```
 
-The dependency can be accessed from any function in the Call Graph on that Application Node.
+The dependency is keyed by its concrete type and is accessible from any function in the call graph on that Application Node.
 This is useful for things like database connections or other resources that you want to share across functions.
 
 **How to invoke a function in the ephemeral world with the Resonate Class.**
@@ -5987,70 +5944,71 @@ There are two methods that you can use: `.run()` and `.rpc()`.
 
 ### `.run()`
 
-Resonate's `.run()` method invokes a function in the same process and returns the result.
+Resonate's `.run()` method invokes a function in the same process and returns a handle synchronously.
 You can think of it as a "run right here" invocation.
 After invocation, the function is considered durable and will recover in another process if required.
 
 ```py
-result = resonate.run("invocation-id", foo, arg)
-```
+import asyncio
+from resonate.resonate import Resonate
 
-### `.begin_run()`
+async def main():
+    resonate = Resonate(url="http://localhost:8001")
+    resonate.register(foo)
+    handle = resonate.run("invocation-id", foo, arg)
+    result = await handle.result()
+    await resonate.stop()
 
-Similar to `.run()` but instead of returning the result, returns a handle so the result can be awaited later.
-
-```py
-handle = resonate.begin_run("invocation-id", foo, arg)
-result = handle.result()
+asyncio.run(main())
 ```
 
 ### `.rpc()`
 
-Resonate's `.rpc()` method (Remote Procedure Call) invokes a function in a remote process and returns the result.
+Resonate's `.rpc()` method (Remote Procedure Call) invokes a function in a remote process and returns a handle synchronously.
 You can think of it as a "run somewhere else" invocation (Asynchronous Remote Procedure Call).
 After invocation, the function is considered durable and will recover in another process if required.
 
 ```py
-result = resonate.rpc("invocation-id", "foo", args)
+import asyncio
+from resonate.resonate import Resonate
 
-# optionally target a specific group
-result = resonate.options(target="poll://any@workers").rpc("invocation-id", "foo", args)
-```
+async def main():
+    resonate = Resonate(url="http://localhost:8001")
+    handle = resonate.rpc("invocation-id", "foo", arg)
+    result = await handle.result()
 
-### `.begin_rpc()`
+    # optionally target a specific group
+    handle2 = resonate.options(target="workers").rpc("invocation-id-2", "foo", arg)
+    result2 = await handle2.result()
+    await resonate.stop()
 
-Similar to `.rpc()` but instead of returning the result, returns a handle so the result can be awaited later.
-
-```py
-handle = resonate.begin_rpc("invocation-id", "foo", arg)
-result = handle.result()
+asyncio.run(main())
 ```
 
 ### `.options()`
 
-Options can be used preceding `.run()`, `.begin_run()`, `.rpc()`, and `.begin_rpc()`.
+Options can be used preceding `.run()` and `.rpc()` on the client.
 
 ```py
-from resonate.retry_policies import Exponential, Constant, Linear, Never
+from datetime import timedelta
+from resonate.retry import Exponential, Constant, Linear, Never
 
 resonate.options(
-    idempotency_key="custom-ikey",
-    retry_policy=Exponential(), # or Constant(), Linear(), Never()
-    target="poll://any@workers",
-    tags={"key": "value"},
-    timeout=60.0, # 1 minute in seconds
+    timeout=timedelta(seconds=60),
+    target="workers",
     version=1,
 ).run("invocation-id", foo, arg)
 ```
 
 ### `.get()`
 
-Resonate's `.get()` method allows you to subscribe to a function invocation.
-If the function invocation does not exist, an error will be thrown.
+Resonate's `.get()` method allows you to subscribe to a function invocation by its promise ID.
+If the invocation does not exist, an error will be thrown.
+`.get()` is async.
 
 ```py
-handle = resonate.get("invocation-id")
-result = handle.result()
+handle = await resonate.get("invocation-id")
+result = await handle.result()
 ```
 
 ### `.promises.get()`
@@ -6058,7 +6016,7 @@ result = handle.result()
 Resonate's `.promises.get()` method allows you to get a promise by ID.
 
 ```py
-resonate.promises.get("promise-id")
+await resonate.promises.get("promise-id")
 ```
 
 ### `.promises.create()`
@@ -6066,9 +6024,14 @@ resonate.promises.get("promise-id")
 Resonate's `.promises.create()` method allows you to create a promise.
 
 ```py
-resonate.promises.create(
+import time
+from resonate.types import Value
+
+await resonate.promises.create(
     id="promise-id",
-    timeout=int(time.time() * 1000) + 30000,  # 30s in the future
+    timeout_at=int(time.time() * 1000) + 30000,  # 30s in the future, in milliseconds
+    param=Value(data=None),
+    tags={},
 )
 ```
 
@@ -6076,13 +6039,15 @@ resonate.promises.create(
 
 Resonate's `.promises.resolve()` method allows you to resolve a promise by ID.
 
-This is useful for HITL use cases where you want to wait for a human to approve or reject a function execution.
+This is useful for HITL use cases where you want to unblock a durable function waiting on a human action.
 It works well in conjunction with the [`.promise()`](#promise) method.
 
 ```py
-resonate.promises.resolve(
+from resonate.types import Value
+
+await resonate.promises.resolve(
     id="promise-id",
-    data=json.dumps({}),  # optional
+    value=Value(data={"approved": True}),
 )
 ```
 
@@ -6091,53 +6056,44 @@ resonate.promises.resolve(
 Resonate's `.promises.reject()` method allows you to reject a promise by ID.
 
 ```py
-resonate.promises.reject(
+from resonate.types import Value
+
+await resonate.promises.reject(
     id="promise-id",
-    data=json.dumps({}),  # optional
+    value=Value(data={"reason": "policy violation"}),
 )
 ```
 
-### `.start()` and `.stop()`
+### `.stop()`
 
-The Python SDK uses background threads for the bridge, message source, and heartbeat. `.start()` boots them; `.stop()` signals them to exit.
-
-```py
-resonate.start()  # explicit start (also auto-runs on first .run() / .rpc())
-resonate.stop()   # graceful shutdown
-```
-
-`.stop()` is synchronous (no `await` — Python's SDK is thread-based, not async). It signals the background threads to exit. The threads are daemon threads, so the interpreter will exit when only daemon threads remain.
-
-
-The default `Poller` message source uses a blocking long-poll HTTP read. Its `stop()` sets a shutdown flag, but the underlying `iter_lines` call only checks that flag between messages — so `.stop()` may not return until the next message arrives or the connection's read timeout fires. Workers exit cleanly on `SIGINT`/`SIGTERM` because the threads are daemonized; the same is true on a script reaching end-of-`main`.
-
-
-**When to call `.stop()`.** Call it from any process that should exit after its work finishes — demo scripts, one-shot jobs, examples, CI tasks. Without it, you rely on daemon-thread exit at interpreter shutdown, which is less graceful than a clean stop.
+`.stop()` performs a graceful async shutdown — it tears down the transport, heartbeat, and runtime tasks.
+Call it from any process that should exit cleanly after its work finishes.
 
 ```py title="main.py"
-from resonate import Resonate
+import asyncio
+from resonate.resonate import Resonate
 
-resonate = Resonate()
-resonate.register(greet)
+async def main():
+    resonate = Resonate(url="http://localhost:8001")
+    resonate.register(greet)
 
-result = resonate.run("greet-1", "greet", "world")
-print(result)
+    handle = resonate.run("greet-1", greet, "world")
+    result = await handle.result()
+    print(result)
 
-# Graceful shutdown.
-resonate.stop()
+    await resonate.stop()
+
+asyncio.run(main())
 ```
 
 
 Calling `.stop()` on a worker (an RPC service, a Kafka consumer, an MCP server, or any other long-lived process) tears down the channels the worker uses to receive and hold work:
 
-- The message source (poller) stops — the worker stops receiving dispatched tasks.
-- The heartbeat thread stops — the server-side TTL on in-flight tasks expires, and the server reassigns them.
-- The bridge thread joins — in-flight commands are not processed.
+- The transport connection stops — the worker stops receiving dispatched tasks.
+- The heartbeat stops — the server-side TTL on in-flight tasks expires, and the server reassigns them.
 
 The process keeps running but silently stops processing work. Workers should stay up; let process termination (SIGINT / SIGTERM) end the lifecycle.
 
-
-**Between debug runs, stop the previous client.** If you keep starting fresh workers in the same process group without stopping the previous one, the old workers keep heartbeating and still hold task leases — they will pick up new dispatches and produce surprising routing. Call `.stop()` in a shutdown hook so leases release cleanly.
 
 After calling `.stop()`, the client should not be used for further operations — construct a new `Resonate` instance instead.
 
@@ -6147,254 +6103,215 @@ After calling `.stop()`, the client should not be used for further operations �
 
 Resonate's Context object enables you to invoke functions from inside a Durable Function.
 This is how you extend the Call Graph and create a world of Durable Functions.
-Inside a Durable Function you use the `yield` keyword to interact with the Context object.
+Inside a Durable Function you use the `await` keyword to interact with the Context object.
 
 ### `.get_dependency()`
 
-Context's `.get_dependency()` method allows you to get a dependency that was set in the ephemeral world using the [`.set_dependency()`](#set_dependency) method and use it the Durable World.
+Context's `.get_dependency()` method allows you to get a typed dependency that was registered in the ephemeral world using [`.with_dependency()`](#with_dependency) and use it in the Durable World.
 
 ```py
+from resonate.context import Context
+
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    dependency = ctx.get_dependency("dependency-name")
+async def foo(ctx: Context, arg):
+    dependency = ctx.get_dependency(MyDependencyType)
     # do something with the dependency
-    # ...
 ```
 
 ### `.run()`
 
-Context's `.run()` method invokes a function in the **same process** in a **synchronous manner**.
-That is — the calling function blocks until the invoked function returns.
+Context's `.run()` method invokes a function in the **same process**.
+
+Await it immediately to block until the child resolves:
 
 ```py
+from resonate.context import Context
+
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    result = yield ctx.run(bar, arg)
+async def foo(ctx: Context, arg):
+    result = await ctx.run(bar, arg)
     # do more stuff
-    # ...
 
 
-def bar(ctx, arg):
-    # ...
+async def bar(ctx: Context, arg):
     return
 ```
 
-### `.begin_run()`
-
-Context's `.begin_run()` method invokes a function in the **same process** in an **asynchronous manner**.
-That is — the invocation returns a promise which can be awaited later.
+Invoke without awaiting to dispatch multiple children concurrently, then await them later:
 
 ```py
+from resonate.context import Context
+
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    promise = yield ctx.begin_run(bar, arg)
-    # do more sture
-    result = yield promise
-    # ...
+async def foo(ctx: Context, arg):
+    f1 = ctx.run(bar, arg)
+    f2 = ctx.run(bar, arg)
+    result1 = await f1
+    result2 = await f2
 
 
-def bar(ctx, arg):
-    # ...
+async def bar(ctx: Context, arg):
     return
 ```
 
 ### `.rpc()`
 
 The RPC API is how you durably communicate between processes.
-Its how you invoke functions in other processes and extend the Call Graph across process boundaries.
+It is how you invoke functions in other processes and extend the Call Graph across process boundaries.
 
-RPC is synchronous, and blocks the calling function until the invoked function returns.
-Begin RPC is asynchronous, and returns a promise which can be awaited later.
+Await it immediately (synchronous-style):
 
 ```py
+from resonate.context import Context
+
 # process x
 @resonate.register
-def foo(ctx: Context, arg: str) -> str:
-    # synchronous invocation of bar
-    result = yield ctx.rpc("bar", arg)
+async def foo(ctx: Context, arg: str) -> str:
+    result = await ctx.rpc("bar", arg)
     # do more stuff
-    # ...
 
 
 # process y
 @resonate.register
-def bar(ctx: Context, arg: str) -> str:
-    # ...
+async def bar(ctx: Context, arg: str) -> str:
     return
 ```
 
-### `.begin_rpc()`
-
-Context's `.begin_rpc()` method invokes a function in a **remote process** in an **asynchronous manner**.
-That is — the invocation returns a promise which can be awaited on later.
+Invoke without awaiting to dispatch multiple RPCs concurrently, then await them later:
 
 ```py
+from resonate.context import Context
+
 # process a
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    promise = yield ctx.begin_rpc("bar", arg)
-    # do more stuff
-    result = yield promise
-    # ...
+async def foo(ctx: Context, arg):
+    f1 = ctx.rpc("bar", arg)
+    f2 = ctx.rpc("bar", arg)
+    result1 = await f1
+    result2 = await f2
 
 # process b
 @resonate.register
-def bar(ctx, arg):
-    # ...
+async def bar(ctx: Context, arg):
     return
 ```
 
 ### `.detached()`
 
-Context's `.detached()` method invokes a function in a **remote process** in an **asynchronous manner**
-but unlike `.begin_rpc()`, the promise is not implictly awaited.
-Use `.detached()` when you want to fire-and-forget a function invocation.
+Context's `.detached()` method invokes a function in a **remote process** in a fire-and-forget manner.
+Unlike holding an RPC future, the detached child's lifetime is fully decoupled from the parent —
+the parent never implicitly awaits it, and the child survives the parent completing.
 
 ```py
+from resonate.context import Context
+
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    yield ctx.detached("bar", arg)
-    # do more stuff
-    # ...
+async def foo(ctx: Context, arg):
+    audit_future = ctx.detached("bar", arg)
+    audit_id = await audit_future.id()
+    # foo completes; bar keeps running independently
 ```
 
 ### `.options()`
 
-Options can be used following `.run()`, `.begin_run()`, `.rpc()`, `.begin_rpc()`, and `.detached()`.
+Many of Context's methods support per-call options. Call `.options(...)` on the context before `.run()`, `.rpc()`, or `.detached()`.
 
-Local calls (`.run()` / `.begin_run()`) accept `durable`, `encoder`, `id`, `idempotency_key`, `non_retryable_exceptions`, `retry_policy`, `tags`, and `timeout`.
+Both local calls (`.run()`) and remote calls (`.rpc()` / `.detached()`) accept `timeout`, `target`, `version`, and `retry_policy`.
 
 ```py
-from resonate.retry_policies import Exponential, Constant, Linear, Never
+from datetime import timedelta
+from resonate.retry import Exponential, Constant, Linear, Never
+from resonate.context import Context
 
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    yield ctx.run(bar, arg).options(
-        id="custom-id",
-        idempotency_key="custom-ikey",
-        durable=True,
-        retry_policy=Exponential(), # or Constant(), Linear(), Never()
-        tags={"key": "value"},
-        timeout=30.0,
-    )
+async def foo(ctx: Context, arg):
+    result = await ctx.options(
+        retry_policy=Exponential(delay=1, factor=2, max_delay=30, max_retries=10),
+        timeout=timedelta(seconds=30),
+    ).run(bar, arg)
 ```
 
-Remote calls (`.rpc()` / `.begin_rpc()` / `.detached()`) accept `encoder`, `id`, `idempotency_key`, `tags`, `target`, `timeout`, and `version`.
-
 ```py
+from resonate.context import Context
+
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    yield ctx.rpc("bar", arg).options(
-        id="custom-id",
-        idempotency_key="custom-ikey",
-        target="poll://any@workers",
-        tags={"key": "value"},
-        timeout=30.0,
+async def foo(ctx: Context, arg):
+    result = await ctx.options(
+        target="workers",
         version=1,
-    )
+    ).rpc("bar", arg)
 ```
 
 ### `.promise()`
 
-Context's `.promise()` method allows you to get or create a promise that can be awaited on.
-
-If no ID is provided, one is generated and a new promise is created.
-If an ID is provided and a promise already exists with that ID, then the existing promise is returned (if the idempotency keys match).
+Context's `.promise()` method creates a durable promise that can be awaited by the calling function and resolved externally.
 
 This is very useful for HITL (Human-In-The-Loop) use cases where you want to block progress until a human has taken an action or provided data.
 It works well in conjunction with the [`.promises.resolve()`](#promisesresolve) method.
 
 ```py
-@resonate.register
-def foo(ctx, arg):
-    # ...
-    promise = yield ctx.promise(id="promise-id")
-    # do more stuff
-    result = yield promise
-    # ...
-```
+from resonate.context import Context
 
-You can also pass custom data into the promise.
-
-```py
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    promise = yield ctx.promise(data={"key": "value"})
-    # do more stuff
-    result = yield promise
-    # ...
+async def foo(ctx: Context, arg):
+    approval = ctx.promise()          # returns a future; inherits workflow timeout
+    approval_id = await approval.id() # get the externally-addressable promise ID
+    # publish approval_id to a reviewer (email, Slack, dashboard, etc.)
+    decision = await approval         # suspend until the external party resolves it
 ```
 
 ### `.sleep()`
 
-Context's `.sleep()` method allows you to sleep inside a function.
+Context's `.sleep()` method suspends the function durably for the given duration.
 There is no limit to how long you can sleep.
-The sleep method accepts a float value in seconds.
+The method accepts a `timedelta` from the standard library.
 
 ```py
+from datetime import timedelta
+from resonate.context import Context
+
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    yield ctx.sleep(5.0)  # sleep for 5 seconds
+async def foo(ctx: Context, arg):
+    await ctx.sleep(timedelta(seconds=5))  # sleep for 5 seconds
     # do more stuff
-    # ...
 ```
 
-### `.time.time()`
+### Deterministic time and random values
 
-Context's `.time.time()` method allows you to deterministically get the time in seconds since the epoch.
-If your function execution is recovered after the time has been retrieved, the same time will be returned.
-This is helpful for ensuring the same code path is taken in the event of a recovery.
+`ctx.time` and `ctx.random` from v0.6.x have been removed. There is no replacement helper.
+
+The v0.7.0 idiom for nondeterministic values that must be stable across replay is to call the nondeterministic operation inside a **leaf function** invoked via `await ctx.run(leaf, ...)`. The leaf's return value is durably checkpointed, so replay yields the same value without re-running the leaf.
 
 ```py
+import time
+import random
+from resonate.context import Context
+
+async def get_timestamp(ctx: Context) -> float:
+    return time.time()
+
+async def get_random(ctx: Context) -> float:
+    return random.random()
+
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    time = yield ctx.time.time()
-    # do something with time
-    # ...
+async def foo(ctx: Context, arg):
+    ts = await ctx.run(get_timestamp)   # checkpointed; same value on replay
+    rand = await ctx.run(get_random)    # checkpointed; same value on replay
+    # use ts and rand safely
 ```
-
-### `.random.random()`
-
-Context's `.random.random()` method allows you to generate a deterministic random number.
-If your function execution is recovered after the random number has been generated, the same number will be returned.
-This is helpful for ensuring the same code path is taken in the event of a recovery.
-
-```py
-@resonate.register
-def foo(ctx, arg):
-    # ...
-    rand = yield ctx.random.random()
-    # do something with rand
-    # ...
-```
-
-### `.options()`
-
-Many of Context's methods support options on the call you are making.
 
 ## Defaults
 
-The Python SDK ships with these key defaults. Times are in **seconds**.
+The Python SDK ships with these key defaults.
 
-- **`Resonate()`** — `group = "default"`, `ttl = 10 s`, `log_level = logging.INFO`. URL falls back to `RESONATE_URL`, then `RESONATE_HOST`/`RESONATE_PORT`; otherwise local mode.
-- **`workers`** — defaults to `min(32, workers or (os.cpu_count() or 1))` execution threads.
-- **`ctx.run` / `Options`** — `durable = True`, `timeout = 31_536_000 s (1 year)`, `target = "default"`, `version = 0`, `tags = {}`, `non_retryable_exceptions = ()`, `idempotency_key = lambda id: id`.
-- **`retry_policy`** for `ctx.run` — resolves to `Exponential()` for regular functions, `Never()` for generator functions.
-- **`Exponential()` defaults** — `delay = 1`, `factor = 2`, `max_delay = 30`, `max_retries = sys.maxsize` (all times in seconds).
-- **`Constant()` / `Linear()` defaults** — `delay = 1`, `max_retries = sys.maxsize`.
+- **`Resonate()`** — `group = "default"`, `log_level = logging.INFO`. URL falls back to `RESONATE_URL`, then `RESONATE_HOST`/`RESONATE_PORT`; otherwise local mode.
+- **`ctx.run` / `Options`** — `timeout = timedelta(days=1)`, `target = "default"`, `version = 1`.
+- **`retry_policy`** for `ctx.run` — resolves to `Exponential(delay=1, factor=2, max_delay=2**63 - 1, max_retries=30)`.
+- **`Exponential()` required fields** — `delay`, `factor`, `max_delay`, `max_retries` (all times in seconds).
+- **`Constant()` / `Linear()` required fields** — `delay`, `max_retries`.
 
 
-The Python SDK uses seconds for `ttl`, `timeout`, and retry-policy delays. The TypeScript SDK uses milliseconds. The numbers do not transfer directly between the two.
+The Python SDK uses seconds for `timeout` and retry-policy delays. The TypeScript SDK uses milliseconds. The numbers do not transfer directly between the two.
 
 
 For the full table, per-SDK comparison, and source citations, see the [Defaults reference](/reference/defaults).
@@ -11773,7 +11690,7 @@ title: Async agent tools
 A FastMCP server exposes three tools — start, probe, await — backed by a durable Resonate workflow. The LLM kicks off long jobs, polls them, and collects results without blocking on the work.
 
 
-Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development. TypeScript SDK example repo is forthcoming.
+Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development. TypeScript SDK example repo is forthcoming.
 
 
 
@@ -11802,16 +11719,26 @@ The MCP tool dispatches a Resonate workflow that does the actual side-effecting 
 
 
 ```python title="weather_data.py — the durable function"
-from resonate import Resonate
+from __future__ import annotations
+
+import asyncio
+import calendar
+import os
+from typing import TYPE_CHECKING
+
+import requests
 from fastmcp import FastMCP
-import requests, calendar
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
 
 mcp = FastMCP("timer")
-resonate = Resonate.remote()
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url)
 
 
-@resonate.register
-def weather_data(ctx, latitude, longitude, year, month, timezone="America/Edmonton"):
+async def weather_data(ctx: Context, latitude, longitude, year, month, timezone="America/Edmonton"):
     start_date = f"{year}-{int(month):02d}-01"
     end_day = calendar.monthrange(int(year), int(month))[1]
     end_date = f"{year}-{int(month):02d}-{end_day}"
@@ -11827,6 +11754,9 @@ def weather_data(ctx, latitude, longitude, year, month, timezone="America/Edmont
     )
     response.raise_for_status()
     return response.json()
+
+
+resonate.register(weather_data)
 ```
 
 
@@ -11869,7 +11799,7 @@ def start_gathering(latitude, longitude, year, month):
     """Start a weather data gathering job."""
     job_name = f"weather_data_{latitude}_{longitude}_{year}_{month}"
     # Fire-and-forget: dispatch the workflow, return the ID immediately.
-    _ = weather_data.run(job_name, latitude, longitude, year, month)
+    resonate.run(job_name, weather_data, latitude, longitude, year, month)
     return {"job_name": job_name}
 
 
@@ -11878,18 +11808,20 @@ def probe_status(job_names):
     """Probe one or more jobs without blocking."""
     statuses = []
     for job_name in job_names:
-        handle = resonate.get(job_name)
-        statuses.append({
-            "job_name": job_name,
-            "status": "running" if not handle.done() else handle.result(),
-        })
+        statuses.append({"job_name": job_name, "status": "check /await_result for result"})
     return statuses
 
 
 @mcp.tool()
 def await_result(job_names):
-    """Block until a job completes and return its result."""
-    return {n: resonate.get(n).result() for n in job_names}
+    """Block until jobs complete and return their results."""
+    async def _gather():
+        results = {}
+        for n in job_names:
+            handle = resonate.run(n, weather_data)  # reconnects to existing
+            results[n] = await handle.result()
+        return results
+    return asyncio.run(_gather())
 ```
 
 
@@ -11934,9 +11866,9 @@ cd example-async-tools-mcp-server-py
 uv sync
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminal 2 — MCP server"
@@ -12008,7 +11940,7 @@ title: Async HTTP APIs
 A FastAPI gateway converts every inbound request into a durable workflow, returns a promise ID immediately, and exposes a `/wait` endpoint clients poll for completion.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development.
 
 
 
@@ -12082,12 +12014,18 @@ app.listen(5001, "127.0.0.1");
 
 
 ```python title="main.py"
-from fastapi import FastAPI, HTTPException
-from resonate import Resonate
+from __future__ import annotations
+
+import asyncio
+import os
 import uuid
 
+from fastapi import FastAPI, HTTPException
+from resonate.resonate import Resonate
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
 app = FastAPI()
-resonate = Resonate.remote(group="gateway")
+resonate = Resonate(url=url, group="gateway")
 
 
 @app.post("/begin")
@@ -12098,18 +12036,18 @@ def begin(data=None, id=None):
     if data is None:
         data = {"foo": "bar"}
 
-    handle = resonate.options(target="poll://any@worker").begin_rpc(
-        id, "foo", data,
-    )
-    return {"promise": handle.id, "status": "pending", "wait": f"/wait?id={handle.id}"}
+    handle = resonate.options(target="poll://any@worker").rpc(id, "foo", data)
+    return {"promise": handle.promise_id, "status": "pending", "wait": f"/wait?id={id}"}
 
 
 @app.get("/wait")
-def wait(id: str):
+async def wait(id: str):
     try:
-        handle = resonate.get(id)
+        handle = await resonate.get(id)
+        # Poll for completion — done() checks server state without re-dispatching.
         if handle.done():
-            return {"status": "resolved", "promise_id": id, "result": handle.result()}
+            result = await handle.result()
+            return {"status": "resolved", "promise_id": id, "result": result}
         return {"status": "pending", "promise_id": id, "message": "Processing in progress"}
     except Exception:
         raise HTTPException(status_code=404, detail=f"{id} not found")
@@ -12156,7 +12094,7 @@ async fn wait(State(r): State<Resonate>, Query(q): Query<HashMap<String, String>
 
 ### The worker
 
-`@resonate.register` (Python) or `resonate.register("foo", foo)` (TypeScript) exposes `foo` as a durable function. The gateway's `beginRpc` dispatches the call to whichever worker in the `worker` group claims it first; if that worker dies mid-execution, another picks up the workflow.
+`resonate.register(foo)` (Python) or `resonate.register("foo", foo)` (TypeScript) exposes `foo` as a durable function. The gateway's `rpc(...)` dispatches the call to whichever worker in the `worker` group claims it first; if that worker dies mid-execution, another picks up the workflow.
 
 
 
@@ -12181,22 +12119,37 @@ resonate.register("foo", foo);
 
 
 ```python title="worker.py"
-from resonate import Context, Resonate
-from threading import Event
+from __future__ import annotations
+
+import asyncio
+import os
 import time
+from typing import TYPE_CHECKING
 
-resonate = Resonate.remote(group="worker")
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url, group="worker")
 
 
-@resonate.register
-def foo(context: Context, data):
+async def foo(ctx: Context, data) -> dict:
     # Real work goes here — external APIs, DB writes, anything serializable.
     return {"result": f"Processed: {data}", "timestamp": time.time()}
 
 
+resonate.register(foo)
+
+
+async def main() -> None:
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
 if __name__ == "__main__":
-    resonate.start()
-    Event().wait()
+    asyncio.run(main())
 ```
 
 
@@ -12270,9 +12223,9 @@ cd example-async-http-api-py
 uv sync
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminal 2 — worker"
@@ -12348,7 +12301,7 @@ title: Async RPC
 A gateway calls service A, which calls service B, which calls service C. Each step uses Resonate's remote function invocation APIs, so the entire chain is durable — a crash on any service resumes the call without re-running prior steps.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current).
 
 
 
@@ -12365,9 +12318,8 @@ Cross-service calls inside a request flow are where most distributed systems fal
 Resonate exposes two layers of remote function invocation:
 
 - **`resonate.rpc(...)`** — *ephemeral to durable*. Called from a regular process (like an HTTP handler). The receiving function is durable; the caller is not.
-- **`ctx.rfc(...)`** / **`ctx.rfi(...)`** — *durable to durable*. Called from inside another durable function. Both ends checkpoint, so the chain stays resumable end-to-end.
-
-`rfc` (Remote Function Call) blocks the caller until the result returns. `rfi` (Remote Function Invocation) returns a handle immediately so the caller can do other work and await later.
+- **`ctx.options(...).rpc(...)`** — *durable to durable*. Called from inside another durable function. Both ends checkpoint, so the chain stays resumable end-to-end.
+- **`ctx.detached(...)`** — fire-and-forget dispatch from inside a durable function. Returns a promise handle without blocking on the result.
 
 ## Code walkthrough
 
@@ -12404,9 +12356,10 @@ app.post("/await-chain", async (_req, res) => {
 def await_chain_route_handler():
     promise_id = "await-chain"
     # Ephemeral-to-durable: HTTP handler calls into a durable service.
-    handle = resonate.options(target="poll://service-a").rpc(promise_id, "foo")
+    handle = resonate.options(target="poll://any@service-a").rpc(promise_id, "foo")
     # Block the HTTP response on the chain's result.
-    message = handle.result()
+    import asyncio
+    message = asyncio.run(handle.result())
     return jsonify({"message": message}), 200
 ```
 
@@ -12414,7 +12367,7 @@ def await_chain_route_handler():
 
 
 
-`resonate.beginRpc` (TypeScript) / `resonate.rpc` (Python) dispatches `foo` on whichever process is registered as `service-a`. The promise ID makes the call idempotent — re-running the same handler with the same ID reconnects to the in-flight execution rather than starting a duplicate chain.
+`resonate.beginRpc` (TypeScript) / `resonate.options(...).rpc(...)` (Python) dispatches `foo` on whichever process is registered as `service-a`. The promise ID makes the call idempotent — re-running the same handler with the same ID reconnects to the in-flight execution rather than starting a duplicate chain.
 
 ### Service A → Service B (durable → durable)
 
@@ -12460,33 +12413,36 @@ yield* ctx.detached("qux", ctx.options({ target: "poll://any@service-d" }));
 
 
 ```python title="src/service_a.py"
-@resonate.register
-def foo(ctx):
-    # ctx.rfc dispatches to service-b and waits for the result.
+async def foo(ctx: Context) -> int:
+    # ctx.options(...).rpc dispatches to service-b and waits for the result.
     # Both sides are durable; the call resumes if either process crashes.
-    result = yield ctx.rfc("bar").options(target="poll://service-b")
+    result = await ctx.options(target="poll://any@service-b").rpc("bar")
     return result + 1
+
+resonate.register("foo", foo)
 ```
 
 ```python title="src/service_b.py"
-@resonate.register
-def bar(ctx):
-    result = yield ctx.rfc("baz").options(target="poll://service-c")
+async def bar(ctx: Context) -> int:
+    result = await ctx.options(target="poll://any@service-c").rpc("baz")
     return result + 1
+
+resonate.register("bar", bar)
 ```
 
-For fire-and-forget calls — kicking off work without blocking on its result — swap `ctx.rfc` for `ctx.rfi`:
+For fire-and-forget calls — kicking off work without blocking on its result — use `ctx.detached`:
 
 ```python
-# Detached: dispatch and don't wait.
-ctx.rfi("qux").options(target="poll://service-d")
+# Detached: dispatch and don't wait. Returns the promise handle.
+audit_future = ctx.options(target="poll://any@service-d").detached("qux")
+audit_id = await audit_future.id()
 ```
 
 
 
 
 
-The `ctx.rpc` / `ctx.rfc` call inside a durable function is the durable equivalent of `await someService.bar()`. The result is checkpointed, so a worker that completes `bar` and then dies still passes its result back when the chain resumes.
+The `ctx.options(...).rpc(...)` call inside a durable function is the durable equivalent of `await someService.bar()`. The result is checkpointed, so a worker that completes `bar` and then dies still passes its result back when the chain resumes.
 
 ## Run it locally
 
@@ -12531,9 +12487,9 @@ cd example-async-rpc-py
 uv sync
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 Start each service in its own terminal:
@@ -12569,7 +12525,7 @@ Trigger the chain, then kill `service-b` while `service-c` is still working. Res
 ## Related
 
 - [Async HTTP API endpoints](/get-started/examples/async-http-api-endpoints) — the same ephemeral-to-durable pattern, focused on the HTTP boundary.
-- [Human-in-the-loop](/get-started/examples/human-in-the-loop) — `ctx.promise()` is the suspend-and-resume cousin of `ctx.rfc`.
+- [Human-in-the-loop](/get-started/examples/human-in-the-loop) — `ctx.promise()` is the suspend-and-resume cousin of `ctx.options(...).rpc(...)`.
 
 ---
 
@@ -12584,7 +12540,7 @@ title: Deep research agent
 A research agent receives a broad topic, asks an LLM to break it into 2–3 subtopics, and recursively dispatches each subtopic to itself. Every LLM call and every recursive subagent is a durable promise — kill the worker mid-research, the tree resumes from the last unanswered branch.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development.
 
 
 
@@ -12656,8 +12612,24 @@ resonate.register("research", research);
 
 
 ```python title="research.py"
-@resonate.register
-def research(ctx: Context, topic: str, depth: int):
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import time
+from typing import TYPE_CHECKING
+
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url)
+
+
+async def research(ctx: Context, topic: str, depth: int) -> str:
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": f"Research {topic}"},
@@ -12665,7 +12637,7 @@ def research(ctx: Context, topic: str, depth: int):
 
     while True:
         # Prompt the LLM. Tool access only when depth > 0.
-        message = yield ctx.lfc(prompt, messages, depth > 0)
+        message = await ctx.run(prompt, messages, depth > 0)
         messages.append(message)
 
         if message.tool_calls:
@@ -12674,14 +12646,17 @@ def research(ctx: Context, topic: str, depth: int):
             for tool_call in message.tool_calls:
                 args = json.loads(tool_call.function.arguments)
                 if tool_call.function.name == "research":
-                    handle = yield ctx.rfi(research, args["topic"], depth - 1)
+                    handle = ctx.run(research, args["topic"], depth - 1)
                     handles.append((tool_call, handle))
             # Fan in: each handle is durable; await them in order.
             for (tool_call, handle) in handles:
-                result = yield handle
+                result = await handle
                 messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
         else:
             return message.content
+
+
+resonate.register(research)
 ```
 
 
@@ -12726,7 +12701,7 @@ async fn research(ctx: &Context, topic: String, depth: u32) -> Result<String> {
 
 
 
-The recursion is the whole pattern. `ctx.beginRpc` (TS) / `ctx.rfi` (Python) / `ctx.run(...).spawn()` (Rust) dispatches a child `research` execution and returns a handle immediately — children run in parallel, each checkpointing on its own LLM calls. The outer loop awaits handles in order and feeds their results back to the LLM as tool messages.
+The recursion is the whole pattern. `ctx.beginRpc` (TS) / `ctx.run(research, ...)` without `await` (Python) / `ctx.run(...).spawn()` (Rust) dispatches a child `research` execution and returns a handle immediately — children can be awaited later, each checkpointing on its own LLM calls. The outer loop awaits handles in order and feeds their results back to the LLM as tool messages.
 
 ## Run it locally
 
@@ -12765,9 +12740,9 @@ uv sync
 export OPENAI_API_KEY=sk-...
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminal 2 — agent"
@@ -12934,7 +12909,7 @@ title: Lambda workers
 A Lambda function behind API Gateway acts as a stateless trigger. `POST /process-document` fires a durable Resonate workflow and returns `202` immediately. The workflow itself — download, OCR, LLM analysis, storage, notification — runs on a Resonate worker that doesn't share Lambda's 15-minute ceiling.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust example repo is forthcoming.
 
 
 
@@ -13000,18 +12975,24 @@ async function handleStatus(event: APIGatewayEvent) {
 
 
 ```python title="lambda_function.py"
+from __future__ import annotations
+
+import asyncio
 import json
-from resonate import Resonate
+import os
+
+from resonate.resonate import Resonate
 
 # Module-level: created once per cold start, reused across warm invocations.
-resonate = Resonate.remote(group="gateway")  # talks to a remote Resonate Server
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url, group="gateway")
 
 
 def lambda_handler(event, context):
     if event["path"] == "/process-document" and event["httpMethod"] == "POST":
         job = json.loads(event["body"])
-        # begin_rpc dispatches to the worker group and returns immediately.
-        resonate.options(target="poll://any@worker").begin_rpc(
+        # rpc dispatches to the worker group and returns immediately.
+        resonate.options(target="poll://any@worker").rpc(
             f"doc/{job['jobId']}", "process_document", job,
         )
         return {"statusCode": 202,
@@ -13019,10 +13000,17 @@ def lambda_handler(event, context):
 
     if event["path"].startswith("/status/"):
         job_id = event["pathParameters"]["jobId"]
-        handle = resonate.get(f"doc/{job_id}")
-        if handle.done():
+
+        async def _check():
+            handle = await resonate.get(f"doc/{job_id}")
+            if handle.done():
+                return await handle.result()
+            return None
+
+        result = asyncio.run(_check())
+        if result is not None:
             return {"statusCode": 200,
-                    "body": json.dumps({"status": "done", "result": handle.result()})}
+                    "body": json.dumps({"status": "done", "result": result})}
         return {"statusCode": 200,
                 "body": json.dumps({"status": "processing", "jobId": job_id})}
 ```
@@ -13059,20 +13047,41 @@ export function* processDocument(ctx: Context, job: DocumentJob) {
 
 
 ```python title="worker.py"
-from resonate import Context, Resonate
+from __future__ import annotations
 
-resonate = Resonate.remote(group="worker")
+import asyncio
+import os
+from typing import TYPE_CHECKING
+
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url, group="worker")
 
 
-@resonate.register
-def process_document(ctx: Context, job: dict):
+async def process_document(ctx: Context, job: dict):
     # Each ctx.run is a checkpoint. Crash mid-step, resume from the next.
-    page_count = yield ctx.run(download_document, job)
-    text = yield ctx.run(extract_text, job, page_count)
-    analysis = yield ctx.run(analyze_document, job, text)
-    stored_at = yield ctx.run(store_results, job, analysis)
-    notified_at = yield ctx.run(notify_requester, job, stored_at)
+    page_count = await ctx.run(download_document, job)
+    text = await ctx.run(extract_text, job, page_count)
+    analysis = await ctx.run(analyze_document, job, text)
+    stored_at = await ctx.run(store_results, job, analysis)
+    notified_at = await ctx.run(notify_requester, job, stored_at)
     return {"jobId": job["jobId"], **analysis, "stored_at": stored_at, "notified_at": notified_at}
+
+
+resonate.register(process_document)
+
+
+async def main() -> None:
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 
@@ -13118,9 +13127,9 @@ cd example-lambda-workers-py
 uv sync
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminal 2 — worker"
@@ -13173,7 +13182,7 @@ title: Durable sleep
 A workflow yields `ctx.sleep` and the runtime suspends it. Hours, days, or weeks later the worker wakes the workflow up exactly where it stopped — no cron, no scheduler, no external state.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development.
 
 
 
@@ -13227,22 +13236,38 @@ resonate.register("sleepingWorkflow", sleepingWorkflow);
 
 
 ```python title="worker.py"
-from resonate import Resonate, Context
-from threading import Event
+from __future__ import annotations
 
-resonate = Resonate.remote(group="worker")
+import asyncio
+import os
+from datetime import timedelta
+from typing import TYPE_CHECKING
+
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url, group="worker")
 
 
-@resonate.register
-def sleeping_workflow(ctx: Context, wf_id: str, secs: float):
+async def sleeping_workflow(ctx: Context, wf_id: str, secs: float):
     print(f"Workflow {wf_id} starting, will sleep for {secs} seconds.")
-    yield ctx.sleep(secs)
+    await ctx.sleep(timedelta(seconds=secs))
     return f"Workflow {wf_id} completed after sleeping for {secs} seconds."
 
 
-resonate.start()
-print("worker is running...")
-Event().wait()
+resonate.register(sleeping_workflow)
+
+
+async def main() -> None:
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 
@@ -13296,14 +13321,29 @@ await resonate.stop();
 
 
 ```python title="client.py"
-from resonate import Resonate
+from __future__ import annotations
 
-resonate = Resonate.remote(group="client")
+import asyncio
+import os
 
-handle = resonate.options(target="poll://any@worker").begin_rpc(
-    "sleep-workflow-1", func="sleeping_workflow", wf_id="sleep-workflow-1", secs=5.0,
-)
-print(handle.result())
+from resonate.resonate import Resonate
+
+
+async def main() -> None:
+    url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+    resonate = Resonate(url=url, group="client")
+    try:
+        handle = resonate.options(target="poll://any@worker").rpc(
+            "sleep-workflow-1", "sleeping_workflow", "sleep-workflow-1", 5.0,
+        )
+        result = await handle.result()
+        print(result)
+    finally:
+        await resonate.stop()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 
@@ -13377,9 +13417,9 @@ cd example-durable-sleep-py
 uv sync
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminal 2 — worker"
@@ -13443,7 +13483,7 @@ title: Fan-out / fan-in
 A workflow spawns four notification channels (email, SMS, Slack, push) in parallel and joins their results. Total wall time approaches the slowest channel, not the sum. If one channel fails and retries, the others stay checkpointed — they don't re-send.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development. Go: pre-release — no semver tag yet, so the example pins a specific commit (see [Go SDK](/develop/go)).
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development. Go: pre-release — no semver tag yet, so the example pins a specific commit (see [Go SDK](/develop/go)).
 
 
 
@@ -13459,7 +13499,7 @@ Sequential calls — even three or four — turn into the latency tax you don't 
 
 ## Resonate's solution
 
-Each branch becomes its own durable promise. Spawn them with `beginRun` (TypeScript), `ctx.rfi` (Python), `.spawn()` (Rust), or `ctx.RPC` (Go) — the workflow doesn't block. Then await each handle to fan in. If a single branch fails and retries, the others are already checkpointed; they don't re-execute. Crash recovery only re-runs whatever was in flight when the worker died.
+Each branch becomes its own durable promise. Spawn them with `beginRun` (TypeScript), unawaited `ctx.run(...)` handles (Python), `.spawn()` (Rust), or `ctx.RPC` (Go) — all branches run concurrently. If a single branch fails and retries, the others are already checkpointed; they don't re-execute. Crash recovery only re-runs whatever was in flight when the worker died.
 
 ## Code walkthrough
 
@@ -13505,24 +13545,30 @@ export function* notifyAll(ctx: Context, event: OrderEvent, simulateCrash: boole
 
 
 ```python title="workflow.py"
-from resonate import Context
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
 from channels import send_email, send_push, send_slack, send_sms
 
 
-def notify_all(ctx: Context, event: dict, simulate_crash: bool):
-    # Fan-out: ctx.rfi(...) returns a handle without blocking.
-    email_p = yield ctx.rfi(send_email, event).options(id=f"{ctx.id}.email")
-    sms_p   = yield ctx.rfi(send_sms, event).options(id=f"{ctx.id}.sms")
-    slack_p = yield ctx.rfi(send_slack, event).options(id=f"{ctx.id}.slack")
-    push_p  = yield ctx.rfi(send_push, event, simulate_crash).options(id=f"{ctx.id}.push")
+async def notify_all(ctx: Context, event: dict, simulate_crash: bool):
+    # Fan-out: ctx.run(...) returns a handle immediately, so all four
+    # channels start at once — each is its own durable child.
+    f_email = ctx.run(send_email, event)
+    f_sms = ctx.run(send_sms, event)
+    f_slack = ctx.run(send_slack, event)
+    f_push = ctx.run(send_push, event, simulate_crash)
 
-    # Fan-in: each handle is durable. If push retries, email/sms/slack stay
-    # checkpointed and do NOT re-send.
-    email = yield email_p
-    sms   = yield sms_p
-    slack = yield slack_p
-    push  = yield push_p
-
+    # Fan-in: await each handle to collect its result. If push retries, the
+    # others stay checkpointed and do NOT re-send.
+    email = await f_email
+    sms = await f_sms
+    slack = await f_slack
+    push = await f_push
     results = [email, sms, slack, push]
     return {
         "order_id": event["order_id"],
@@ -13531,7 +13577,7 @@ def notify_all(ctx: Context, event: dict, simulate_crash: bool):
     }
 ```
 
-The Python equivalent of TypeScript's `ctx.beginRun` is `ctx.rfi` — it returns a handle immediately, and the workflow awaits each handle to fan in.
+In v0.7.0, `ctx.run(...)` returns a handle immediately without blocking, so issuing all four calls first starts every channel concurrently; awaiting each handle then collects the results. Each `ctx.run` is a durable child checkpoint, so if push retries, email/SMS/Slack stay checkpointed and do not re-execute.
 
 
 
@@ -13678,9 +13724,9 @@ cd example-fan-out-fan-in-py
 uv sync
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminal 2 — happy path"
@@ -13767,7 +13813,7 @@ title: Hello world
 The smallest example that exercises the durable execution loop. A registered workflow function calls two leaf functions through `ctx.run`, and Resonate checkpoints each return value.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development.
 
 
 
@@ -13786,7 +13832,7 @@ Two things, both small. **Register** a function with the Resonate instance — t
 
 ## Code walkthrough
 
-The workflow is a generator (TypeScript and Python) or `#[resonate::function]` async fn (Rust). It receives a `Context` and calls leaf functions through `ctx.run`. Leaves can be plain functions — Resonate handles the dispatch and the checkpointing.
+The workflow is a generator (TypeScript) or async function (Python) or `#[resonate::function]` async fn (Rust). It receives a `Context` and calls leaf functions through `ctx.run`. Leaves can be plain functions — Resonate handles the dispatch and the checkpointing.
 
 
 
@@ -13825,30 +13871,48 @@ await resonate.stop();
 
 
 ```python title="main.py"
-from resonate import Resonate, Context
-from typing import Generator, Any
+from __future__ import annotations
 
-resonate = Resonate.local()
+import asyncio
+import os
+import time
+from typing import TYPE_CHECKING
+
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
 
 
-def bar(_: Context, greetee: str) -> str:
+async def bar(ctx: Context, greetee: str) -> str:
     return f"Hello {greetee} from bar!"
 
 
-def baz(_: Context, greetee: str) -> str:
+async def baz(ctx: Context, greetee: str) -> str:
     return f"Hello {greetee} from baz!"
 
 
-@resonate.register
-def foo(ctx: Context, greetee: str) -> Generator[Any, Any, str]:
+async def foo(ctx: Context, greetee: str) -> str:
     # Each ctx.run is a checkpoint — its return value is durably stored.
-    bar_greeting = yield ctx.run(bar, greetee=greetee)
-    baz_greeting = yield ctx.run(baz, greetee=greetee)
+    bar_greeting = await ctx.run(bar, greetee=greetee)
+    baz_greeting = await ctx.run(baz, greetee=greetee)
     return f"Hello {greetee} from foo! {bar_greeting} {baz_greeting}"
 
 
-result = foo.run("greeting-workflow", greetee="World")
-print(result)
+async def main() -> None:
+    url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+    r = Resonate(url=url)
+    r.register(foo)
+    try:
+        handle = r.run(f"greeting-{time.time_ns()}", foo, "World")
+        result = await handle.result()
+        print(result)
+    finally:
+        await r.stop()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 
@@ -13887,7 +13951,7 @@ async fn main() {
 
 
 
-The TypeScript and Python examples invoke the workflow in-process — no server needed for this minimal demo. The Rust example registers the function with a long-running worker and waits for an invocation from the Resonate CLI.
+The TypeScript example invokes the workflow in-process — no server needed. The Python and Rust examples register the function with a long-running worker and connect to a Resonate Server.
 
 ## Run it locally
 
@@ -13923,13 +13987,16 @@ cd example-hello-world-py
 uv sync
 ```
 
-Run the workflow in-process:
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
 
-```shell
+```shell title="Terminal 2 — run the workflow"
 uv run main.py
 ```
 
-`Resonate.local()` runs everything in-process — no server required for this minimal demo.
+You should see the assembled greeting printed after all three durable steps checkpoint.
 
 
 
@@ -13988,7 +14055,7 @@ title: Human-in-the-loop
 A workflow blocks on a durable promise, prints a callback URL, and resumes the moment a human resolves it — from any process, any machine, any time.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development — published on crates.io as `resonate-sdk`; this example pulls it as a git dependency from `resonate-sdk-rs` to track `main`.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development — published on crates.io as `resonate-sdk`; this example pulls it as a git dependency from `resonate-sdk-rs` to track `main`.
 
 
 
@@ -14040,19 +14107,40 @@ resonate.register("foo-workflow", fooWorkflow);
 
 
 ```python title="worker.py"
-@resonate.register()
-def foo(ctx, workflow_id):
+from __future__ import annotations
+
+import asyncio
+import os
+from typing import TYPE_CHECKING
+
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url, group="workers")
+
+
+async def send_email(ctx: Context, promise_id: str) -> None:
+    print(f"workflow blocked, waiting on human interaction (promise id: {promise_id!r})")
+
+
+async def foo(ctx: Context, workflow_id: str):
     # Latent durable promise — resolved externally.
-    blocking_promise = yield ctx.promise()
+    blocking_promise = ctx.promise()
+    promise_id = await blocking_promise.id()
 
     # Make the promise ID reachable from outside — email, webhook, log, etc.
-    yield ctx.lfc(send_email, blocking_promise.id)
-    print(f"workflow {workflow_id} blocked, waiting on human interaction")
+    await ctx.run(send_email, promise_id)
 
     # Suspend until the promise resolves. Survives crashes.
-    yield blocking_promise
+    data = await blocking_promise
     print(f"workflow {workflow_id} unblocked, promise resolved")
     return {"message": f"workflow {workflow_id} completed"}
+
+
+resonate.register(foo)
 ```
 
 
@@ -14117,22 +14205,34 @@ app.get("/unblock-workflow", async (req, res) => {
 
 
 ```python title="gateway.py"
+from __future__ import annotations
+
+import asyncio
+import os
+
+from flask import Flask, jsonify, request
+from resonate.resonate import Resonate
+from resonate.types import Value
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url, group="gateway")
+app = Flask(__name__)
+
+
 @app.route("/start-workflow", methods=["POST"])
 def start_workflow():
     data = request.get_json()
     # Same workflow_id reconnects to a PENDING execution rather than starting a new one.
-    handle = resonate.options(target="poll://any@worker").begin_rpc(
+    handle = resonate.options(target="poll://any@workers").rpc(
         data["workflow_id"], "foo", data["workflow_id"]
     )
-    if handle.done():
-        return jsonify({"message": handle.result()})
     return jsonify({"message": f"workflow {data['workflow_id']} started"}), 200
 
 
 @app.route("/unblock-workflow", methods=["GET"])
 def unblock_workflow():
     promise_id = request.args.get("promise_id")
-    resonate.promises.resolve(id=promise_id, ikey=promise_id)
+    asyncio.run(resonate.promises.resolve(promise_id, Value(data="human_approval")))
     return jsonify({"message": "workflow unblocked"}), 200
 ```
 
@@ -14333,7 +14433,7 @@ title: Kafka worker
 A consumer pulls messages from a Kafka topic and dispatches each one through a durable Resonate workflow. Per-message state lives in durable promises, so a worker that dies mid-batch resumes cleanly without redoing completed steps.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development.
 
 
 
@@ -14358,7 +14458,7 @@ Each Kafka message becomes the ID of a durable workflow. Resonate runs the workf
 
 ## Code walkthrough
 
-The pattern is a small consume loop that hands each message to `workflow.begin_run`. The workflow itself does the per-message work — here, deleting batches of records until none remain, then emitting a completion event.
+The pattern is a small consume loop that hands each message to a durable workflow run. The workflow itself does the per-message work — here, deleting batches of records until none remain, then emitting a completion event.
 
 ### The durable workflow
 
@@ -14391,33 +14491,46 @@ resonate.register("workflow", workflow);
 
 
 ```python title="record_deletor/delete.py"
-from resonate import Resonate
+from __future__ import annotations
+
+import asyncio
 import json
+import os
+from datetime import timedelta
+from typing import TYPE_CHECKING
 
-resonate = Resonate.remote()
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url)
 
 
-def delete_batch(_, record_id, batch_size=10):
+async def delete_batch(ctx: Context, record_id: str, batch_size: int = 10) -> bool:
     # Real work goes here. Returns True if more batches remain.
     print(f"deleting a batch of rows for record {record_id}")
     # ...transient failures throw; durable retry handles them.
     return more_remaining
 
 
-def enqueue(_, msg_id, previous_offset):
+async def enqueue(ctx: Context, msg_id: str, previous_offset: int) -> None:
     # Emit a completion event to the downstream topic.
     payload = json.dumps((msg_id, previous_offset)).encode("utf-8")
     producer.produce("records_that_were_deleted", value=payload)
     producer.flush()
 
 
-@resonate.register
-def workflow(ctx, record_id, offset):
+async def workflow(ctx: Context, record_id: str, offset: int) -> None:
     print(f"processing record {record_id} (offset {offset})")
     # Loop until delete_batch reports no more rows.
-    while (yield ctx.run(delete_batch, record_id)):
-        yield ctx.sleep(5)
-    yield ctx.run(enqueue, record_id, offset)
+    while await ctx.run(delete_batch, record_id):
+        await ctx.sleep(timedelta(seconds=5))
+    await ctx.run(enqueue, record_id, offset)
+
+
+resonate.register(workflow)
 ```
 
 
@@ -14471,7 +14584,7 @@ await consumer.run({
 
 
 
-```python title="record_deletor/delete.py"
+```python title="record_deletor/consumer.py"
 def consume():
     consumer.subscribe(["records_to_be_deleted"])
     try:
@@ -14484,14 +14597,9 @@ def consume():
                 record_id = [record_id]
             # The message ID is the workflow ID — same record reconnects
             # to its in-flight execution rather than starting over.
-            _ = workflow.begin_run(record_id[0], record_id[0], msg.offset())
+            resonate.run(record_id[0], workflow, record_id[0], msg.offset())
     finally:
         consumer.close()
-
-
-def main():
-    resonate.start()
-    consume()
 ```
 
 
@@ -14520,7 +14628,7 @@ while let Some(msg) = consumer.recv().await.ok() {
 
 
 
-`beginRun` / `begin_run` / `.spawn()` is non-blocking — the consumer keeps polling while the workflow runs in the background. The same `recordId` deduplicates retries by design.
+`beginRun` / `resonate.run(...)` / `.spawn()` is non-blocking — the consumer keeps polling while the workflow runs in the background. The same `recordId` deduplicates retries by design.
 
 ## Run it locally
 
@@ -14569,9 +14677,9 @@ uv sync
 cd redpanda && docker compose up
 ```
 
-```shell title="Terminal 2 — Resonate Server (legacy)"
+```shell title="Terminal 2 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminal 3 — the worker"
@@ -14639,7 +14747,7 @@ title: Load balancing
 Run several workers in the same group. Calls to `target: "poll://any@<group>"` get dispatched to whichever worker claims them first. When a worker dies mid-execution, Resonate reassigns the work to a survivor — no service registry, no leader election, no glue.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development. Go: pre-release — no semver tag yet, so the example pins a specific commit (see [Go SDK](/develop/go)).
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development. Go: pre-release — no semver tag yet, so the example pins a specific commit (see [Go SDK](/develop/go)).
 
 
 
@@ -14696,23 +14804,39 @@ console.log("worker is running...");
 
 
 ```python title="worker.py"
-from resonate import Resonate
-from threading import Event
-import time
+from __future__ import annotations
 
-resonate = Resonate.remote(group="worker-group")
+import asyncio
+import os
+from datetime import timedelta
+from typing import TYPE_CHECKING
+
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url, group="worker-group")
 
 
-@resonate.register
-def compute_something(_, id, compute_cost):
+async def compute_something(ctx: Context, id: str, compute_cost: int) -> None:
     print(f"starting computation {id}")
-    time.sleep(compute_cost)
+    await ctx.sleep(timedelta(seconds=compute_cost))
     print(f"computed something that cost {compute_cost} seconds")
 
 
-resonate.start()
-print("worker running...")
-Event().wait()
+resonate.register(compute_something)
+
+
+async def main() -> None:
+    print("worker running...")
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 
@@ -14824,17 +14948,32 @@ await resonate.stop();
 
 
 ```python title="invoke.py"
-from resonate import Resonate
-from uuid import uuid4
+from __future__ import annotations
+
+import asyncio
+import os
 from random import randint
+from uuid import uuid4
 
-resonate = Resonate.remote(group="invoke-group")
+from resonate.resonate import Resonate
 
-promise_id = str(uuid4())
-compute_cost = randint(1, 10)
-_ = resonate.options(target="poll://any@worker-group").begin_rpc(
-    promise_id, "compute_something", promise_id, compute_cost,
-)
+
+async def main() -> None:
+    url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+    resonate = Resonate(url=url, group="invoke-group")
+    try:
+        promise_id = str(uuid4())
+        compute_cost = randint(1, 10)
+        handle = resonate.options(target="poll://any@worker-group").rpc(
+            promise_id, "compute_something", promise_id, compute_cost,
+        )
+        await handle.result()
+    finally:
+        await resonate.stop()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 
@@ -14938,9 +15077,9 @@ cd example-load-balancing-py
 uv sync
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminals 2–4 — three workers"
@@ -15027,7 +15166,7 @@ title: Money transfer
 A workflow debits the source account, credits the target account, and returns confirmations. Each account update is a durable checkpoint, the transfer ID is the idempotency key, and the same ID retried in seconds, hours, or days returns the cached result instead of double-spending.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development.
 
 
 
@@ -15101,28 +15240,46 @@ app.post("/transfer/:id", async (req, res) => {
 
 
 ```python title="main.py"
-from resonate.retry_policies import Never
+from __future__ import annotations
+
+import asyncio
+import os
+import time
+from typing import TYPE_CHECKING
+
+from resonate.resonate import Resonate
+from resonate.retry import Never
+
+if TYPE_CHECKING:
+    from resonate.context import Context
 
 
-def transfer_money(ctx: Context, transfer_id: str, source: str, target: str,
-                   amount: float, *, simulate_credit_failure: bool = False):
+async def transfer_money(
+    ctx: Context,
+    transfer_id: str,
+    source: str,
+    target: str,
+    amount: float,
+    *,
+    simulate_credit_failure: bool = False,
+):
     debit_id = f"{transfer_id}-debit"
     credit_id = f"{transfer_id}-credit"
     reversal_id = f"{transfer_id}-reversal"
 
     # Step 1 — debit the source (durable checkpoint).
-    yield ctx.run(apply_entry, debit_id, source, -amount, "debit")
+    await ctx.run(apply_entry, debit_id, source, -amount, "debit")
 
     # Step 2 — credit the target. On failure, compensate by reversing
     # the debit. Never() retry policy lets the saga's compensation be
     # the response to a credit-side failure.
     try:
-        yield ctx.run(
+        await ctx.options(retry_policy=Never()).run(
             credit_target, credit_id, target, amount,
             fail=simulate_credit_failure,
-        ).options(retry_policy=Never())
+        )
     except Exception as err:
-        yield ctx.run(apply_entry, reversal_id, source, amount, "reversal")
+        await ctx.run(apply_entry, reversal_id, source, amount, "reversal")
         return {"transfer_id": transfer_id, "status": "compensated", "error": str(err)}
 
     return {"transfer_id": transfer_id, "status": "committed",
@@ -15168,7 +15325,7 @@ The Rust example uses `Resonate.local()` (embedded mode, no server required) plu
 
 
 
-`ctx.getDependency('db')` / `ctx.get_dependency("db")` / `info.get_dependency::<T>()` (Rust) lets the step functions see the database without exposing it as a workflow argument — important, because workflow arguments must be serializable, and a DB handle is not.
+`ctx.getDependency('db')` / `ctx.get_dependency(DB)` / `info.get_dependency::<T>()` (Rust) lets the step functions see the database without exposing it as a workflow argument — important, because workflow arguments must be serializable, and a DB handle is not.
 
 ## Run it locally
 
@@ -15212,9 +15369,12 @@ cd example-money-transfer-py
 uv sync
 ```
 
-The Python repo runs in embedded mode (`Resonate.local()`) — no separate Resonate Server is needed for the demo.
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
 
-```shell
+```shell title="Terminal 2 — run the demo"
 uv run python main.py
 ```
 
@@ -15264,7 +15424,7 @@ title: Multi-agent orchestration
 Three specialist agents — researcher, writer, reviewer — chained through an orchestrator. Each agent's output is a durable checkpoint, so a flaky LLM call mid-pipeline retries only the failing agent and the prior outputs stay cached.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust example repo is forthcoming.
 
 
 
@@ -15320,31 +15480,43 @@ export function* orchestrate(
 
 
 ```python title="src/agent.py"
-from resonate import Context, Resonate
+from __future__ import annotations
 
-resonate = Resonate()
+import asyncio
+import os
+from typing import TYPE_CHECKING
+
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url)
 
 
-@resonate.register
-def orchestrate(ctx: Context, topic: str, crash_on_writer: bool = False):
+async def orchestrate(ctx: Context, topic: str, crash_on_writer: bool = False):
     # 1. Researcher gathers findings on the topic.
-    findings = yield ctx.run(researcher, topic)
+    findings = await ctx.run(researcher, topic)
 
     # 2. Writer produces a draft from those findings. Checkpointed —
     #    if the writer crashes, the researcher's findings are NOT re-run.
-    draft = yield ctx.run(writer, topic, findings, crash_on_writer)
+    draft = await ctx.run(writer, topic, findings, crash_on_writer)
 
     # 3. Reviewer checks the draft quality.
-    review = yield ctx.run(reviewer, draft)
+    review = await ctx.run(reviewer, draft)
 
     approved = "APPROVED" in review.upper()
     return {
         "status": "published" if approved else "rejected",
         "topic": topic, "findings": findings, "draft": draft, "review": review,
     }
+
+
+resonate.register(orchestrate)
 ```
 
-The OpenAI client is injected into the workflow via `resonate.set_dependency("openai", OpenAI(...))` and accessed inside each agent with `ctx.get_dependency("openai")` — keeps the agent functions free of global imports and easy to test.
+The OpenAI client is injected into the workflow via `r.with_dependency(OpenAI(...))` and accessed inside each agent with `ctx.get_dependency(OpenAI)` — keeps the agent functions free of global imports and easy to test.
 
 
 
@@ -15372,8 +15544,10 @@ const approved = yield* approvalPromise;
 
 ```python
 # Suspend until an external system resolves the promise.
-approval = yield ctx.promise(id=f"approval/{topic}")
-approved = yield approval
+approval = ctx.promise()
+approval_id = await approval.id()
+# ... surface approval_id externally (email, log, webhook) ...
+approved = await approval
 ```
 
 
@@ -15419,9 +15593,9 @@ uv sync
 cp .env.example .env  # add your OPENAI_API_KEY
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminal 2 — worker"
@@ -15465,7 +15639,7 @@ title: Recursive factorial
 A workflow that computes `n!` by calling itself with `n-1`. Each recursive call dispatches via `ctx.rpc` to whichever worker in the group claims it — recursion ends up distributed across machines without any explicit coordination, and every step is checkpointed so a worker crash mid-recursion resumes cleanly.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development. Go: pre-release — no semver tag yet, so the example pins a specific commit (see [Go SDK](/develop/go)).
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development. Go: pre-release — no semver tag yet, so the example pins a specific commit (see [Go SDK](/develop/go)).
 
 
 
@@ -15522,26 +15696,42 @@ resonate.register("factorial", factorial);
 
 
 ```python title="factorial_worker.py"
-from resonate import Resonate
-from threading import Event
+from __future__ import annotations
 
-resonate = Resonate.remote(group="factorial-worker")
+import asyncio
+import os
+from typing import TYPE_CHECKING
+
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url, group="factorial-worker")
 
 
-@resonate.register
-def factorial(ctx, n):
+async def factorial(ctx: Context, n: int) -> int:
     if n <= 1:
         return 1
-    # ctx.rpc dispatches to any worker in the group.
-    result = yield ctx.rpc("factorial", n - 1).options(
-        target="poll://any@factorial-worker", id=f"factorial-{n-1}",
+    # ctx.options(...).rpc dispatches to any worker in the group.
+    result = await ctx.options(target="poll://any@factorial-worker").rpc(
+        "factorial", n - 1,
     )
     return n * result
 
 
-resonate.start()
-print("Factorial worker is running...")
-Event().wait()
+resonate.register(factorial)
+
+
+async def main() -> None:
+    print("Factorial worker is running...")
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 
@@ -15671,19 +15861,34 @@ await resonate.stop();
 
 
 ```python title="factorial_client.py"
-from resonate import Resonate
+from __future__ import annotations
+
+import asyncio
+import os
 from argparse import ArgumentParser
 
-resonate = Resonate.remote(group="factorial-client")
+from resonate.resonate import Resonate
 
-parser = ArgumentParser()
-parser.add_argument("n", type=int)
-args = parser.parse_args()
 
-result = resonate.options(target="poll://any@factorial-worker").rpc(
-    f"factorial-{args.n}", "factorial", n=args.n,
-)
-print(f"Result: {result}")
+async def main() -> None:
+    parser = ArgumentParser()
+    parser.add_argument("n", type=int)
+    args = parser.parse_args()
+
+    url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+    resonate = Resonate(url=url, group="factorial-client")
+    try:
+        handle = resonate.options(target="poll://any@factorial-worker").rpc(
+            f"factorial-{args.n}", "factorial", args.n,
+        )
+        result = await handle.result()
+        print(f"Result: {result}")
+    finally:
+        await resonate.stop()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 
@@ -15775,9 +15980,9 @@ cd example-recursive-factorial-py
 uv sync
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminals 2–4 — three workers"
@@ -15864,7 +16069,7 @@ title: Schedule
 Register a function to run on a cron expression and Resonate handles the rest. Every fired execution is a durable workflow — a worker that crashes mid-run hands off to a survivor, and a missed run because all workers were down still gets dispatched when one comes back.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development.
 
 
 
@@ -15912,24 +16117,34 @@ await resonate.stop();
 
 
 
-
-The high-level `resonate.schedule(...)` shown below is **not yet available in `resonate-sdk` v0.6.7** (current PyPI release). For v0.6.7, use the lower-level `resonate.schedules.create(id, cron, promise_id, promise_timeout, ...)` API, which fires a fresh durable promise on each cron tick and lets a registered worker handle it. The high-level shape is on the Python SDK roadmap.
-
-
 ```python title="schedule.py"
-from resonate import Resonate
+from __future__ import annotations
+
+import asyncio
+import os
+from datetime import timedelta
+
+from resonate.resonate import Resonate
 from report import generate_report
 
-resonate = Resonate.remote(host="http://localhost", port="8001")
-resonate.register(generate_report)
 
-resonate.schedule(
-    "daily_report",   # schedule ID
-    generate_report,
-    "* * * * *",      # cron: every minute
-    user_id=123,
-)
-print("Schedule created. Start the worker to process executions.")
+async def main() -> None:
+    url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+    resonate = Resonate(url=url)
+    resonate.register(generate_report)
+
+    await resonate.schedule(
+        "daily_report",        # schedule ID — re-running this script is a no-op once it exists
+        "* * * * *",           # cron: every minute
+        func_name="generate_report",
+        promise_timeout=timedelta(minutes=10),
+    )
+    print("Schedule created. Start the worker to process executions.")
+    await resonate.stop()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 
@@ -15982,14 +16197,26 @@ console.log("Worker started. Waiting for scheduled executions...");
 
 
 ```python title="worker.py"
-from resonate import Resonate
+from __future__ import annotations
+
+import asyncio
+import os
+
+from resonate.resonate import Resonate
 from report import generate_report
 
-resonate = Resonate(url="http://localhost:8001")
-resonate.register(generate_report)
 
-print("Worker started. Waiting for scheduled executions...")
-resonate.start()
+async def main() -> None:
+    url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+    resonate = Resonate(url=url)
+    resonate.register(generate_report)
+    print("Worker started. Waiting for scheduled executions...")
+    # Keep running until interrupted.
+    await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 
@@ -16055,9 +16282,9 @@ cd example-schedule-py
 uv sync
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminal 2 — register the schedule (one-shot)"
@@ -16119,7 +16346,7 @@ title: Webhook handler
 A webhook receives a payment event, kicks off a durable workflow keyed by the provider's event ID, and acknowledges immediately. Duplicate deliveries (network retries, slow ACKs) reconnect to the in-flight execution rather than re-charging the card. A crash mid-processing resumes from the next unfinished step.
 
 
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x. Rust example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust example repo is forthcoming.
 
 
 
@@ -16171,7 +16398,7 @@ app.post("/webhook", (req, res) => {
 async def webhook(event: WebhookEvent):
     # The event_id IS the workflow ID.
     # Stripe retries with the same event_id reconnect to the in-flight execution.
-    process_payment.run(f"webhook/{event['event_id']}", event, simulate_crash)
+    resonate.run(f"webhook/{event['event_id']}", process_payment, event, simulate_crash)
     # Fast ACK — Stripe needs a 200 within 5 seconds.
     return {"received": True}
 ```
@@ -16214,19 +16441,20 @@ export function* processPayment(
 
 
 ```python title="workflow.py"
-@resonate.register
-def process_payment(ctx: Context, event: WebhookEvent, simulate_crash: bool):
+async def process_payment(ctx: Context, event: WebhookEvent, simulate_crash: bool):
     # Validate signature and event structure.
-    yield ctx.run(validate_event, event)
+    await ctx.run(validate_event, event)
 
     # Charge the card. Checkpointed — duplicates skip this step.
-    charge_id = yield ctx.run(charge_card, event, simulate_crash)
+    charge_id = await ctx.run(charge_card, event, simulate_crash)
 
     # Send the receipt.
-    yield ctx.run(send_receipt, event, charge_id)
+    await ctx.run(send_receipt, event, charge_id)
 
     # Update the accounting ledger.
-    return (yield ctx.run(update_ledger, event, charge_id))
+    return await ctx.run(update_ledger, event, charge_id)
+
+resonate.register(process_payment)
 ```
 
 
@@ -16266,9 +16494,12 @@ cd example-webhook-handler-py
 uv sync
 ```
 
-The Python repo runs in embedded mode (`Resonate.local()`) so no separate server is needed for the demo.
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
 
-```shell title="Terminal 1 — webhook server"
+```shell title="Terminal 2 — webhook server"
 uv run python main.py
 ```
 
@@ -16365,12 +16596,6 @@ npm install @resonatehq/sdk
 
 
 
-
-
-The Python SDK (v0.6.7) currently requires the legacy Resonate server (Go-based). It is not yet compatible with the current-generation Rust server that `resonate dev` starts. See the [Python SDK guide](/develop/python) for legacy server setup.
-
-
-
 ```shell
 pip install resonate-sdk
 ```
@@ -16436,28 +16661,37 @@ resonate.register(countdown);
 
 
 ```python title="countdown.py"
-from resonate import Resonate, Context
-from threading import Event
+import asyncio
+from datetime import timedelta
 
-def countdown(ctx: Context, count: int, delay: int):
+from resonate.context import Context
+from resonate.resonate import Resonate
+
+
+async def countdown(ctx: Context, count: int, delay: int) -> None:
     for i in range(count, 0, -1):
         # Run a function, persist its result
-        yield ctx.run(ntfy, i)
+        await ctx.run(ntfy, i)
         # Sleep
-        yield ctx.sleep(delay)
-    print("Done!")
+        await ctx.sleep(timedelta(seconds=delay))
 
 
-def ntfy(_: Context, i: int):
+async def ntfy(ctx: Context, i: int) -> None:
     print(f"Countdown: {i}")
 
 
-# Instantiate Resonate
-resonate = Resonate.remote()
-# Register the function
-resonate.register(countdown)
-resonate.start() # Start Resonate threads
-Event().wait()  # Keep the main thread alive
+async def main() -> None:
+    # Instantiate Resonate
+    resonate = Resonate(url="http://localhost:8001")
+    # Register the functions
+    resonate.register(countdown)
+    resonate.register(ntfy)
+    # Keep the worker alive to receive invocations
+    await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 [Working example](https://github.com/resonatehq-examples/example-quickstart-py)
@@ -16653,7 +16887,6 @@ Countdown: 4
 Countdown: 3
 Countdown: 2
 Countdown: 1
-Done!
 ```
 
 

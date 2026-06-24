@@ -16,7 +16,7 @@ keywords:
 A workflow debits the source account, credits the target account, and returns confirmations. Each account update is a durable checkpoint, the transfer ID is the idempotency key, and the same ID retried in seconds, hours, or days returns the cached result instead of double-spending.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development.
 </Callout>
 
 <CloneRepoGrid>
@@ -109,28 +109,46 @@ app.post("/transfer/:id", async (req, res) => {
 <TabItem value="python">
 
 ```python title="main.py"
-from resonate.retry_policies import Never
+from __future__ import annotations
+
+import asyncio
+import os
+import time
+from typing import TYPE_CHECKING
+
+from resonate.resonate import Resonate
+from resonate.retry import Never
+
+if TYPE_CHECKING:
+    from resonate.context import Context
 
 
-def transfer_money(ctx: Context, transfer_id: str, source: str, target: str,
-                   amount: float, *, simulate_credit_failure: bool = False):
+async def transfer_money(
+    ctx: Context,
+    transfer_id: str,
+    source: str,
+    target: str,
+    amount: float,
+    *,
+    simulate_credit_failure: bool = False,
+):
     debit_id = f"{transfer_id}-debit"
     credit_id = f"{transfer_id}-credit"
     reversal_id = f"{transfer_id}-reversal"
 
     # Step 1 — debit the source (durable checkpoint).
-    yield ctx.run(apply_entry, debit_id, source, -amount, "debit")
+    await ctx.run(apply_entry, debit_id, source, -amount, "debit")
 
     # Step 2 — credit the target. On failure, compensate by reversing
     # the debit. Never() retry policy lets the saga's compensation be
     # the response to a credit-side failure.
     try:
-        yield ctx.run(
+        await ctx.options(retry_policy=Never()).run(
             credit_target, credit_id, target, amount,
             fail=simulate_credit_failure,
-        ).options(retry_policy=Never())
+        )
     except Exception as err:
-        yield ctx.run(apply_entry, reversal_id, source, amount, "reversal")
+        await ctx.run(apply_entry, reversal_id, source, amount, "reversal")
         return {"transfer_id": transfer_id, "status": "compensated", "error": str(err)}
 
     return {"transfer_id": transfer_id, "status": "committed",
@@ -176,7 +194,7 @@ The Rust example uses `Resonate.local()` (embedded mode, no server required) plu
 
 </Tabs>
 
-`ctx.getDependency('db')` / `ctx.get_dependency("db")` / `info.get_dependency::<T>()` (Rust) lets the step functions see the database without exposing it as a workflow argument — important, because workflow arguments must be serializable, and a DB handle is not.
+`ctx.getDependency('db')` / `ctx.get_dependency(DB)` / `info.get_dependency::<T>()` (Rust) lets the step functions see the database without exposing it as a workflow argument — important, because workflow arguments must be serializable, and a DB handle is not.
 
 ## Run it locally
 
@@ -227,9 +245,12 @@ cd example-money-transfer-py
 uv sync
 ```
 
-The Python repo runs in embedded mode (`Resonate.local()`) — no separate Resonate Server is needed for the demo.
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
 
-```shell
+```shell title="Terminal 2 — run the demo"
 uv run python main.py
 ```
 

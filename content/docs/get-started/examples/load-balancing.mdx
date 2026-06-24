@@ -15,7 +15,7 @@ keywords:
 Run several workers in the same group. Calls to `target: "poll://any@<group>"` get dispatched to whichever worker claims them first. When a worker dies mid-execution, Resonate reassigns the work to a survivor — no service registry, no leader election, no glue.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development. Go: pre-release — no semver tag yet, so the example pins a specific commit (see [Go SDK](/develop/go)).
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development. Go: pre-release — no semver tag yet, so the example pins a specific commit (see [Go SDK](/develop/go)).
 </Callout>
 
 <CloneRepoGrid>
@@ -96,23 +96,39 @@ console.log("worker is running...");
 <TabItem value="python">
 
 ```python title="worker.py"
-from resonate import Resonate
-from threading import Event
-import time
+from __future__ import annotations
 
-resonate = Resonate.remote(group="worker-group")
+import asyncio
+import os
+from datetime import timedelta
+from typing import TYPE_CHECKING
+
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url, group="worker-group")
 
 
-@resonate.register
-def compute_something(_, id, compute_cost):
+async def compute_something(ctx: Context, id: str, compute_cost: int) -> None:
     print(f"starting computation {id}")
-    time.sleep(compute_cost)
+    await ctx.sleep(timedelta(seconds=compute_cost))
     print(f"computed something that cost {compute_cost} seconds")
 
 
-resonate.start()
-print("worker running...")
-Event().wait()
+resonate.register(compute_something)
+
+
+async def main() -> None:
+    print("worker running...")
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 </TabItem>
@@ -232,17 +248,32 @@ await resonate.stop();
 <TabItem value="python">
 
 ```python title="invoke.py"
-from resonate import Resonate
-from uuid import uuid4
+from __future__ import annotations
+
+import asyncio
+import os
 from random import randint
+from uuid import uuid4
 
-resonate = Resonate.remote(group="invoke-group")
+from resonate.resonate import Resonate
 
-promise_id = str(uuid4())
-compute_cost = randint(1, 10)
-_ = resonate.options(target="poll://any@worker-group").begin_rpc(
-    promise_id, "compute_something", promise_id, compute_cost,
-)
+
+async def main() -> None:
+    url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+    resonate = Resonate(url=url, group="invoke-group")
+    try:
+        promise_id = str(uuid4())
+        compute_cost = randint(1, 10)
+        handle = resonate.options(target="poll://any@worker-group").rpc(
+            promise_id, "compute_something", promise_id, compute_cost,
+        )
+        await handle.result()
+    finally:
+        await resonate.stop()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 </TabItem>
@@ -354,9 +385,9 @@ cd example-load-balancing-py
 uv sync
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminals 2–4 — three workers"

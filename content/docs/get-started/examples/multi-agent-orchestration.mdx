@@ -16,7 +16,7 @@ keywords:
 Three specialist agents — researcher, writer, reviewer — chained through an orchestrator. Each agent's output is a durable checkpoint, so a flaky LLM call mid-pipeline retries only the failing agent and the prior outputs stay cached.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust example repo is forthcoming.
 </Callout>
 
 <CloneRepoGrid>
@@ -86,31 +86,43 @@ export function* orchestrate(
 <TabItem value="python">
 
 ```python title="src/agent.py"
-from resonate import Context, Resonate
+from __future__ import annotations
 
-resonate = Resonate()
+import asyncio
+import os
+from typing import TYPE_CHECKING
+
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url)
 
 
-@resonate.register
-def orchestrate(ctx: Context, topic: str, crash_on_writer: bool = False):
+async def orchestrate(ctx: Context, topic: str, crash_on_writer: bool = False):
     # 1. Researcher gathers findings on the topic.
-    findings = yield ctx.run(researcher, topic)
+    findings = await ctx.run(researcher, topic)
 
     # 2. Writer produces a draft from those findings. Checkpointed —
     #    if the writer crashes, the researcher's findings are NOT re-run.
-    draft = yield ctx.run(writer, topic, findings, crash_on_writer)
+    draft = await ctx.run(writer, topic, findings, crash_on_writer)
 
     # 3. Reviewer checks the draft quality.
-    review = yield ctx.run(reviewer, draft)
+    review = await ctx.run(reviewer, draft)
 
     approved = "APPROVED" in review.upper()
     return {
         "status": "published" if approved else "rejected",
         "topic": topic, "findings": findings, "draft": draft, "review": review,
     }
+
+
+resonate.register(orchestrate)
 ```
 
-The OpenAI client is injected into the workflow via `resonate.set_dependency("openai", OpenAI(...))` and accessed inside each agent with `ctx.get_dependency("openai")` — keeps the agent functions free of global imports and easy to test.
+The OpenAI client is injected into the workflow via `r.with_dependency(OpenAI(...))` and accessed inside each agent with `ctx.get_dependency(OpenAI)` — keeps the agent functions free of global imports and easy to test.
 
 </TabItem>
 
@@ -144,8 +156,10 @@ const approved = yield* approvalPromise;
 
 ```python
 # Suspend until an external system resolves the promise.
-approval = yield ctx.promise(id=f"approval/{topic}")
-approved = yield approval
+approval = ctx.promise()
+approval_id = await approval.id()
+# ... surface approval_id externally (email, log, webhook) ...
+approved = await approval
 ```
 
 </TabItem>
@@ -197,9 +211,9 @@ uv sync
 cp .env.example .env  # add your OPENAI_API_KEY
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminal 2 — worker"

@@ -16,7 +16,7 @@ keywords:
 A FastAPI gateway converts every inbound request into a durable workflow, returns a promise ID immediately, and exposes a `/wait` endpoint clients poll for completion.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development.
 </Callout>
 
 <CloneRepoGrid>
@@ -109,12 +109,18 @@ app.listen(5001, "127.0.0.1");
 <TabItem value="python">
 
 ```python title="main.py"
-from fastapi import FastAPI, HTTPException
-from resonate import Resonate
+from __future__ import annotations
+
+import asyncio
+import os
 import uuid
 
+from fastapi import FastAPI, HTTPException
+from resonate.resonate import Resonate
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
 app = FastAPI()
-resonate = Resonate.remote(group="gateway")
+resonate = Resonate(url=url, group="gateway")
 
 
 @app.post("/begin")
@@ -125,18 +131,18 @@ def begin(data=None, id=None):
     if data is None:
         data = {"foo": "bar"}
 
-    handle = resonate.options(target="poll://any@worker").begin_rpc(
-        id, "foo", data,
-    )
-    return {"promise": handle.id, "status": "pending", "wait": f"/wait?id={handle.id}"}
+    handle = resonate.options(target="poll://any@worker").rpc(id, "foo", data)
+    return {"promise": handle.promise_id, "status": "pending", "wait": f"/wait?id={id}"}
 
 
 @app.get("/wait")
-def wait(id: str):
+async def wait(id: str):
     try:
-        handle = resonate.get(id)
+        handle = await resonate.get(id)
+        # Poll for completion — done() checks server state without re-dispatching.
         if handle.done():
-            return {"status": "resolved", "promise_id": id, "result": handle.result()}
+            result = await handle.result()
+            return {"status": "resolved", "promise_id": id, "result": result}
         return {"status": "pending", "promise_id": id, "message": "Processing in progress"}
     except Exception:
         raise HTTPException(status_code=404, detail=f"{id} not found")
@@ -183,7 +189,7 @@ async fn wait(State(r): State<Resonate>, Query(q): Query<HashMap<String, String>
 
 ### The worker
 
-`@resonate.register` (Python) or `resonate.register("foo", foo)` (TypeScript) exposes `foo` as a durable function. The gateway's `beginRpc` dispatches the call to whichever worker in the `worker` group claims it first; if that worker dies mid-execution, another picks up the workflow.
+`resonate.register(foo)` (Python) or `resonate.register("foo", foo)` (TypeScript) exposes `foo` as a durable function. The gateway's `rpc(...)` dispatches the call to whichever worker in the `worker` group claims it first; if that worker dies mid-execution, another picks up the workflow.
 
 <Tabs
     groupId="preferred-language"
@@ -215,22 +221,37 @@ resonate.register("foo", foo);
 <TabItem value="python">
 
 ```python title="worker.py"
-from resonate import Context, Resonate
-from threading import Event
+from __future__ import annotations
+
+import asyncio
+import os
 import time
+from typing import TYPE_CHECKING
 
-resonate = Resonate.remote(group="worker")
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url, group="worker")
 
 
-@resonate.register
-def foo(context: Context, data):
+async def foo(ctx: Context, data) -> dict:
     # Real work goes here — external APIs, DB writes, anything serializable.
     return {"result": f"Processed: {data}", "timestamp": time.time()}
 
 
+resonate.register(foo)
+
+
+async def main() -> None:
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
 if __name__ == "__main__":
-    resonate.start()
-    Event().wait()
+    asyncio.run(main())
 ```
 
 </TabItem>
@@ -311,9 +332,9 @@ cd example-async-http-api-py
 uv sync
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminal 2 — worker"

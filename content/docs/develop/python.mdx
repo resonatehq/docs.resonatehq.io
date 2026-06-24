@@ -1,7 +1,7 @@
 ---
 title: Python SDK skills
 pageTitle: Python SDK API guidance
-description: APIs that stay simple, even when your use cases aren’t
+description: APIs that stay simple, even when your use cases aren't
 pagination_next: null
 pagination_prev: null
   - python
@@ -9,7 +9,7 @@ pagination_prev: null
 ---
 
 <Callout type="info" title="SDK version">
-This page reflects `resonate-sdk` v0.6.7 (current on PyPI). APIs are subject to change in future releases.
+This page reflects `resonate-sdk` v0.7.0 (current on PyPI). Python ≥3.12 required. The remote-mode examples below need a running server (`resonate dev`, Rust server v0.9.x+); `Resonate()` without a `url` runs entirely in-process and needs no server.
 </Callout>
 
 Welcome to the Resonate Python SDK guide!
@@ -72,24 +72,21 @@ poetry add resonate-sdk
 
 **How to initialize a Resonate Client.**
 
-There are two ways to initialize Resonate, local and remote.
+There are two ways to initialize Resonate: local (in-process, no server) and remote (connected to a Resonate server).
 
 **Local initialization = zero-dependency development**
 
 Local initialization means that Resonate uses local memory for promise storage.
 
-This is ideal for getting started quickly or for integrating Resonate into an existing application without relying on dependencies.
+This is ideal for getting started quickly or for integrating Resonate into an existing application without relying on external dependencies.
 
 ```py
-from resonate import Resonate
+from resonate.resonate import Resonate
 
 resonate = Resonate()
-
-# or alternatively
-resonate = Resonate.local()
 ```
 
-<Callout type="tip" title="Dead Simple incremental adoption">
+<Callout type="tip" title="Incremental adoption">
 Temporal, Restate, and DBOS require a server or database to get started.
 
 Resonate enables you to get started with a local worker that stores promises in memory, no server or database required.
@@ -98,70 +95,30 @@ This makes it easy to incrementally adopt Resonate into your existing Python app
 
 **Remote initialization**
 
-Remote initialization means that promises are stored remotely, and that the Resonate Client receives messages from a remote source.
-This is how Resonate enables Durable Async RPC for building distributed applications that are reliable and scalable.
-
-The quickest way to get started with Remote initialization is to connect to a locally running instance of a Resonate Server.
+Remote initialization connects to a running Resonate server, enabling durable promise storage and cross-process RPC.
+Start a server locally with `resonate dev`, then connect:
 
 ```py
-from resonate import Resonate
+from resonate.resonate import Resonate
 
-resonate = Resonate.remote()
+resonate = Resonate(url="http://localhost:8001")
 ```
 
-The default configuration uses the Resonate Server as the promise store and uses an HTTP Long Poller as the message transport to receive messages directly from the Resonate Server.
+The `url` parameter takes precedence over the `RESONATE_URL` environment variable, which in turn takes precedence over the `RESONATE_HOST`/`RESONATE_PORT` fallback. If none of these are set, the client runs in local (in-process) mode.
 
-A Resonate Client can receive messages from many different transports, such as HTTP, RabbitMQ, RedPanda, etc...
-The Poller is a great starting place however, as it will long-poll for messages from the Resonate Server without any additional setup.
-
-<Callout type="caution" title="Python SDK v0.6.7 works with the **legacy Resonate server** only. Compatibility with the current-generation Rust server is on the roadmap.">
-
-</Callout>
-
-To connect to a specific host and port, pass them explicitly:
+To pass an auth token:
 
 ```py
-from resonate import Resonate
+from resonate.resonate import Resonate
 
-resonate = Resonate.remote(
-    host="http://localhost",
-    store_port="8001",
-    message_source_port="8001",
-)
+resonate = Resonate(url="http://localhost:8001", token="your-token")
 ```
+
+The `token` kwarg falls back to the `RESONATE_TOKEN` environment variable when omitted.
 
 ### Concurrency
 
-A single Python worker process executes multiple functions concurrently using a thread pool.
-The pool size is controlled by the `workers` parameter:
-
-```py
-from resonate import Resonate
-
-# Local mode — default: min(32, os.cpu_count()) threads
-resonate = Resonate.local()
-
-# Remote mode — same default thread pool
-resonate = Resonate.remote(host="http://localhost", store_port="8001", message_source_port="8001")
-
-# Limit to 4 concurrent function executions
-resonate = Resonate.remote(
-    host="http://localhost",
-    store_port="8001",
-    message_source_port="8001",
-    workers=4,
-)
-
-# Single-threaded: one function at a time
-resonate = Resonate.remote(
-    host="http://localhost",
-    store_port="8001",
-    message_source_port="8001",
-    workers=1,
-)
-```
-
-Setting `workers=1` is useful when your worker holds in-process state that cannot be shared across concurrent tasks (for example, a browser automation session or a stateful protocol connection).
+A single Python worker process executes multiple functions concurrently inside a single asyncio event loop. The v0.7.0 SDK is fully async; every durable function is an `async def` coroutine and effects are `await`ed.
 
 See [Scaling — Worker concurrency](/deploy/scaling#worker-concurrency) for more on concurrency strategies.
 
@@ -179,7 +136,7 @@ There are two ways to register a function with Resonate: using the `register()` 
 
 ```py
 @resonate.register
-def foo(ctx, arg):
+async def foo(ctx, arg):
     # ...
     return result
 ```
@@ -189,25 +146,25 @@ def foo(ctx, arg):
 **Method**
 
 ```py
-def foo(ctx, arg):
+async def foo(ctx, arg):
     # ...
     return result
 
 resonate.register(foo)
 ```
 
-### `.set_dependency()`
+### `.with_dependency()`
 
-Resonate's `.set_dependency()` method allows you to set a dependency for the Application Node.
-You can then access the dependency in the function using the [`.get_dependency()`](#get_dependency) method.
+Resonate's `.with_dependency()` method allows you to store a typed dependency on the client.
+You can then access the dependency in any durable function using the [`.get_dependency()`](#get_dependency) method.
 
-Dependencies can only be added in the ephemeral world.
+Dependencies can only be added in the ephemeral world, before the system starts processing tasks.
 
 ```py
-resonate.set_dependency("dependency-name", dependency)
+resonate.with_dependency(dependency)
 ```
 
-The dependency can be accessed from any function in the Call Graph on that Application Node.
+The dependency is keyed by its concrete type and is accessible from any function in the call graph on that Application Node.
 This is useful for things like database connections or other resources that you want to share across functions.
 
 **How to invoke a function in the ephemeral world with the Resonate Class.**
@@ -218,70 +175,71 @@ There are two methods that you can use: `.run()` and `.rpc()`.
 
 ### `.run()`
 
-Resonate's `.run()` method invokes a function in the same process and returns the result.
+Resonate's `.run()` method invokes a function in the same process and returns a handle synchronously.
 You can think of it as a "run right here" invocation.
 After invocation, the function is considered durable and will recover in another process if required.
 
 ```py
-result = resonate.run("invocation-id", foo, arg)
-```
+import asyncio
+from resonate.resonate import Resonate
 
-### `.begin_run()`
+async def main():
+    resonate = Resonate(url="http://localhost:8001")
+    resonate.register(foo)
+    handle = resonate.run("invocation-id", foo, arg)
+    result = await handle.result()
+    await resonate.stop()
 
-Similar to `.run()` but instead of returning the result, returns a handle so the result can be awaited later.
-
-```py
-handle = resonate.begin_run("invocation-id", foo, arg)
-result = handle.result()
+asyncio.run(main())
 ```
 
 ### `.rpc()`
 
-Resonate's `.rpc()` method (Remote Procedure Call) invokes a function in a remote process and returns the result.
+Resonate's `.rpc()` method (Remote Procedure Call) invokes a function in a remote process and returns a handle synchronously.
 You can think of it as a "run somewhere else" invocation (Asynchronous Remote Procedure Call).
 After invocation, the function is considered durable and will recover in another process if required.
 
 ```py
-result = resonate.rpc("invocation-id", "foo", args)
+import asyncio
+from resonate.resonate import Resonate
 
-# optionally target a specific group
-result = resonate.options(target="poll://any@workers").rpc("invocation-id", "foo", args)
-```
+async def main():
+    resonate = Resonate(url="http://localhost:8001")
+    handle = resonate.rpc("invocation-id", "foo", arg)
+    result = await handle.result()
 
-### `.begin_rpc()`
+    # optionally target a specific group
+    handle2 = resonate.options(target="workers").rpc("invocation-id-2", "foo", arg)
+    result2 = await handle2.result()
+    await resonate.stop()
 
-Similar to `.rpc()` but instead of returning the result, returns a handle so the result can be awaited later.
-
-```py
-handle = resonate.begin_rpc("invocation-id", "foo", arg)
-result = handle.result()
+asyncio.run(main())
 ```
 
 ### `.options()`
 
-Options can be used preceding `.run()`, `.begin_run()`, `.rpc()`, and `.begin_rpc()`.
+Options can be used preceding `.run()` and `.rpc()` on the client.
 
 ```py
-from resonate.retry_policies import Exponential, Constant, Linear, Never
+from datetime import timedelta
+from resonate.retry import Exponential, Constant, Linear, Never
 
 resonate.options(
-    idempotency_key="custom-ikey",
-    retry_policy=Exponential(), # or Constant(), Linear(), Never()
-    target="poll://any@workers",
-    tags={"key": "value"},
-    timeout=60.0, # 1 minute in seconds
+    timeout=timedelta(seconds=60),
+    target="workers",
     version=1,
 ).run("invocation-id", foo, arg)
 ```
 
 ### `.get()`
 
-Resonate's `.get()` method allows you to subscribe to a function invocation.
-If the function invocation does not exist, an error will be thrown.
+Resonate's `.get()` method allows you to subscribe to a function invocation by its promise ID.
+If the invocation does not exist, an error will be thrown.
+`.get()` is async.
 
 ```py
-handle = resonate.get("invocation-id")
-result = handle.result()
+handle = await resonate.get("invocation-id")
+result = await handle.result()
 ```
 
 ### `.promises.get()`
@@ -289,7 +247,7 @@ result = handle.result()
 Resonate's `.promises.get()` method allows you to get a promise by ID.
 
 ```py
-resonate.promises.get("promise-id")
+await resonate.promises.get("promise-id")
 ```
 
 ### `.promises.create()`
@@ -297,9 +255,14 @@ resonate.promises.get("promise-id")
 Resonate's `.promises.create()` method allows you to create a promise.
 
 ```py
-resonate.promises.create(
+import time
+from resonate.types import Value
+
+await resonate.promises.create(
     id="promise-id",
-    timeout=int(time.time() * 1000) + 30000,  # 30s in the future
+    timeout_at=int(time.time() * 1000) + 30000,  # 30s in the future, in milliseconds
+    param=Value(data=None),
+    tags={},
 )
 ```
 
@@ -307,13 +270,15 @@ resonate.promises.create(
 
 Resonate's `.promises.resolve()` method allows you to resolve a promise by ID.
 
-This is useful for HITL use cases where you want to wait for a human to approve or reject a function execution.
+This is useful for HITL use cases where you want to unblock a durable function waiting on a human action.
 It works well in conjunction with the [`.promise()`](#promise) method.
 
 ```py
-resonate.promises.resolve(
+from resonate.types import Value
+
+await resonate.promises.resolve(
     id="promise-id",
-    data=json.dumps({}),  # optional
+    value=Value(data={"approved": True}),
 )
 ```
 
@@ -322,53 +287,44 @@ resonate.promises.resolve(
 Resonate's `.promises.reject()` method allows you to reject a promise by ID.
 
 ```py
-resonate.promises.reject(
+from resonate.types import Value
+
+await resonate.promises.reject(
     id="promise-id",
-    data=json.dumps({}),  # optional
+    value=Value(data={"reason": "policy violation"}),
 )
 ```
 
-### `.start()` and `.stop()`
+### `.stop()`
 
-The Python SDK uses background threads for the bridge, message source, and heartbeat. `.start()` boots them; `.stop()` signals them to exit.
-
-```py
-resonate.start()  # explicit start (also auto-runs on first .run() / .rpc())
-resonate.stop()   # graceful shutdown
-```
-
-`.stop()` is synchronous (no `await` — Python's SDK is thread-based, not async). It signals the background threads to exit. The threads are daemon threads, so the interpreter will exit when only daemon threads remain.
-
-<Callout type="info" title="Default poller blocks on `iter_lines`">
-The default `Poller` message source uses a blocking long-poll HTTP read. Its `stop()` sets a shutdown flag, but the underlying `iter_lines` call only checks that flag between messages — so `.stop()` may not return until the next message arrives or the connection's read timeout fires. Workers exit cleanly on `SIGINT`/`SIGTERM` because the threads are daemonized; the same is true on a script reaching end-of-`main`.
-</Callout>
-
-**When to call `.stop()`.** Call it from any process that should exit after its work finishes — demo scripts, one-shot jobs, examples, CI tasks. Without it, you rely on daemon-thread exit at interpreter shutdown, which is less graceful than a clean stop.
+`.stop()` performs a graceful async shutdown — it tears down the transport, heartbeat, and runtime tasks.
+Call it from any process that should exit cleanly after its work finishes.
 
 ```py title="main.py"
-from resonate import Resonate
+import asyncio
+from resonate.resonate import Resonate
 
-resonate = Resonate()
-resonate.register(greet)
+async def main():
+    resonate = Resonate(url="http://localhost:8001")
+    resonate.register(greet)
 
-result = resonate.run("greet-1", "greet", "world")
-print(result)
+    handle = resonate.run("greet-1", greet, "world")
+    result = await handle.result()
+    print(result)
 
-# Graceful shutdown.
-resonate.stop()
+    await resonate.stop()
+
+asyncio.run(main())
 ```
 
 <Callout type="caution" title="Don't call `.stop()` on a long-running worker">
 Calling `.stop()` on a worker (an RPC service, a Kafka consumer, an MCP server, or any other long-lived process) tears down the channels the worker uses to receive and hold work:
 
-- The message source (poller) stops — the worker stops receiving dispatched tasks.
-- The heartbeat thread stops — the server-side TTL on in-flight tasks expires, and the server reassigns them.
-- The bridge thread joins — in-flight commands are not processed.
+- The transport connection stops — the worker stops receiving dispatched tasks.
+- The heartbeat stops — the server-side TTL on in-flight tasks expires, and the server reassigns them.
 
 The process keeps running but silently stops processing work. Workers should stay up; let process termination (SIGINT / SIGTERM) end the lifecycle.
 </Callout>
-
-**Between debug runs, stop the previous client.** If you keep starting fresh workers in the same process group without stopping the previous one, the old workers keep heartbeating and still hold task leases — they will pick up new dispatches and produce surprising routing. Call `.stop()` in a shutdown hook so leases release cleanly.
 
 After calling `.stop()`, the client should not be used for further operations — construct a new `Resonate` instance instead.
 
@@ -378,255 +334,215 @@ After calling `.stop()`, the client should not be used for further operations �
 
 Resonate's Context object enables you to invoke functions from inside a Durable Function.
 This is how you extend the Call Graph and create a world of Durable Functions.
-Inside a Durable Function you use the `yield` keyword to interact with the Context object.
+Inside a Durable Function you use the `await` keyword to interact with the Context object.
 
 ### `.get_dependency()`
 
-Context's `.get_dependency()` method allows you to get a dependency that was set in the ephemeral world using the [`.set_dependency()`](#set_dependency) method and use it the Durable World.
+Context's `.get_dependency()` method allows you to get a typed dependency that was registered in the ephemeral world using [`.with_dependency()`](#with_dependency) and use it in the Durable World.
 
 ```py
+from resonate.context import Context
+
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    dependency = ctx.get_dependency("dependency-name")
+async def foo(ctx: Context, arg):
+    dependency = ctx.get_dependency(MyDependencyType)
     # do something with the dependency
-    # ...
 ```
 
 ### `.run()`
 
-Context's `.run()` method invokes a function in the **same process** in a **synchronous manner**.
-That is — the calling function blocks until the invoked function returns.
+Context's `.run()` method invokes a function in the **same process**.
+
+Await it immediately to block until the child resolves:
 
 ```py
+from resonate.context import Context
+
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    result = yield ctx.run(bar, arg)
+async def foo(ctx: Context, arg):
+    result = await ctx.run(bar, arg)
     # do more stuff
-    # ...
 
 
-def bar(ctx, arg):
-    # ...
+async def bar(ctx: Context, arg):
     return
 ```
 
-### `.begin_run()`
-
-Context's `.begin_run()` method invokes a function in the **same process** in an **asynchronous manner**.
-That is — the invocation returns a promise which can be awaited later.
+Invoke without awaiting to dispatch multiple children concurrently, then await them later:
 
 ```py
+from resonate.context import Context
+
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    promise = yield ctx.begin_run(bar, arg)
-    # do more sture
-    result = yield promise
-    # ...
+async def foo(ctx: Context, arg):
+    f1 = ctx.run(bar, arg)
+    f2 = ctx.run(bar, arg)
+    result1 = await f1
+    result2 = await f2
 
 
-def bar(ctx, arg):
-    # ...
+async def bar(ctx: Context, arg):
     return
 ```
 
 ### `.rpc()`
 
 The RPC API is how you durably communicate between processes.
-Its how you invoke functions in other processes and extend the Call Graph across process boundaries.
+It is how you invoke functions in other processes and extend the Call Graph across process boundaries.
 
-RPC is synchronous, and blocks the calling function until the invoked function returns.
-Begin RPC is asynchronous, and returns a promise which can be awaited later.
+Await it immediately (synchronous-style):
 
 ```py
+from resonate.context import Context
+
 # process x
 @resonate.register
-def foo(ctx: Context, arg: str) -> str:
-    # synchronous invocation of bar
-    result = yield ctx.rpc("bar", arg)
+async def foo(ctx: Context, arg: str) -> str:
+    result = await ctx.rpc("bar", arg)
     # do more stuff
-    # ...
 
 
 # process y
 @resonate.register
-def bar(ctx: Context, arg: str) -> str:
-    # ...
+async def bar(ctx: Context, arg: str) -> str:
     return
 ```
 
-### `.begin_rpc()`
-
-Context's `.begin_rpc()` method invokes a function in a **remote process** in an **asynchronous manner**.
-That is — the invocation returns a promise which can be awaited on later.
+Invoke without awaiting to dispatch multiple RPCs concurrently, then await them later:
 
 ```py
+from resonate.context import Context
+
 # process a
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    promise = yield ctx.begin_rpc("bar", arg)
-    # do more stuff
-    result = yield promise
-    # ...
+async def foo(ctx: Context, arg):
+    f1 = ctx.rpc("bar", arg)
+    f2 = ctx.rpc("bar", arg)
+    result1 = await f1
+    result2 = await f2
 
 # process b
 @resonate.register
-def bar(ctx, arg):
-    # ...
+async def bar(ctx: Context, arg):
     return
 ```
 
 ### `.detached()`
 
-Context's `.detached()` method invokes a function in a **remote process** in an **asynchronous manner**
-but unlike `.begin_rpc()`, the promise is not implictly awaited.
-Use `.detached()` when you want to fire-and-forget a function invocation.
+Context's `.detached()` method invokes a function in a **remote process** in a fire-and-forget manner.
+Unlike holding an RPC future, the detached child's lifetime is fully decoupled from the parent —
+the parent never implicitly awaits it, and the child survives the parent completing.
 
 ```py
+from resonate.context import Context
+
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    yield ctx.detached("bar", arg)
-    # do more stuff
-    # ...
+async def foo(ctx: Context, arg):
+    audit_future = ctx.detached("bar", arg)
+    audit_id = await audit_future.id()
+    # foo completes; bar keeps running independently
 ```
 
 ### `.options()`
 
-Options can be used following `.run()`, `.begin_run()`, `.rpc()`, `.begin_rpc()`, and `.detached()`.
+Many of Context's methods support per-call options. Call `.options(...)` on the context before `.run()`, `.rpc()`, or `.detached()`.
 
-Local calls (`.run()` / `.begin_run()`) accept `durable`, `encoder`, `id`, `idempotency_key`, `non_retryable_exceptions`, `retry_policy`, `tags`, and `timeout`.
+Both local calls (`.run()`) and remote calls (`.rpc()` / `.detached()`) accept `timeout`, `target`, `version`, and `retry_policy`.
 
 ```py
-from resonate.retry_policies import Exponential, Constant, Linear, Never
+from datetime import timedelta
+from resonate.retry import Exponential, Constant, Linear, Never
+from resonate.context import Context
 
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    yield ctx.run(bar, arg).options(
-        id="custom-id",
-        idempotency_key="custom-ikey",
-        durable=True,
-        retry_policy=Exponential(), # or Constant(), Linear(), Never()
-        tags={"key": "value"},
-        timeout=30.0,
-    )
+async def foo(ctx: Context, arg):
+    result = await ctx.options(
+        retry_policy=Exponential(delay=1, factor=2, max_delay=30, max_retries=10),
+        timeout=timedelta(seconds=30),
+    ).run(bar, arg)
 ```
 
-Remote calls (`.rpc()` / `.begin_rpc()` / `.detached()`) accept `encoder`, `id`, `idempotency_key`, `tags`, `target`, `timeout`, and `version`.
-
 ```py
+from resonate.context import Context
+
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    yield ctx.rpc("bar", arg).options(
-        id="custom-id",
-        idempotency_key="custom-ikey",
-        target="poll://any@workers",
-        tags={"key": "value"},
-        timeout=30.0,
+async def foo(ctx: Context, arg):
+    result = await ctx.options(
+        target="workers",
         version=1,
-    )
+    ).rpc("bar", arg)
 ```
 
 ### `.promise()`
 
-Context's `.promise()` method allows you to get or create a promise that can be awaited on.
-
-If no ID is provided, one is generated and a new promise is created.
-If an ID is provided and a promise already exists with that ID, then the existing promise is returned (if the idempotency keys match).
+Context's `.promise()` method creates a durable promise that can be awaited by the calling function and resolved externally.
 
 This is very useful for HITL (Human-In-The-Loop) use cases where you want to block progress until a human has taken an action or provided data.
 It works well in conjunction with the [`.promises.resolve()`](#promisesresolve) method.
 
 ```py
-@resonate.register
-def foo(ctx, arg):
-    # ...
-    promise = yield ctx.promise(id="promise-id")
-    # do more stuff
-    result = yield promise
-    # ...
-```
+from resonate.context import Context
 
-You can also pass custom data into the promise.
-
-```py
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    promise = yield ctx.promise(data={"key": "value"})
-    # do more stuff
-    result = yield promise
-    # ...
+async def foo(ctx: Context, arg):
+    approval = ctx.promise()          # returns a future; inherits workflow timeout
+    approval_id = await approval.id() # get the externally-addressable promise ID
+    # publish approval_id to a reviewer (email, Slack, dashboard, etc.)
+    decision = await approval         # suspend until the external party resolves it
 ```
 
 ### `.sleep()`
 
-Context's `.sleep()` method allows you to sleep inside a function.
+Context's `.sleep()` method suspends the function durably for the given duration.
 There is no limit to how long you can sleep.
-The sleep method accepts a float value in seconds.
+The method accepts a `timedelta` from the standard library.
 
 ```py
+from datetime import timedelta
+from resonate.context import Context
+
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    yield ctx.sleep(5.0)  # sleep for 5 seconds
+async def foo(ctx: Context, arg):
+    await ctx.sleep(timedelta(seconds=5))  # sleep for 5 seconds
     # do more stuff
-    # ...
 ```
 
-### `.time.time()`
+### Deterministic time and random values
 
-Context's `.time.time()` method allows you to deterministically get the time in seconds since the epoch.
-If your function execution is recovered after the time has been retrieved, the same time will be returned.
-This is helpful for ensuring the same code path is taken in the event of a recovery.
+`ctx.time` and `ctx.random` from v0.6.x have been removed. There is no replacement helper.
+
+The v0.7.0 idiom for nondeterministic values that must be stable across replay is to call the nondeterministic operation inside a **leaf function** invoked via `await ctx.run(leaf, ...)`. The leaf's return value is durably checkpointed, so replay yields the same value without re-running the leaf.
 
 ```py
+import time
+import random
+from resonate.context import Context
+
+async def get_timestamp(ctx: Context) -> float:
+    return time.time()
+
+async def get_random(ctx: Context) -> float:
+    return random.random()
+
 @resonate.register
-def foo(ctx, arg):
-    # ...
-    time = yield ctx.time.time()
-    # do something with time
-    # ...
+async def foo(ctx: Context, arg):
+    ts = await ctx.run(get_timestamp)   # checkpointed; same value on replay
+    rand = await ctx.run(get_random)    # checkpointed; same value on replay
+    # use ts and rand safely
 ```
-
-### `.random.random()`
-
-Context's `.random.random()` method allows you to generate a deterministic random number.
-If your function execution is recovered after the random number has been generated, the same number will be returned.
-This is helpful for ensuring the same code path is taken in the event of a recovery.
-
-```py
-@resonate.register
-def foo(ctx, arg):
-    # ...
-    rand = yield ctx.random.random()
-    # do something with rand
-    # ...
-```
-
-### `.options()`
-
-Many of Context's methods support options on the call you are making.
 
 ## Defaults
 
-The Python SDK ships with these key defaults. Times are in **seconds**.
+The Python SDK ships with these key defaults.
 
-- **`Resonate()`** — `group = "default"`, `ttl = 10 s`, `log_level = logging.INFO`. URL falls back to `RESONATE_URL`, then `RESONATE_HOST`/`RESONATE_PORT`; otherwise local mode.
-- **`workers`** — defaults to `min(32, workers or (os.cpu_count() or 1))` execution threads.
-- **`ctx.run` / `Options`** — `durable = True`, `timeout = 31_536_000 s (1 year)`, `target = "default"`, `version = 0`, `tags = {}`, `non_retryable_exceptions = ()`, `idempotency_key = lambda id: id`.
-- **`retry_policy`** for `ctx.run` — resolves to `Exponential()` for regular functions, `Never()` for generator functions.
-- **`Exponential()` defaults** — `delay = 1`, `factor = 2`, `max_delay = 30`, `max_retries = sys.maxsize` (all times in seconds).
-- **`Constant()` / `Linear()` defaults** — `delay = 1`, `max_retries = sys.maxsize`.
+- **`Resonate()`** — `group = "default"`, `log_level = logging.INFO`. URL falls back to `RESONATE_URL`, then `RESONATE_HOST`/`RESONATE_PORT`; otherwise local mode.
+- **`ctx.run` / `Options`** — `timeout = timedelta(days=1)`, `target = "default"`, `version = 1`.
+- **`retry_policy`** for `ctx.run` — resolves to `Exponential(delay=1, factor=2, max_delay=2**63 - 1, max_retries=30)`.
+- **`Exponential()` required fields** — `delay`, `factor`, `max_delay`, `max_retries` (all times in seconds).
+- **`Constant()` / `Linear()` required fields** — `delay`, `max_retries`.
 
 <Callout type="caution" title="Python times are seconds, TypeScript times are milliseconds">
-The Python SDK uses seconds for `ttl`, `timeout`, and retry-policy delays. The TypeScript SDK uses milliseconds. The numbers do not transfer directly between the two.
+The Python SDK uses seconds for `timeout` and retry-policy delays. The TypeScript SDK uses milliseconds. The numbers do not transfer directly between the two.
 </Callout>
 
 For the full table, per-SDK comparison, and source citations, see the [Defaults reference](/reference/defaults).
-

@@ -15,7 +15,7 @@ keywords:
 A workflow that computes `n!` by calling itself with `n-1`. Each recursive call dispatches via `ctx.rpc` to whichever worker in the group claims it — recursion ends up distributed across machines without any explicit coordination, and every step is checkpointed so a worker crash mid-recursion resumes cleanly.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development. Go: pre-release — no semver tag yet, so the example pins a specific commit (see [Go SDK](/develop/go)).
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development. Go: pre-release — no semver tag yet, so the example pins a specific commit (see [Go SDK](/develop/go)).
 </Callout>
 
 <CloneRepoGrid>
@@ -96,26 +96,42 @@ resonate.register("factorial", factorial);
 <TabItem value="python">
 
 ```python title="factorial_worker.py"
-from resonate import Resonate
-from threading import Event
+from __future__ import annotations
 
-resonate = Resonate.remote(group="factorial-worker")
+import asyncio
+import os
+from typing import TYPE_CHECKING
+
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url, group="factorial-worker")
 
 
-@resonate.register
-def factorial(ctx, n):
+async def factorial(ctx: Context, n: int) -> int:
     if n <= 1:
         return 1
-    # ctx.rpc dispatches to any worker in the group.
-    result = yield ctx.rpc("factorial", n - 1).options(
-        target="poll://any@factorial-worker", id=f"factorial-{n-1}",
+    # ctx.options(...).rpc dispatches to any worker in the group.
+    result = await ctx.options(target="poll://any@factorial-worker").rpc(
+        "factorial", n - 1,
     )
     return n * result
 
 
-resonate.start()
-print("Factorial worker is running...")
-Event().wait()
+resonate.register(factorial)
+
+
+async def main() -> None:
+    print("Factorial worker is running...")
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 </TabItem>
@@ -253,19 +269,34 @@ await resonate.stop();
 <TabItem value="python">
 
 ```python title="factorial_client.py"
-from resonate import Resonate
+from __future__ import annotations
+
+import asyncio
+import os
 from argparse import ArgumentParser
 
-resonate = Resonate.remote(group="factorial-client")
+from resonate.resonate import Resonate
 
-parser = ArgumentParser()
-parser.add_argument("n", type=int)
-args = parser.parse_args()
 
-result = resonate.options(target="poll://any@factorial-worker").rpc(
-    f"factorial-{args.n}", "factorial", n=args.n,
-)
-print(f"Result: {result}")
+async def main() -> None:
+    parser = ArgumentParser()
+    parser.add_argument("n", type=int)
+    args = parser.parse_args()
+
+    url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+    resonate = Resonate(url=url, group="factorial-client")
+    try:
+        handle = resonate.options(target="poll://any@factorial-worker").rpc(
+            f"factorial-{args.n}", "factorial", args.n,
+        )
+        result = await handle.result()
+        print(f"Result: {result}")
+    finally:
+        await resonate.stop()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 </TabItem>
@@ -365,9 +396,9 @@ cd example-recursive-factorial-py
 uv sync
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminals 2–4 — three workers"

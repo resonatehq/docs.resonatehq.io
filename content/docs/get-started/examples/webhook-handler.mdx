@@ -16,7 +16,7 @@ keywords:
 A webhook receives a payment event, kicks off a durable workflow keyed by the provider's event ID, and acknowledges immediately. Duplicate deliveries (network retries, slow ACKs) reconnect to the in-flight execution rather than re-charging the card. A crash mid-processing resumes from the next unfinished step.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x. Rust example repo is forthcoming.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust example repo is forthcoming.
 </Callout>
 
 <CloneRepoGrid>
@@ -82,7 +82,7 @@ app.post("/webhook", (req, res) => {
 async def webhook(event: WebhookEvent):
     # The event_id IS the workflow ID.
     # Stripe retries with the same event_id reconnect to the in-flight execution.
-    process_payment.run(f"webhook/{event['event_id']}", event, simulate_crash)
+    resonate.run(f"webhook/{event['event_id']}", process_payment, event, simulate_crash)
     # Fast ACK — Stripe needs a 200 within 5 seconds.
     return {"received": True}
 ```
@@ -131,19 +131,20 @@ export function* processPayment(
 <TabItem value="python">
 
 ```python title="workflow.py"
-@resonate.register
-def process_payment(ctx: Context, event: WebhookEvent, simulate_crash: bool):
+async def process_payment(ctx: Context, event: WebhookEvent, simulate_crash: bool):
     # Validate signature and event structure.
-    yield ctx.run(validate_event, event)
+    await ctx.run(validate_event, event)
 
     # Charge the card. Checkpointed — duplicates skip this step.
-    charge_id = yield ctx.run(charge_card, event, simulate_crash)
+    charge_id = await ctx.run(charge_card, event, simulate_crash)
 
     # Send the receipt.
-    yield ctx.run(send_receipt, event, charge_id)
+    await ctx.run(send_receipt, event, charge_id)
 
     # Update the accounting ledger.
-    return (yield ctx.run(update_ledger, event, charge_id))
+    return await ctx.run(update_ledger, event, charge_id)
+
+resonate.register(process_payment)
 ```
 
 </TabItem>
@@ -189,9 +190,12 @@ cd example-webhook-handler-py
 uv sync
 ```
 
-The Python repo runs in embedded mode (`Resonate.local()`) so no separate server is needed for the demo.
+```shell title="Terminal 1 — Resonate Server"
+brew install resonatehq/tap/resonate
+resonate dev
+```
 
-```shell title="Terminal 1 — webhook server"
+```shell title="Terminal 2 — webhook server"
 uv run python main.py
 ```
 

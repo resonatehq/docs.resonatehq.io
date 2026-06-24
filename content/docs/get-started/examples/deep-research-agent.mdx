@@ -17,7 +17,7 @@ keywords:
 A research agent receives a broad topic, asks an LLM to break it into 2–3 subtopics, and recursively dispatches each subtopic to itself. Every LLM call and every recursive subagent is a durable promise — kill the worker mid-research, the tree resumes from the last unanswered branch.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x against the legacy Resonate Server. Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development.
 </Callout>
 
 <CloneRepoGrid>
@@ -28,7 +28,7 @@ TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.6.x a
   />
   <CloneRepoCard
     sdk="Python SDK"
-    description="Recursive research agent with parallel subagents via ctx.rfi."
+    description="Recursive research agent with parallel subagents via async ctx.run."
     link="https://github.com/resonatehq-examples/example-openai-deep-research-agent-py"
   />
   <CloneRepoCard
@@ -108,8 +108,24 @@ resonate.register("research", research);
 <TabItem value="python">
 
 ```python title="research.py"
-@resonate.register
-def research(ctx: Context, topic: str, depth: int):
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import time
+from typing import TYPE_CHECKING
+
+from resonate.resonate import Resonate
+
+if TYPE_CHECKING:
+    from resonate.context import Context
+
+url = os.environ.get("RESONATE_URL", "http://localhost:8001")
+resonate = Resonate(url=url)
+
+
+async def research(ctx: Context, topic: str, depth: int) -> str:
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": f"Research {topic}"},
@@ -117,7 +133,7 @@ def research(ctx: Context, topic: str, depth: int):
 
     while True:
         # Prompt the LLM. Tool access only when depth > 0.
-        message = yield ctx.lfc(prompt, messages, depth > 0)
+        message = await ctx.run(prompt, messages, depth > 0)
         messages.append(message)
 
         if message.tool_calls:
@@ -126,14 +142,17 @@ def research(ctx: Context, topic: str, depth: int):
             for tool_call in message.tool_calls:
                 args = json.loads(tool_call.function.arguments)
                 if tool_call.function.name == "research":
-                    handle = yield ctx.rfi(research, args["topic"], depth - 1)
+                    handle = ctx.run(research, args["topic"], depth - 1)
                     handles.append((tool_call, handle))
             # Fan in: each handle is durable; await them in order.
             for (tool_call, handle) in handles:
-                result = yield handle
+                result = await handle
                 messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
         else:
             return message.content
+
+
+resonate.register(research)
 ```
 
 </TabItem>
@@ -178,7 +197,7 @@ async fn research(ctx: &Context, topic: String, depth: u32) -> Result<String> {
 
 </Tabs>
 
-The recursion is the whole pattern. `ctx.beginRpc` (TS) / `ctx.rfi` (Python) / `ctx.run(...).spawn()` (Rust) dispatches a child `research` execution and returns a handle immediately — children run in parallel, each checkpointing on its own LLM calls. The outer loop awaits handles in order and feeds their results back to the LLM as tool messages.
+The recursion is the whole pattern. `ctx.beginRpc` (TS) / `ctx.run(research, ...)` without `await` (Python) / `ctx.run(...).spawn()` (Rust) dispatches a child `research` execution and returns a handle immediately — children can be awaited later, each checkpointing on its own LLM calls. The outer loop awaits handles in order and feeds their results back to the LLM as tool messages.
 
 ## Run it locally
 
@@ -224,9 +243,9 @@ uv sync
 export OPENAI_API_KEY=sk-...
 ```
 
-```shell title="Terminal 1 — Resonate Server (legacy)"
+```shell title="Terminal 1 — Resonate Server"
 brew install resonatehq/tap/resonate
-resonate serve
+resonate dev
 ```
 
 ```shell title="Terminal 2 — agent"
