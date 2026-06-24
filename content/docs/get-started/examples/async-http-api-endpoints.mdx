@@ -138,11 +138,11 @@ def begin(data=None, id=None):
 @app.get("/wait")
 async def wait(id: str):
     try:
-        handle = resonate.options(target="poll://any@worker").rpc(id, "foo", {})
-        # Poll for completion — done() checks server state.
-        result = await asyncio.wait_for(handle.result(), timeout=0.1)
-        return {"status": "resolved", "promise_id": id, "result": result}
-    except asyncio.TimeoutError:
+        handle = await resonate.get(id)
+        # Poll for completion — done() checks server state without re-dispatching.
+        if handle.done():
+            result = await handle.result()
+            return {"status": "resolved", "promise_id": id, "result": result}
         return {"status": "pending", "promise_id": id, "message": "Processing in progress"}
     except Exception:
         raise HTTPException(status_code=404, detail=f"{id} not found")
@@ -244,8 +244,14 @@ async def foo(ctx: Context, data) -> dict:
 
 resonate.register(foo)
 
+
+async def main() -> None:
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
 if __name__ == "__main__":
-    asyncio.get_event_loop().run_forever()
+    asyncio.run(main())
 ```
 
 </TabItem>

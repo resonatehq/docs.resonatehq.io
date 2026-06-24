@@ -123,9 +123,15 @@ async def factorial(ctx: Context, n: int) -> int:
 
 resonate.register(factorial)
 
-if __name__ == "__main__":
+
+async def main() -> None:
     print("Factorial worker is running...")
-    asyncio.get_event_loop().run_forever()
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 </TabItem>

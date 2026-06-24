@@ -112,8 +112,14 @@ async def sleeping_workflow(ctx: Context, wf_id: str, secs: float):
 
 resonate.register(sleeping_workflow)
 
+
+async def main() -> None:
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
 if __name__ == "__main__":
-    asyncio.get_event_loop().run_forever()
+    asyncio.run(main())
 ```
 
 </TabItem>

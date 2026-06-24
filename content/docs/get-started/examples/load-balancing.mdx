@@ -100,6 +100,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from resonate.resonate import Resonate
@@ -113,15 +114,21 @@ resonate = Resonate(url=url, group="worker-group")
 
 async def compute_something(ctx: Context, id: str, compute_cost: int) -> None:
     print(f"starting computation {id}")
-    await asyncio.sleep(compute_cost)
+    await ctx.sleep(timedelta(seconds=compute_cost))
     print(f"computed something that cost {compute_cost} seconds")
 
 
 resonate.register(compute_something)
 
-if __name__ == "__main__":
+
+async def main() -> None:
     print("worker running...")
-    asyncio.get_event_loop().run_forever()
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 </TabItem>

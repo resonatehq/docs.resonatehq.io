@@ -169,7 +169,7 @@ For fire-and-forget calls â€” kicking off work without blocking on its result â€
 
 ```python
 # Detached: dispatch and don't wait. Returns the promise handle.
-audit_future = ctx.detached("qux", target="poll://any@service-d")
+audit_future = ctx.options(target="poll://any@service-d").detached("qux")
 audit_id = await audit_future.id()
 ```
 

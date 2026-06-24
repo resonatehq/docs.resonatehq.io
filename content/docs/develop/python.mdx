@@ -537,7 +537,7 @@ The Python SDK ships with these key defaults.
 
 - **`Resonate()`** — `group = "default"`, `log_level = logging.INFO`. URL falls back to `RESONATE_URL`, then `RESONATE_HOST`/`RESONATE_PORT`; otherwise local mode.
 - **`ctx.run` / `Options`** — `timeout = timedelta(days=1)`, `target = "default"`, `version = 1`.
-- **`retry_policy`** for `ctx.run` — resolves to `Exponential(delay=1, factor=2, max_delay=2^63-1, max_retries=30)`.
+- **`retry_policy`** for `ctx.run` — resolves to `Exponential(delay=1, factor=2, max_delay=2**63 - 1, max_retries=30)`.
 - **`Exponential()` required fields** — `delay`, `factor`, `max_delay`, `max_retries` (all times in seconds).
 - **`Constant()` / `Linear()` required fields** — `delay`, `max_retries`.
 

@@ -121,16 +121,19 @@ def lambda_handler(event, context):
 
     if event["path"].startswith("/status/"):
         job_id = event["pathParameters"]["jobId"]
-        handle = resonate.options(target="poll://any@worker").rpc(
-            f"doc/{job_id}", "process_document", {},
-        )
-        try:
-            result = asyncio.run(asyncio.wait_for(handle.result(), timeout=0.1))
+
+        async def _check():
+            handle = await resonate.get(f"doc/{job_id}")
+            if handle.done():
+                return await handle.result()
+            return None
+
+        result = asyncio.run(_check())
+        if result is not None:
             return {"statusCode": 200,
                     "body": json.dumps({"status": "done", "result": result})}
-        except asyncio.TimeoutError:
-            return {"statusCode": 200,
-                    "body": json.dumps({"status": "processing", "jobId": job_id})}
+        return {"statusCode": 200,
+                "body": json.dumps({"status": "processing", "jobId": job_id})}
 ```
 
 </TabItem>
@@ -198,8 +201,14 @@ async def process_document(ctx: Context, job: dict):
 
 resonate.register(process_document)
 
+
+async def main() -> None:
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
 if __name__ == "__main__":
-    asyncio.get_event_loop().run_forever()
+    asyncio.run(main())
 ```
 
 </TabItem>

@@ -6306,7 +6306,7 @@ The Python SDK ships with these key defaults.
 
 - **`Resonate()`** — `group = "default"`, `log_level = logging.INFO`. URL falls back to `RESONATE_URL`, then `RESONATE_HOST`/`RESONATE_PORT`; otherwise local mode.
 - **`ctx.run` / `Options`** — `timeout = timedelta(days=1)`, `target = "default"`, `version = 1`.
-- **`retry_policy`** for `ctx.run` — resolves to `Exponential(delay=1, factor=2, max_delay=2^63-1, max_retries=30)`.
+- **`retry_policy`** for `ctx.run` — resolves to `Exponential(delay=1, factor=2, max_delay=2**63 - 1, max_retries=30)`.
 - **`Exponential()` required fields** — `delay`, `factor`, `max_delay`, `max_retries` (all times in seconds).
 - **`Constant()` / `Linear()` required fields** — `delay`, `max_retries`.
 
@@ -12043,11 +12043,11 @@ def begin(data=None, id=None):
 @app.get("/wait")
 async def wait(id: str):
     try:
-        handle = resonate.options(target="poll://any@worker").rpc(id, "foo", {})
-        # Poll for completion — done() checks server state.
-        result = await asyncio.wait_for(handle.result(), timeout=0.1)
-        return {"status": "resolved", "promise_id": id, "result": result}
-    except asyncio.TimeoutError:
+        handle = await resonate.get(id)
+        # Poll for completion — done() checks server state without re-dispatching.
+        if handle.done():
+            result = await handle.result()
+            return {"status": "resolved", "promise_id": id, "result": result}
         return {"status": "pending", "promise_id": id, "message": "Processing in progress"}
     except Exception:
         raise HTTPException(status_code=404, detail=f"{id} not found")
@@ -12142,8 +12142,14 @@ async def foo(ctx: Context, data) -> dict:
 
 resonate.register(foo)
 
+
+async def main() -> None:
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
 if __name__ == "__main__":
-    asyncio.get_event_loop().run_forever()
+    asyncio.run(main())
 ```
 
 
@@ -12428,7 +12434,7 @@ For fire-and-forget calls — kicking off work without blocking on its result �
 
 ```python
 # Detached: dispatch and don't wait. Returns the promise handle.
-audit_future = ctx.detached("qux", target="poll://any@service-d")
+audit_future = ctx.options(target="poll://any@service-d").detached("qux")
 audit_id = await audit_future.id()
 ```
 
@@ -12994,16 +13000,19 @@ def lambda_handler(event, context):
 
     if event["path"].startswith("/status/"):
         job_id = event["pathParameters"]["jobId"]
-        handle = resonate.options(target="poll://any@worker").rpc(
-            f"doc/{job_id}", "process_document", {},
-        )
-        try:
-            result = asyncio.run(asyncio.wait_for(handle.result(), timeout=0.1))
+
+        async def _check():
+            handle = await resonate.get(f"doc/{job_id}")
+            if handle.done():
+                return await handle.result()
+            return None
+
+        result = asyncio.run(_check())
+        if result is not None:
             return {"statusCode": 200,
                     "body": json.dumps({"status": "done", "result": result})}
-        except asyncio.TimeoutError:
-            return {"statusCode": 200,
-                    "body": json.dumps({"status": "processing", "jobId": job_id})}
+        return {"statusCode": 200,
+                "body": json.dumps({"status": "processing", "jobId": job_id})}
 ```
 
 
@@ -13065,8 +13074,14 @@ async def process_document(ctx: Context, job: dict):
 
 resonate.register(process_document)
 
+
+async def main() -> None:
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
 if __name__ == "__main__":
-    asyncio.get_event_loop().run_forever()
+    asyncio.run(main())
 ```
 
 
@@ -13245,8 +13260,14 @@ async def sleeping_workflow(ctx: Context, wf_id: str, secs: float):
 
 resonate.register(sleeping_workflow)
 
+
+async def main() -> None:
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
 if __name__ == "__main__":
-    asyncio.get_event_loop().run_forever()
+    asyncio.run(main())
 ```
 
 
@@ -14787,6 +14808,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from resonate.resonate import Resonate
@@ -14800,15 +14822,21 @@ resonate = Resonate(url=url, group="worker-group")
 
 async def compute_something(ctx: Context, id: str, compute_cost: int) -> None:
     print(f"starting computation {id}")
-    await asyncio.sleep(compute_cost)
+    await ctx.sleep(timedelta(seconds=compute_cost))
     print(f"computed something that cost {compute_cost} seconds")
 
 
 resonate.register(compute_something)
 
-if __name__ == "__main__":
+
+async def main() -> None:
     print("worker running...")
-    asyncio.get_event_loop().run_forever()
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 
@@ -15695,9 +15723,15 @@ async def factorial(ctx: Context, n: int) -> int:
 
 resonate.register(factorial)
 
-if __name__ == "__main__":
+
+async def main() -> None:
     print("Factorial worker is running...")
-    asyncio.get_event_loop().run_forever()
+    # Keep the worker alive to receive invocations.
+    await asyncio.Event().wait()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 
