@@ -90,7 +90,6 @@ export default function RootLayout({
             gtag('config', 'G-0660YY8LZF');
           `}
         </Script>
-        <Script src="/scripts/fullstory.js" strategy="afterInteractive" />
         <Script src="/scripts/cookiebanner.js" strategy="afterInteractive" />
       </body>
     </html>
