@@ -22,6 +22,11 @@ export default defineConfig({
         light: "github-light",
         dark: "github-dark",
       },
+      // Emit only CSS custom properties (--shiki-light / --shiki-dark) instead
+      // of also baking the light color into an inline `color` style. The inline
+      // color has higher specificity than `.dark pre code span` and would win
+      // in dark mode, leaving tokens like function args near-black on dark bg.
+      defaultColor: false,
       // Shiki bakes the language into inline styles and drops the
       // `language-x` class, so the code-block chrome had no way to label an
       // untitled block and fell back to a meaningless "code". Stamp the
