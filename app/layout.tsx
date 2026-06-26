@@ -38,7 +38,12 @@ export const metadata: Metadata = {
   },
   description: "Documentation for Resonate — durable execution, dead simple. Guides for TypeScript, Python, and Rust SDKs.",
   icons: {
-    icon: "/images/favicon.png",
+    icon: [
+      { url: "/images/favicon.svg", type: "image/svg+xml" },
+      { url: "/images/favicon.png", type: "image/png", sizes: "256x256" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: "/images/apple-touch-icon.png",
   },
   openGraph: {
     title: "Resonate Documentation",
