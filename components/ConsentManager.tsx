@@ -12,12 +12,14 @@
  *     to "denied" in the layout <head> before anything runs (belt + braces).
  *   - A CPRA "Do Not Sell or Share" path (opt out of analytics/sharing).
  *
- * Reopen the panel anywhere via window.__openConsentPreferences().
- * Trigger the CPRA opt-out anywhere via window.__doNotSellOrShare()
- * or by visiting any page with the #do-not-sell hash.
+ * Site-wide entry points (so footers/links can drive it without coupling):
+ *   - window.__openConsentPreferences()  — open the granular panel
+ *   - window.__doNotSellOrShare()        — CPRA opt-out
+ *   - a link to "#do-not-sell"           — CPRA opt-out (handled on hashchange)
+ *   - a link to "#cookie-preferences"    — open the granular panel
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const GA_ID = "G-0660YY8LZF";
 const COOKIE_NAME = "resonate_consent";
@@ -39,6 +41,14 @@ declare global {
     __doNotSellOrShare?: () => void;
     __resonateGaLoaded?: boolean;
   }
+}
+
+/** Queue a gtag command via dataLayer directly — works even if window.gtag
+ *  was stripped (ad blocker) so commands still replay once gtag.js loads. */
+function gtagCmd(...args: unknown[]) {
+  if (typeof window === "undefined") return;
+  window.dataLayer = window.dataLayer || [];
+  window.dataLayer.push(args);
 }
 
 /** Registrable root domain so consent + GA are shared across subdomains. */
@@ -74,8 +84,9 @@ function writeConsent(analytics: boolean): Consent {
   };
   const domain = rootDomain();
   const value = encodeURIComponent(JSON.stringify(consent));
+  // Secure: the sites are HTTPS-only in production.
   document.cookie =
-    `${COOKIE_NAME}=${value}; path=/; max-age=${ONE_YEAR_SECONDS}; SameSite=Lax` +
+    `${COOKIE_NAME}=${value}; path=/; max-age=${ONE_YEAR_SECONDS}; SameSite=Lax; Secure` +
     (domain ? `; domain=${domain}` : "");
   return consent;
 }
@@ -88,8 +99,8 @@ function loadGoogleAnalytics() {
   s.async = true;
   s.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`;
   document.head.appendChild(s);
-  window.gtag?.("js", new Date());
-  window.gtag?.("config", GA_ID, { anonymize_ip: true });
+  gtagCmd("js", new Date());
+  gtagCmd("config", GA_ID, { anonymize_ip: true });
 }
 
 /** Remove GA's first-party cookies on opt-out. */
@@ -105,33 +116,38 @@ function clearGaCookies() {
     });
 }
 
+/** Apply a consent decision to Consent Mode + GA loading. */
 function applyConsent(consent: Consent) {
+  // Update every signal we control, explicitly, so the state is unambiguous.
+  gtagCmd("consent", "update", {
+    analytics_storage: consent.analytics ? "granted" : "denied",
+    ad_storage: "denied",
+    ad_user_data: "denied",
+    ad_personalization: "denied",
+  });
   if (consent.analytics) {
-    window.gtag?.("consent", "update", { analytics_storage: "granted" });
     loadGoogleAnalytics();
   } else {
-    window.gtag?.("consent", "update", { analytics_storage: "denied" });
     clearGaCookies();
+    // If GA was already loaded earlier in this session, a consent-update to
+    // denied stops new hits, but the cleanest way to fully unload it is a
+    // reload. Only do this on an actual revocation (script already present).
+    if (window.__resonateGaLoaded) window.location.reload();
   }
 }
 
 export default function ConsentManager() {
-  const [open, setOpen] = useState(false); // banner or preferences visible
+  // Lazy init from the stored choice to avoid a first-paint flash of the wrong UI.
+  const [decided, setDecided] = useState(() => readConsent() !== null);
+  const [open, setOpen] = useState(() => readConsent() === null);
   const [showDetails, setShowDetails] = useState(false);
-  const [analytics, setAnalytics] = useState(false);
-  const [decided, setDecided] = useState(true); // has a stored choice
+  const [analytics, setAnalytics] = useState(() => readConsent()?.analytics ?? false);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
-  // Initialise from any stored choice and honour it.
+  // Honour any stored choice and register site-wide entry points.
   useEffect(() => {
     const stored = readConsent();
-    if (stored) {
-      setDecided(true);
-      setAnalytics(stored.analytics);
-      applyConsent(stored);
-    } else {
-      setDecided(false);
-      setOpen(true);
-    }
+    if (stored) applyConsent(stored);
 
     const openPrefs = () => {
       const current = readConsent();
@@ -141,29 +157,47 @@ export default function ConsentManager() {
     };
     const doNotSell = () => {
       const c = writeConsent(false);
-      applyConsent(c);
       setAnalytics(false);
       setDecided(true);
       setOpen(false);
+      applyConsent(c); // may reload if GA was already active
     };
 
     window.__openConsentPreferences = openPrefs;
     window.__doNotSellOrShare = doNotSell;
-    if (window.location.hash === "#do-not-sell") doNotSell();
+
+    const handleHash = () => {
+      if (window.location.hash === "#do-not-sell") {
+        // strip the hash so the URL isn't "stuck" opting people out
+        history.replaceState(null, "", window.location.pathname + window.location.search);
+        doNotSell();
+      } else if (window.location.hash === "#cookie-preferences") {
+        history.replaceState(null, "", window.location.pathname + window.location.search);
+        openPrefs();
+      }
+    };
+    handleHash();
+    window.addEventListener("hashchange", handleHash);
 
     return () => {
+      window.removeEventListener("hashchange", handleHash);
       window.__openConsentPreferences = undefined;
       window.__doNotSellOrShare = undefined;
     };
   }, []);
 
+  // Move focus into the banner/panel when it opens (WCAG 2.4.3).
+  useEffect(() => {
+    if (open) dialogRef.current?.focus();
+  }, [open]);
+
   const commit = useCallback((analyticsChoice: boolean) => {
     const c = writeConsent(analyticsChoice);
-    applyConsent(c);
     setAnalytics(analyticsChoice);
     setDecided(true);
     setOpen(false);
     setShowDetails(false);
+    applyConsent(c);
   }, []);
 
   // Small persistent re-entry control once a choice has been made.
@@ -186,17 +220,20 @@ export default function ConsentManager() {
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="false"
       aria-label="Cookie consent"
-      className="fixed inset-x-0 bottom-0 z-[1000] border-t border-gray-200 bg-white p-4 font-sans shadow-[0_-4px_24px_rgba(0,0,0,0.08)] dark:border-gray-800 dark:bg-gray-950 sm:p-6"
+      aria-describedby="consent-desc"
+      tabIndex={-1}
+      className="fixed inset-x-0 bottom-0 z-[1000] border-t border-gray-200 bg-white p-4 font-sans shadow-[0_-4px_24px_rgba(0,0,0,0.08)] outline-none dark:border-gray-800 dark:bg-gray-950 sm:p-6"
     >
       <div className="mx-auto flex max-w-5xl flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="text-sm leading-relaxed text-gray-700 dark:text-gray-300">
           <p className="mb-1 font-semibold text-gray-900 dark:text-gray-100">
             We value your privacy
           </p>
-          <p>
+          <p id="consent-desc">
             We use strictly necessary cookies to run this site. With your consent
             we also use Google Analytics to understand traffic. We do not load
             analytics until you choose to allow it.{" "}

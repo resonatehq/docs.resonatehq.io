@@ -20,6 +20,8 @@ const footerLinks = {
     { label: "Home", href: "https://www.resonatehq.io" },
     { label: "Privacy Policy", href: "https://www.resonatehq.io/privacy-policy" },
     { label: "Terms", href: "https://www.resonatehq.io/terms-and-conditions" },
+    { label: "Cookie preferences", href: "#cookie-preferences" },
+    { label: "Do Not Sell or Share My Personal Information", href: "#do-not-sell" },
   ],
 };
 

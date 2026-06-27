@@ -76,14 +76,16 @@ export default function RootLayout({
       data-theme="light"
       suppressHydrationWarning
     >
-      <body className="bg-surface-light dark:bg-dark min-h-screen font-serif">
+      <head>
         {/* Consent Mode v2 — default everything to denied before any tag runs.
             Google Analytics is not loaded until the visitor opts in via ConsentManager. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',functionality_storage:'granted',security_storage:'granted',wait_for_update:500});`,
+            __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',functionality_storage:'granted',security_storage:'granted',wait_for_update:2000});`,
           }}
         />
+      </head>
+      <body className="bg-surface-light dark:bg-dark min-h-screen font-serif">
         <Navigation />
         <div className="max-w-[1400px] mx-auto">
           {children}
