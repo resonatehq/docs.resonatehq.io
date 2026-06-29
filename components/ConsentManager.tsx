@@ -237,7 +237,7 @@ export default function ConsentManager() {
             We use strictly necessary cookies to run this site. With your consent
             we also use Google Analytics to understand traffic. We do not load
             analytics until you choose to allow it.{" "}
-            <a href="/privacy-policy" className="underline hover:no-underline">
+            <a href="https://www.resonatehq.io/privacy-policy" className="underline hover:no-underline">
               Privacy Policy
             </a>
             .
