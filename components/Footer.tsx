@@ -20,6 +20,8 @@ const footerLinks = {
     { label: "Home", href: "https://www.resonatehq.io" },
     { label: "Privacy Policy", href: "https://www.resonatehq.io/privacy-policy" },
     { label: "Terms", href: "https://www.resonatehq.io/terms-and-conditions" },
+    { label: "Cookie preferences", href: "#cookie-preferences" },
+    { label: "Do Not Sell or Share My Personal Information", href: "#do-not-sell" },
   ],
 };
 
@@ -107,7 +109,7 @@ export default function Footer() {
         {/* Bottom */}
         <div className="mt-12 pt-6 border-t border-bright-gray-200 dark:border-primary/10 flex items-center justify-between">
           <p className="text-xs text-fg-muted">
-            &copy; {new Date().getFullYear()} ResonateHQ, Inc.
+            &copy; {new Date().getFullYear()} Resonate HQ, Inc.
           </p>
           <a
             href="https://github.com/resonatehq"

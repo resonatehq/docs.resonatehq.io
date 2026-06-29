@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import { Inter, Lora } from "next/font/google";
 import localFont from "next/font/local";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
+import ConsentManager from "@/components/ConsentManager";
 import "./globals.css";
 
 const inter = Inter({
@@ -76,26 +76,22 @@ export default function RootLayout({
       data-theme="light"
       suppressHydrationWarning
     >
+      <head>
+        {/* Consent Mode v2 — default everything to denied before any tag runs.
+            Google Analytics is not loaded until the visitor opts in via ConsentManager. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',functionality_storage:'granted',security_storage:'granted',wait_for_update:2000});`,
+          }}
+        />
+      </head>
       <body className="bg-surface-light dark:bg-dark min-h-screen font-serif">
         <Navigation />
         <div className="max-w-[1400px] mx-auto">
           {children}
         </div>
         <Footer />
-        <Script
-          async
-          src="https://www.googletagmanager.com/gtag/js?id=G-0660YY8LZF"
-          strategy="afterInteractive"
-        />
-        <Script id="google-gtag" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', 'G-0660YY8LZF');
-          `}
-        </Script>
-        <Script src="/scripts/cookiebanner.js" strategy="afterInteractive" />
+        <ConsentManager />
       </body>
     </html>
   );
