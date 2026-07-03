@@ -318,13 +318,13 @@ Track these metrics to know when to scale:
 
 ```text
 # Task completion rate
-rate(tasks_total{state="completed"}[5m])
+rate(tasks_total{state="fulfilled"}[5m])
 
 # Promise backlog
 promises_total{state="pending"}
 
-# Tasks claimed but not completed (stalled tasks)
-tasks_total{state="claimed"} - tasks_total{state="completed"}
+# Tasks acquired but not fulfilled (stalled tasks)
+tasks_total{state="acquired"} - tasks_total{state="fulfilled"}
 
 # Worker CPU usage (from your infrastructure metrics)
 avg(container_cpu_usage_seconds_total{app="resonate-worker"})

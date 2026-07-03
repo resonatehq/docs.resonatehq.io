@@ -227,7 +227,7 @@ resonate promises search --state pending --cursor "<cursor-from-previous-respons
 These wire one promise's completion to another effect.
 
 ```shell
-# When promise A resolves, the server walks promise B's listeners next
+# When promise A settles, the server enqueues a resume on promise B's awaiter task (via registered callback)
 resonate promises register-callback promise-A promise-B
 
 # When promise A resolves, the server POSTs to the URL
@@ -297,7 +297,7 @@ resonate tasks complete task-abc \
 ### `resonate tasks search`
 
 ```shell
-resonate tasks search --state claimed --limit 20
+resonate tasks search --state acquired --limit 20
 ```
 
 ## `resonate schedules`
@@ -417,7 +417,7 @@ resonate tree my-run-001
 resonate promises get my-run-001.step-3
 
 # Look at the tasks for the same root
-resonate tasks search --state claimed --limit 20
+resonate tasks search --state acquired --limit 20
 ```
 
 ### Cancel a workflow in flight
