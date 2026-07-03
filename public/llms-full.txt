@@ -2549,11 +2549,11 @@ rate(promises_total[5m])
 
 ```text
 # Total tasks by state
-tasks_total{state="claimed"}
-tasks_total{state="completed"}
+tasks_total{state="acquired"}
+tasks_total{state="fulfilled"}
 
 # Task completion rate
-rate(tasks_total{state="completed"}[5m])
+rate(tasks_total{state="fulfilled"}[5m])
 ```
 
 **Server load:**
@@ -2594,16 +2594,16 @@ Track outcomes to understand success/failure patterns.
 
 **Task completion rate:**
 ```text
-rate(tasks_total{state="completed"}[5m])
+rate(tasks_total{state="fulfilled"}[5m])
 ```
 How fast tasks are being processed. Compare with promise rate to understand throughput.
 
-**Claimed vs completed:**
+**Acquired vs fulfilled:**
 ```text
-tasks_total{state="claimed"}
-tasks_total{state="completed"}
+tasks_total{state="acquired"}
+tasks_total{state="fulfilled"}
 ```
-Large gap between claimed and completed indicates tasks are stalling.
+Large gap between acquired and fulfilled indicates tasks are stalling.
 
 ### Server metrics
 
@@ -2674,13 +2674,13 @@ groups:
           description: "Pending promises are accumulating - scale workers or check processing"
 
       - alert: TasksNotCompleting
-        expr: tasks_total{state="claimed"} - tasks_total{state="completed"} > 1000
+        expr: tasks_total{state="acquired"} - tasks_total{state="fulfilled"} > 1000
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "Tasks claimed but not completing"
-          description: "Large gap between claimed and completed tasks"
+          summary: "Tasks acquired but not completing"
+          description: "Large gap between acquired and fulfilled tasks"
 
       - alert: HighAPILatency
         expr: histogram_quantile(0.95, rate(api_duration_seconds_bucket[5m])) > 5
@@ -3637,13 +3637,13 @@ Track these metrics to know when to scale:
 
 ```text
 # Task completion rate
-rate(tasks_total{state="completed"}[5m])
+rate(tasks_total{state="fulfilled"}[5m])
 
 # Promise backlog
 promises_total{state="pending"}
 
-# Tasks claimed but not completed (stalled tasks)
-tasks_total{state="claimed"} - tasks_total{state="completed"}
+# Tasks acquired but not fulfilled (stalled tasks)
+tasks_total{state="acquired"} - tasks_total{state="fulfilled"}
 
 # Worker CPU usage (from your infrastructure metrics)
 avg(container_cpu_usage_seconds_total{app="resonate-worker"})
@@ -8003,7 +8003,7 @@ Developers can test workflows on their laptop. When ready, connect to a server f
 Your custom system is tied to your stack, your choices, your company.
 
 **Resonate implements Distributed Async Await** - a protocol with:
-- Formal semantics (TLA+ models, published specifications)
+- Formal semantics (executable Lean 4 specification, published open-source)
 - Language-agnostic design (TypeScript, Python, and Rust SDKs today, with a Go SDK in active development)
 - Open source implementation (server and SDKs)
 
@@ -8041,7 +8041,7 @@ But if you're here because you're **tired of maintaining custom infrastructure**
 | Custom state management | Protocol-level checkpointing |
 | Maintenance is on you | Open source community + commercial support available |
 | Bespoke, company-specific | Protocol-based, portable |
-| Formal verification: maybe | Formal verification: yes (TLA+ models) |
+| Formal verification: maybe | Formal verification: yes (executable Lean 4 specification) |
 | Learning curve: steep (new hires) | Learning curve: gentle (async/await) |
 
 ## Next steps
@@ -11063,6 +11063,8 @@ The Async RPC protocol is designed to enable reliable and scalable communication
 
 Resonate already ships several transport plugins and more are being developed — see [Message transports](/deploy/message-transports) for the current set.
 
+For the formal treatment of these protocols — promise state transitions, task lifecycle, and message-passing semantics — see the [Distributed Async Await specification](/spec).
+
 Additionally, thanks to the protocol, Resonate offers built-in service discovery and load balancing.
 
 When a worker or microservice connects to a Resonate Server, it registers itself both uniquely and as part of a group.
@@ -11140,7 +11142,7 @@ The new server is also linearizable. Combined with DST, this is the foundation o
 
 ## Open everything
 
-The [Async RPC protocol](https://www.async-rpc.io), the [Distributed Async Await specification](/spec), and the open-source Resonate server are all fully open. Adopting Resonate means adopting a protocol, not a vendor. Everything you need to fork or build your own is available to you.
+The [Async RPC protocol](https://www.async-rpc.io), the [Distributed Async Await specification](/spec), and the open-source Resonate server are all fully open. The promise, schedule, and task state transitions are formalised as an [executable Lean 4 abstract machine](https://github.com/resonatehq/resonate-specification) — the machine-checkable ground truth alongside the prose spec. Adopting Resonate means adopting a protocol, not a vendor. Everything you need to fork or build your own is available to you.
 
 ---
 
@@ -17203,7 +17205,7 @@ resonate promises search --state pending --cursor "<cursor-from-previous-respons
 These wire one promise's completion to another effect.
 
 ```shell
-# When promise A resolves, the server walks promise B's listeners next
+# When promise A settles, the server enqueues a resume on promise B's awaiter task (via registered callback)
 resonate promises register-callback promise-A promise-B
 
 # When promise A resolves, the server POSTs to the URL
@@ -17273,7 +17275,7 @@ resonate tasks complete task-abc \
 ### `resonate tasks search`
 
 ```shell
-resonate tasks search --state claimed --limit 20
+resonate tasks search --state acquired --limit 20
 ```
 
 ## `resonate schedules`
@@ -17393,7 +17395,7 @@ resonate tree my-run-001
 resonate promises get my-run-001.step-3
 
 # Look at the tasks for the same root
-resonate tasks search --state claimed --limit 20
+resonate tasks search --state acquired --limit 20
 ```
 
 ### Cancel a workflow in flight
@@ -17827,8 +17829,8 @@ Eventual resumption occurs when the calling execution E<sub>1</sub> awaits a pro
 6. When the calling execution E<sub>1</sub> awaits promise P<sub>2</sub>, W<sub>1</sub> sends a request to register a callback Resume(P<sub>1</sub>, P<sub>2</sub>) deliverable to G<sub>A</sub> with preference W<sub>1</sub> on P<sub>2</sub> to server S.
 7. Upon receiving the request, since P<sub>2</sub> is still pending, server S registers the callback C<sub>1</sub> with promise P<sub>2</sub>.
 8. Server S sends a response indicating success to worker W<sub>1</sub>, which suspends E<sub>1</sub>.
-9. When the called execution E<sub>2</sub> returns, the worker W<sub>2</sub> sends a request to resolve or reject durable promise P<sub>2</sub> to the server S.
-10. Upon receiving the request, the server S resolves or rejects the durable promise P<sub>2</sub>.
+9. When the called execution E<sub>2</sub> returns, the worker W<sub>2</sub> sends a request to settle durable promise P<sub>2</sub> to the server S.
+10. Upon receiving the request, the server S settles the durable promise P<sub>2</sub>.
 11. Server S sends a response containing P<sub>2</sub> to W<sub>2</sub>.
 12. The server S sends a Resume(P<sub>1</sub>, P<sub>2</sub>) message to process group G<sub>A</sub> with the preference of W<sub>1</sub>, here delivered to worker W<sub>1</sub>, which resumes E<sub>1</sub>.
 
@@ -17843,8 +17845,8 @@ Immediate resumption occurs when the calling execution E<sub>1</sub> awaits a pr
 3. Server S sends a response to W<sub>1</sub>, which forwards P<sub>2</sub> to E<sub>1</sub>.
 4. The server S sends an Invoke(P<sub>2</sub>) message to process group G<sub>B</sub>, here delivered to worker W<sub>2</sub>.
 5. Worker W<sub>2</sub> spawns execution E<sub>2</sub>.
-6. When the called execution E<sub>2</sub> returns, the worker W<sub>2</sub> sends a request to resolve or reject durable promise P<sub>2</sub> to the server S.
-7. Upon receiving the request, the server S resolves or rejects the durable promise P<sub>2</sub>.
+6. When the called execution E<sub>2</sub> returns, the worker W<sub>2</sub> sends a request to settle durable promise P<sub>2</sub> to the server S.
+7. Upon receiving the request, the server S settles the durable promise P<sub>2</sub>.
 8. Server S sends a response containing P<sub>2</sub> to W<sub>2</sub>.
 9. When the calling execution E<sub>1</sub> awaits promise P<sub>2</sub>, W<sub>1</sub> sends a request to register a callback Resume(P<sub>1</sub>, P<sub>2</sub>) deliverable to G<sub>A</sub> with preference W<sub>1</sub> on P<sub>2</sub> to server S.
 10. Upon receiving the request, since P<sub>2</sub> is already completed, server S **does not** register a callback.
@@ -17974,7 +17976,7 @@ Promises carry a `tags` map. The protocol reserves the `resonate:` namespace for
 | `resonate:origin` | Identifies the root promise that initiated the execution. All promises in an execution tree share the same `resonate:origin` value. |
 | `resonate:parent` | Identifies the direct parent promise in the execution tree. |
 | `resonate:branch` | Identifies the current execution branch. Set when a promise in an execution tree has a `resonate:target` tag. Drives preload semantics. |
-| `resonate:delay` | Reserved for future use. *Semantics not yet specified — implementations should ignore this tag until a future spec revision defines its behavior.* |
+| `resonate:delay` | When present on a `promise.create` request that also carries a `resonate:target` tag, the server parses the value as a timestamp (natural number). If the delay value is greater than `now`, the server arms the task's retry timeout at `delay` rather than emitting an immediate `execute` message, effectively scheduling the execution for a future time. |
 
 User-defined tags outside the `resonate:` namespace are opaque to the protocol and may be used freely.
 
@@ -18080,15 +18082,15 @@ The recovery semantics described below rest on three load-bearing pieces:
 Liveness is enforced by a lease. When a worker acquires a task, the server records a deadline by which the worker must signal it is still making progress. Each successful heartbeat extends that deadline.
 
 ```text
-acquire     →  lease = now + leaseTimeout
-heartbeat   →  lease = now + leaseTimeout
-release     →  lease deleted, version++
-lease expiry → release back to pending, version++
+acquire      →  lease = now + leaseTimeout, version++
+heartbeat    →  lease = now + leaseTimeout
+release      →  lease deleted, transition back to pending (version unchanged)
+lease expiry →  transition back to pending (version unchanged), re-enqueue execute
 ```
 
 Heartbeat is **process-level, not task-level**: a worker sends one heartbeat for all the acquired tasks it holds, and the server refreshes every matching `(id, version)` pair in a single round-trip. Workers typically heartbeat at roughly half the lease interval to absorb transient network delay.
 
-If a worker crashes — or loses the ability to make progress — its lease expires. The server transitions the task back to `pending` with an incremented version, deletes the lease, and re-enqueues the execute message. A successor worker can then claim the task with the new version.
+If a worker crashes — or loses the ability to make progress — its lease expires. The server transitions the task back to `pending` (without changing the version), deletes the lease, and re-enqueues the execute message. A successor worker calls `task.acquire`, which increments the version, and any in-flight operation from the prior worker will then fail with 409 on its next mutating call.
 
 The version is the optimistic concurrency control (OCC) token: every mutating task operation must present the current version, and the server returns `409 Conflict` on mismatch. This guarantees a worker that has lost the lease cannot still effect a settle or a fulfill — the new version on the task means the late operation collides with whatever the successor is doing.
 
@@ -18234,7 +18236,7 @@ The dynamic instance of a [Definition](#definition) — the running program, wit
 
 ### Fence
 
-A conditional task fulfill: settle the task's promise *only if* the task is still acquired at the presented version. Used when a worker needs to know it is the unique current claimant before externalizing a side effect. See [Tasks](/spec/system-model/tasks#operations).
+A version-guarded operation that atomically runs either a `promise.create` or a `promise.settle` only if the task is still acquired at the presented version. Used when a worker needs to confirm it is the unique current claimant before externalizing a side effect. See [Tasks](/spec/system-model/tasks#operations).
 
 ### Function
 
@@ -18262,7 +18264,7 @@ A property of an [Execution](#execution): an execution that experiences an inter
 
 ### Lease
 
-A deadline by which a [Worker](#worker) must signal liveness on an acquired [Task](#task). Each successful [Heartbeat](#heartbeat) extends the lease. If the lease expires, the server releases the task back to `pending` with an incremented [Version](#version), allowing a successor worker to claim it. See [Recovery Protocol](/spec/execution-model/recovery-protocol#lease-and-heartbeat).
+A deadline by which a [Worker](#worker) must signal liveness on an acquired [Task](#task). Each successful [Heartbeat](#heartbeat) extends the lease. If the lease expires, the server releases the task back to `pending` (version unchanged) and re-enqueues the execute message; a successor worker's `task.acquire` will then increment the [Version](#version). See [Recovery Protocol](/spec/execution-model/recovery-protocol#lease-and-heartbeat).
 
 ### Listener
 
@@ -18299,7 +18301,7 @@ The developer-facing surface of a system: the abstractions that authors compose 
 
 ### Promise
 
-A representation of a future value. A promise is either *pending* or *completed*; a completed promise is either *resolved* (success) or *rejected* (failure). Promises are the universal abstraction for [Coordination](#coordination) — a caller awaits a promise to receive a callee's result. In Distributed Async Await, promises are *durable*: they persist independently of the processes that reference them. See the [Durable Promise Specification](/spec/programming-model/durable-promise-specification) for the formal API and state-transition table.
+A representation of a future value. A promise is either *pending* or *completed*; a completed promise is *resolved* (success), *rejected* (failure), *rejectedCanceled* (canceled), or *rejectedTimedout* (timed out). Promises are the universal abstraction for [Coordination](#coordination) — a caller awaits a promise to receive a callee's result. In Distributed Async Await, promises are *durable*: they persist independently of the processes that reference them. See the [Durable Promise Specification](/spec/programming-model/durable-promise-specification) for the formal API and state-transition table.
 
 ### Recovery
 
@@ -18319,7 +18321,7 @@ The linear sequence of effects triggered by every promise settlement: *settle* �
 
 ### Task
 
-The unit of work the server delivers to a worker. A task and its associated promise share an identifier; the promise owns the *value*, the task owns the *claim*. Tasks have a lifecycle (`pending`/`acquired`/`suspended`/`fulfilled`), a [Version](#version), and a [Lease](#lease). See [Tasks](/spec/system-model/tasks).
+The unit of work the server delivers to a worker. A task and its associated promise share an identifier; the promise owns the *value*, the task owns the *claim*. Tasks have a lifecycle (`pending`/`acquired`/`suspended`/`halted`/`fulfilled`), a [Version](#version), and a [Lease](#lease). See [Tasks](/spec/system-model/tasks).
 
 ### Unicast
 
@@ -18327,7 +18329,7 @@ A delivery mode in which a message is sent to exactly one specific worker by id.
 
 ### Version
 
-The optimistic concurrency control (OCC) token on a [Task](#task). The version increments on every transition back to `pending`. All mutating task operations must present the current version; a mismatch returns `409 Conflict`. See [Tasks](/spec/system-model/tasks#lifecycle).
+The optimistic concurrency control (OCC) token on a [Task](#task). The version increments only on the `pending → acquired` transition (`task.acquire`); transitions back to `pending` (release, resume, lease expiry) do not change the version. All mutating task operations must present the current version; a mismatch returns `409 Conflict`. See [Tasks](/spec/system-model/tasks#lifecycle).
 
 ### Worker
 
@@ -18345,6 +18347,8 @@ title: Specification
 
 
 Distributed Async Await is a collection of protocols, sub-specifications (definitions), and models. This section is the canonical home for the formal specification — for working code that implements it, see the [TypeScript](/develop/typescript), [Python](/develop/python), and [Rust](/develop/rust) SDKs.
+
+The formal models underlying this spec are expressed as a Lean 4 abstract machine in [resonatehq/resonate-specification](https://github.com/resonatehq/resonate-specification). The promise, schedule, and task state transitions there are the machine-checkable ground truth for the system model.
 
 
 The specification is structured into three parts:
@@ -18448,11 +18452,11 @@ Within the Distributed Async Await specification, each execution — whether a f
 
 Distributed Async Await requires that promise data objects are stored to disk, thus making the promises durable, giving them the name **Durable Promises**.
 
-A promise (also called future, awaitable, or deferred) is a representation of a future value. A promise is either pending or completed — that is, resolved or rejected. A promise is pending while the value is not yet available; once completed, it signals success (resolved) or failure (rejected).
+A promise (also called future, awaitable, or deferred) is a representation of a future value. A promise is either pending or completed. A pending promise has no value yet; a completed promise carries one of four outcomes: resolved (success), rejected (failure), rejectedCanceled (canceled by a downstream caller), or rejectedTimedout (expired before settlement).
 
 ![Promise lifecycle diagram](/images/spec/promise-lifecycle.svg)
 
-A promise is a coordination primitive. In a typical scenario, a downstream function execution creates a promise and awaits its completion. An upstream function execution either resolves or rejects the promise. On completion, the downstream execution resumes with the value of the promise.
+A promise is a coordination primitive. In a typical scenario, a downstream function execution creates a promise and awaits its completion. An upstream function execution settles the promise. On completion, the downstream execution resumes with the value of the promise.
 
 ## API
 
@@ -18497,21 +18501,17 @@ Logically, the Application Programming Interface (API) is divided into two parts
 
 ### Upstream API
 
-- **Resolve**
+- **Settle**
 
-  An upstream component can resolve an existing promise, signaling success.
-
-  ```
-  Resolve(promise-id, idempotency-key, value, header, strict)
-  ```
-
-- **Reject**
-
-  An upstream component can reject a promise, signalling failure.
+  An upstream component settles an existing promise with a terminal state. A single `promise.settle` operation carries a `state` parameter that selects the outcome.
 
   ```
-  Reject(promise-id, idempotency-key, value, header, strict)
+  Settle(promise-id, idempotency-key, state, value, header, strict)
   ```
+
+  Where `state` is one of `resolved`, `rejected`, or `rejectedCanceled`. (By convention, `rejectedTimedout` is reserved for server-initiated timeout settlement.)
+
+  The legacy API exposed these as separate operations — `Resolve(...)` and `Reject(...)` upstream, `Cancel(...)` downstream; the current wire protocol unifies all three into the single `promise.settle` handler.
 
 ### OpenAPI spec example
 
@@ -18603,18 +18603,12 @@ paths:
                   additionalProperties: { type: string }
       responses:
         200:
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Promise" }
-        201:
-          description: Created
+          description: OK — returned for both new and existing promises; duplicate create is idempotent
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Promise" }
         400: { description: Invalid request }
         403: { description: Forbidden }
-        409: { description: Promise already exists }
 
   /promises/{id}:
     get:
@@ -18715,7 +18709,7 @@ components:
         id: { type: string }
         state:
           type: string
-          enum: [pending, acquired, suspended, fulfilled]
+          enum: [pending, acquired, suspended, halted, fulfilled]
         version: { type: integer }
         timeout: { type: integer, format: int64 }
         processId: { type: string }
@@ -18723,7 +18717,7 @@ components:
         completedOn: { type: integer, format: int64 }
 ```
 
-A task and its associated promise share an identifier; they are paired but distinct. A task carries a `version` that increments on every transition back to `pending` (release, resume, lease expiry). All mutating task operations require the caller to present the current `version` — a mismatch returns conflict (status `409`).
+A task and its associated promise share an identifier; they are paired but distinct. A task carries a `version` that increments only on the `pending → acquired` transition (`task.acquire`); transitions back to `pending` (release, resume, lease expiry) do not change the version. All mutating task operations require the caller to present the current `version` — a mismatch returns conflict (status `409`).
 
 For the full task lifecycle, operations, and invariants, see [Tasks](/spec/system-model/tasks).
 
@@ -18759,10 +18753,10 @@ For the full task lifecycle, operations, and invariants, see [Tasks](/spec/syste
 | 26  | Pending(id, -, -)      | Reject(id, -, F)      | Rejected(id, -, -)     | OK                   |
 | 27  | Pending(id, -, -)      | Reject(id, iku, T)    | Rejected(id, -, iku)   | OK                   |
 | 28  | Pending(id, -, -)      | Reject(id, iku, F)    | Rejected(id, -, iku)   | OK                   |
-| 29  | Pending(id, -, -)      | Cancel(id, -, T)      | Canceled(id, -, -)     | OK                   |
-| 30  | Pending(id, -, -)      | Cancel(id, -, F)      | Canceled(id, -, -)     | OK                   |
-| 31  | Pending(id, -, -)      | Cancel(id, iku, T)    | Canceled(id, -, iku)   | OK                   |
-| 32  | Pending(id, -, -)      | Cancel(id, iku, F)    | Canceled(id, -, iku)   | OK                   |
+| 29  | Pending(id, -, -)      | Cancel(id, -, T)      | RejectedCanceled(id, -, -)     | OK                   |
+| 30  | Pending(id, -, -)      | Cancel(id, -, F)      | RejectedCanceled(id, -, -)     | OK                   |
+| 31  | Pending(id, -, -)      | Cancel(id, iku, T)    | RejectedCanceled(id, -, iku)   | OK                   |
+| 32  | Pending(id, -, -)      | Cancel(id, iku, F)    | RejectedCanceled(id, -, iku)   | OK                   |
 | 33  | Pending(id, ikc, -)    | Create(id, -, T)      | Pending(id, ikc, -)    | KO, Already Pending  |
 | 34  | Pending(id, ikc, -)    | Create(id, -, F)      | Pending(id, ikc, -)    | KO, Already Pending  |
 | 35  | Pending(id, ikc, -)    | Create(id, ikc, T)    | Pending(id, ikc, -)    | OK, Deduplicated     |
@@ -18777,10 +18771,10 @@ For the full task lifecycle, operations, and invariants, see [Tasks](/spec/syste
 | 44  | Pending(id, ikc, -)    | Reject(id, -, F)      | Rejected(id, ikc, -)   | OK                   |
 | 45  | Pending(id, ikc, -)    | Reject(id, iku, T)    | Rejected(id, ikc, iku) | OK                   |
 | 46  | Pending(id, ikc, -)    | Reject(id, iku, F)    | Rejected(id, ikc, iku) | OK                   |
-| 47  | Pending(id, ikc, -)    | Cancel(id, -, T)      | Canceled(id, ikc, -)   | OK                   |
-| 48  | Pending(id, ikc, -)    | Cancel(id, -, F)      | Canceled(id, ikc, -)   | OK                   |
-| 49  | Pending(id, ikc, -)    | Cancel(id, iku, T)    | Canceled(id, ikc, iku) | OK                   |
-| 50  | Pending(id, ikc, -)    | Cancel(id, iku, F)    | Canceled(id, ikc, iku) | OK                   |
+| 47  | Pending(id, ikc, -)    | Cancel(id, -, T)      | RejectedCanceled(id, ikc, -)   | OK                   |
+| 48  | Pending(id, ikc, -)    | Cancel(id, -, F)      | RejectedCanceled(id, ikc, -)   | OK                   |
+| 49  | Pending(id, ikc, -)    | Cancel(id, iku, T)    | RejectedCanceled(id, ikc, iku) | OK                   |
+| 50  | Pending(id, ikc, -)    | Cancel(id, iku, F)    | RejectedCanceled(id, ikc, iku) | OK                   |
 | 51  | Resolved(id, -, -)     | Create(id, -, T)      | Resolved(id, -, -)     | KO, Already Resolved |
 | 52  | Resolved(id, -, -)     | Create(id, -, F)      | Resolved(id, -, -)     | KO, Already Resolved |
 | 53  | Resolved(id, -, -)     | Create(id, ikc, T)    | Resolved(id, -, -)     | KO, Already Resolved |
@@ -18941,120 +18935,120 @@ For the full task lifecycle, operations, and invariants, see [Tasks](/spec/syste
 | 208 | Rejected(id, ikc, iku) | Cancel(id, iku, F)    | Rejected(id, ikc, iku) | OK, Deduplicated     |
 | 209 | Rejected(id, ikc, iku) | Cancel(id, iku\*, T)  | Rejected(id, ikc, iku) | KO, Already Rejected |
 | 210 | Rejected(id, ikc, iku) | Cancel(id, iku\*, F)  | Rejected(id, ikc, iku) | KO, Already Rejected |
-| 211 | Canceled(id, -, -)     | Create(id, -, T)      | Canceled(id, -, -)     | KO, Already Canceled |
-| 212 | Canceled(id, -, -)     | Create(id, -, F)      | Canceled(id, -, -)     | KO, Already Canceled |
-| 213 | Canceled(id, -, -)     | Create(id, ikc, T)    | Canceled(id, -, -)     | KO, Already Canceled |
-| 214 | Canceled(id, -, -)     | Create(id, ikc, F)    | Canceled(id, -, -)     | KO, Already Canceled |
-| 215 | Canceled(id, -, -)     | Resolve(id, -, T)     | Canceled(id, -, -)     | KO, Already Canceled |
-| 216 | Canceled(id, -, -)     | Resolve(id, -, F)     | Canceled(id, -, -)     | KO, Already Canceled |
-| 217 | Canceled(id, -, -)     | Resolve(id, iku, T)   | Canceled(id, -, -)     | KO, Already Canceled |
-| 218 | Canceled(id, -, -)     | Resolve(id, iku, F)   | Canceled(id, -, -)     | KO, Already Canceled |
-| 219 | Canceled(id, -, -)     | Reject(id, -, T)      | Canceled(id, -, -)     | KO, Already Canceled |
-| 220 | Canceled(id, -, -)     | Reject(id, -, F)      | Canceled(id, -, -)     | KO, Already Canceled |
-| 221 | Canceled(id, -, -)     | Reject(id, iku, T)    | Canceled(id, -, -)     | KO, Already Canceled |
-| 222 | Canceled(id, -, -)     | Reject(id, iku, F)    | Canceled(id, -, -)     | KO, Already Canceled |
-| 223 | Canceled(id, -, -)     | Cancel(id, -, T)      | Canceled(id, -, -)     | KO, Already Canceled |
-| 224 | Canceled(id, -, -)     | Cancel(id, -, F)      | Canceled(id, -, -)     | KO, Already Canceled |
-| 225 | Canceled(id, -, -)     | Cancel(id, iku, T)    | Canceled(id, -, -)     | KO, Already Canceled |
-| 226 | Canceled(id, -, -)     | Cancel(id, iku, F)    | Canceled(id, -, -)     | KO, Already Canceled |
-| 227 | Canceled(id, -, iku)   | Create(id, -, T)      | Canceled(id, -, iku)   | KO, Already Canceled |
-| 228 | Canceled(id, -, iku)   | Create(id, -, F)      | Canceled(id, -, iku)   | KO, Already Canceled |
-| 229 | Canceled(id, -, iku)   | Create(id, ikc, T)    | Canceled(id, -, iku)   | KO, Already Canceled |
-| 230 | Canceled(id, -, iku)   | Create(id, ikc, F)    | Canceled(id, -, iku)   | KO, Already Canceled |
-| 231 | Canceled(id, -, iku)   | Resolve(id, -, T)     | Canceled(id, -, iku)   | KO, Already Canceled |
-| 232 | Canceled(id, -, iku)   | Resolve(id, -, F)     | Canceled(id, -, iku)   | KO, Already Canceled |
-| 233 | Canceled(id, -, iku)   | Resolve(id, iku, T)   | Canceled(id, -, iku)   | KO, Already Canceled |
-| 234 | Canceled(id, -, iku)   | Resolve(id, iku, F)   | Canceled(id, -, iku)   | OK, Deduplicated     |
-| 235 | Canceled(id, -, iku)   | Resolve(id, iku\*, T) | Canceled(id, -, iku)   | KO, Already Canceled |
-| 236 | Canceled(id, -, iku)   | Resolve(id, iku\*, F) | Canceled(id, -, iku)   | KO, Already Canceled |
-| 237 | Canceled(id, -, iku)   | Reject(id, -, T)      | Canceled(id, -, iku)   | KO, Already Canceled |
-| 238 | Canceled(id, -, iku)   | Reject(id, -, F)      | Canceled(id, -, iku)   | KO, Already Canceled |
-| 239 | Canceled(id, -, iku)   | Reject(id, iku, T)    | Canceled(id, -, iku)   | KO, Already Canceled |
-| 240 | Canceled(id, -, iku)   | Reject(id, iku, F)    | Canceled(id, -, iku)   | OK, Deduplicated     |
-| 241 | Canceled(id, -, iku)   | Reject(id, iku\*, T)  | Canceled(id, -, iku)   | KO, Already Canceled |
-| 242 | Canceled(id, -, iku)   | Reject(id, iku\*, F)  | Canceled(id, -, iku)   | KO, Already Canceled |
-| 243 | Canceled(id, -, iku)   | Cancel(id, -, T)      | Canceled(id, -, iku)   | KO, Already Canceled |
-| 244 | Canceled(id, -, iku)   | Cancel(id, -, F)      | Canceled(id, -, iku)   | KO, Already Canceled |
-| 245 | Canceled(id, -, iku)   | Cancel(id, iku, T)    | Canceled(id, -, iku)   | OK, Deduplicated     |
-| 246 | Canceled(id, -, iku)   | Cancel(id, iku, F)    | Canceled(id, -, iku)   | OK, Deduplicated     |
-| 247 | Canceled(id, -, iku)   | Cancel(id, iku\*, T)  | Canceled(id, -, iku)   | KO, Already Canceled |
-| 248 | Canceled(id, -, iku)   | Cancel(id, iku\*, F)  | Canceled(id, -, iku)   | KO, Already Canceled |
-| 249 | Canceled(id, ikc, -)   | Create(id, -, T)      | Canceled(id, ikc, -)   | KO, Already Canceled |
-| 250 | Canceled(id, ikc, -)   | Create(id, -, F)      | Canceled(id, ikc, -)   | KO, Already Canceled |
-| 251 | Canceled(id, ikc, -)   | Create(id, ikc, T)    | Canceled(id, ikc, -)   | KO, Already Canceled |
-| 252 | Canceled(id, ikc, -)   | Create(id, ikc, F)    | Canceled(id, ikc, -)   | OK, Deduplicated     |
-| 253 | Canceled(id, ikc, -)   | Create(id, ikc\*, T)  | Canceled(id, ikc, -)   | KO, Already Canceled |
-| 254 | Canceled(id, ikc, -)   | Create(id, ikc\*, F)  | Canceled(id, ikc, -)   | KO, Already Canceled |
-| 255 | Canceled(id, ikc, -)   | Resolve(id, -, T)     | Canceled(id, ikc, -)   | KO, Already Canceled |
-| 256 | Canceled(id, ikc, -)   | Resolve(id, -, F)     | Canceled(id, ikc, -)   | KO, Already Canceled |
-| 257 | Canceled(id, ikc, -)   | Resolve(id, iku, T)   | Canceled(id, ikc, -)   | KO, Already Canceled |
-| 258 | Canceled(id, ikc, -)   | Resolve(id, iku, F)   | Canceled(id, ikc, -)   | KO, Already Canceled |
-| 259 | Canceled(id, ikc, -)   | Reject(id, -, T)      | Canceled(id, ikc, -)   | KO, Already Canceled |
-| 260 | Canceled(id, ikc, -)   | Reject(id, -, F)      | Canceled(id, ikc, -)   | KO, Already Canceled |
-| 261 | Canceled(id, ikc, -)   | Reject(id, iku, T)    | Canceled(id, ikc, -)   | KO, Already Canceled |
-| 262 | Canceled(id, ikc, -)   | Reject(id, iku, F)    | Canceled(id, ikc, -)   | KO, Already Canceled |
-| 263 | Canceled(id, ikc, -)   | Cancel(id, -, T)      | Canceled(id, ikc, -)   | KO, Already Canceled |
-| 264 | Canceled(id, ikc, -)   | Cancel(id, -, F)      | Canceled(id, ikc, -)   | KO, Already Canceled |
-| 265 | Canceled(id, ikc, -)   | Cancel(id, iku, T)    | Canceled(id, ikc, -)   | KO, Already Canceled |
-| 266 | Canceled(id, ikc, -)   | Cancel(id, iku, F)    | Canceled(id, ikc, -)   | KO, Already Canceled |
-| 267 | Canceled(id, ikc, iku) | Create(id, -, T)      | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 268 | Canceled(id, ikc, iku) | Create(id, -, F)      | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 269 | Canceled(id, ikc, iku) | Create(id, ikc, T)    | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 270 | Canceled(id, ikc, iku) | Create(id, ikc, F)    | Canceled(id, ikc, iku) | OK, Deduplicated     |
-| 271 | Canceled(id, ikc, iku) | Create(id, ikc\*, T)  | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 272 | Canceled(id, ikc, iku) | Create(id, ikc\*, F)  | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 273 | Canceled(id, ikc, iku) | Resolve(id, -, T)     | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 274 | Canceled(id, ikc, iku) | Resolve(id, -, F)     | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 275 | Canceled(id, ikc, iku) | Resolve(id, iku, T)   | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 276 | Canceled(id, ikc, iku) | Resolve(id, iku, F)   | Canceled(id, ikc, iku) | OK, Deduplicated     |
-| 277 | Canceled(id, ikc, iku) | Resolve(id, iku\*, T) | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 278 | Canceled(id, ikc, iku) | Resolve(id, iku\*, F) | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 279 | Canceled(id, ikc, iku) | Reject(id, -, T)      | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 280 | Canceled(id, ikc, iku) | Reject(id, -, F)      | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 281 | Canceled(id, ikc, iku) | Reject(id, iku, T)    | Canceled(id, ikc, iku) | OK, Deduplicated     |
-| 282 | Canceled(id, ikc, iku) | Reject(id, iku, F)    | Canceled(id, ikc, iku) | OK, Deduplicated     |
-| 283 | Canceled(id, ikc, iku) | Reject(id, iku\*, T)  | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 284 | Canceled(id, ikc, iku) | Reject(id, iku\*, F)  | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 285 | Canceled(id, ikc, iku) | Cancel(id, -, T)      | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 286 | Canceled(id, ikc, iku) | Cancel(id, -, F)      | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 287 | Canceled(id, ikc, iku) | Cancel(id, iku, T)    | Canceled(id, ikc, iku) | OK, Deduplicated     |
-| 288 | Canceled(id, ikc, iku) | Cancel(id, iku, F)    | Canceled(id, ikc, iku) | OK, Deduplicated     |
-| 289 | Canceled(id, ikc, iku) | Cancel(id, iku\*, T)  | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 290 | Canceled(id, ikc, iku) | Cancel(id, iku\*, F)  | Canceled(id, ikc, iku) | KO, Already Canceled |
-| 291 | Timedout(id, -, -)     | Create(id, -, T)      | Timedout(id, -, -)     | KO, Already Timedout |
-| 292 | Timedout(id, -, -)     | Create(id, -, F)      | Timedout(id, -, -)     | KO, Already Timedout |
-| 293 | Timedout(id, -, -)     | Create(id, ikc, T)    | Timedout(id, -, -)     | KO, Already Timedout |
-| 294 | Timedout(id, -, -)     | Create(id, ikc, F)    | Timedout(id, -, -)     | KO, Already Timedout |
-| 295 | Timedout(id, -, -)     | Resolve(id, -, T)     | Timedout(id, -, -)     | KO, Already Timedout |
-| 296 | Timedout(id, -, -)     | Resolve(id, -, F)     | Timedout(id, -, -)     | OK, Deduplicated     |
-| 297 | Timedout(id, -, -)     | Resolve(id, iku, T)   | Timedout(id, -, -)     | KO, Already Timedout |
-| 298 | Timedout(id, -, -)     | Resolve(id, iku, F)   | Timedout(id, -, -)     | OK, Deduplicated     |
-| 299 | Timedout(id, -, -)     | Reject(id, -, T)      | Timedout(id, -, -)     | KO, Already Timedout |
-| 300 | Timedout(id, -, -)     | Reject(id, -, F)      | Timedout(id, -, -)     | OK, Deduplicated     |
-| 301 | Timedout(id, -, -)     | Reject(id, iku, T)    | Timedout(id, -, -)     | KO, Already Timedout |
-| 302 | Timedout(id, -, -)     | Reject(id, iku, F)    | Timedout(id, -, -)     | OK, Deduplicated     |
-| 303 | Timedout(id, -, -)     | Cancel(id, -, T)      | Timedout(id, -, -)     | KO, Already Timedout |
-| 304 | Timedout(id, -, -)     | Cancel(id, -, F)      | Timedout(id, -, -)     | OK, Deduplicated     |
-| 305 | Timedout(id, -, -)     | Cancel(id, iku, T)    | Timedout(id, -, -)     | KO, Already Timedout |
-| 306 | Timedout(id, -, -)     | Cancel(id, iku, F)    | Timedout(id, -, -)     | OK, Deduplicated     |
-| 307 | Timedout(id, ikc, -)   | Create(id, -, T)      | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 308 | Timedout(id, ikc, -)   | Create(id, -, F)      | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 309 | Timedout(id, ikc, -)   | Create(id, ikc, T)    | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 310 | Timedout(id, ikc, -)   | Create(id, ikc, F)    | Timedout(id, ikc, -)   | OK, Deduplicated     |
-| 311 | Timedout(id, ikc, -)   | Create(id, ikc\*, T)  | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 312 | Timedout(id, ikc, -)   | Create(id, ikc\*, F)  | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 313 | Timedout(id, ikc, -)   | Resolve(id, -, T)     | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 314 | Timedout(id, ikc, -)   | Resolve(id, -, F)     | Timedout(id, ikc, -)   | OK, Deduplicated     |
-| 315 | Timedout(id, ikc, -)   | Resolve(id, iku, T)   | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 316 | Timedout(id, ikc, -)   | Resolve(id, iku, F)   | Timedout(id, ikc, -)   | OK, Deduplicated     |
-| 317 | Timedout(id, ikc, -)   | Reject(id, -, T)      | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 318 | Timedout(id, ikc, -)   | Reject(id, -, F)      | Timedout(id, ikc, -)   | OK, Deduplicated     |
-| 319 | Timedout(id, ikc, -)   | Reject(id, iku, T)    | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 320 | Timedout(id, ikc, -)   | Reject(id, iku, F)    | Timedout(id, ikc, -)   | OK, Deduplicated     |
-| 321 | Timedout(id, ikc, -)   | Cancel(id, -, T)      | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 322 | Timedout(id, ikc, -)   | Cancel(id, -, F)      | Timedout(id, ikc, -)   | OK, Deduplicated     |
-| 323 | Timedout(id, ikc, -)   | Cancel(id, iku, T)    | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 324 | Timedout(id, ikc, -)   | Cancel(id, iku, F)    | Timedout(id, ikc, -)   | OK, Deduplicated     |
+| 211 | RejectedCanceled(id, -, -)     | Create(id, -, T)      | RejectedCanceled(id, -, -)     | KO, Already RejectedCanceled |
+| 212 | RejectedCanceled(id, -, -)     | Create(id, -, F)      | RejectedCanceled(id, -, -)     | KO, Already RejectedCanceled |
+| 213 | RejectedCanceled(id, -, -)     | Create(id, ikc, T)    | RejectedCanceled(id, -, -)     | KO, Already RejectedCanceled |
+| 214 | RejectedCanceled(id, -, -)     | Create(id, ikc, F)    | RejectedCanceled(id, -, -)     | KO, Already RejectedCanceled |
+| 215 | RejectedCanceled(id, -, -)     | Resolve(id, -, T)     | RejectedCanceled(id, -, -)     | KO, Already RejectedCanceled |
+| 216 | RejectedCanceled(id, -, -)     | Resolve(id, -, F)     | RejectedCanceled(id, -, -)     | KO, Already RejectedCanceled |
+| 217 | RejectedCanceled(id, -, -)     | Resolve(id, iku, T)   | RejectedCanceled(id, -, -)     | KO, Already RejectedCanceled |
+| 218 | RejectedCanceled(id, -, -)     | Resolve(id, iku, F)   | RejectedCanceled(id, -, -)     | KO, Already RejectedCanceled |
+| 219 | RejectedCanceled(id, -, -)     | Reject(id, -, T)      | RejectedCanceled(id, -, -)     | KO, Already RejectedCanceled |
+| 220 | RejectedCanceled(id, -, -)     | Reject(id, -, F)      | RejectedCanceled(id, -, -)     | KO, Already RejectedCanceled |
+| 221 | RejectedCanceled(id, -, -)     | Reject(id, iku, T)    | RejectedCanceled(id, -, -)     | KO, Already RejectedCanceled |
+| 222 | RejectedCanceled(id, -, -)     | Reject(id, iku, F)    | RejectedCanceled(id, -, -)     | KO, Already RejectedCanceled |
+| 223 | RejectedCanceled(id, -, -)     | Cancel(id, -, T)      | RejectedCanceled(id, -, -)     | KO, Already RejectedCanceled |
+| 224 | RejectedCanceled(id, -, -)     | Cancel(id, -, F)      | RejectedCanceled(id, -, -)     | KO, Already RejectedCanceled |
+| 225 | RejectedCanceled(id, -, -)     | Cancel(id, iku, T)    | RejectedCanceled(id, -, -)     | KO, Already RejectedCanceled |
+| 226 | RejectedCanceled(id, -, -)     | Cancel(id, iku, F)    | RejectedCanceled(id, -, -)     | KO, Already RejectedCanceled |
+| 227 | RejectedCanceled(id, -, iku)   | Create(id, -, T)      | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 228 | RejectedCanceled(id, -, iku)   | Create(id, -, F)      | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 229 | RejectedCanceled(id, -, iku)   | Create(id, ikc, T)    | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 230 | RejectedCanceled(id, -, iku)   | Create(id, ikc, F)    | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 231 | RejectedCanceled(id, -, iku)   | Resolve(id, -, T)     | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 232 | RejectedCanceled(id, -, iku)   | Resolve(id, -, F)     | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 233 | RejectedCanceled(id, -, iku)   | Resolve(id, iku, T)   | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 234 | RejectedCanceled(id, -, iku)   | Resolve(id, iku, F)   | RejectedCanceled(id, -, iku)   | OK, Deduplicated     |
+| 235 | RejectedCanceled(id, -, iku)   | Resolve(id, iku\*, T) | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 236 | RejectedCanceled(id, -, iku)   | Resolve(id, iku\*, F) | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 237 | RejectedCanceled(id, -, iku)   | Reject(id, -, T)      | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 238 | RejectedCanceled(id, -, iku)   | Reject(id, -, F)      | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 239 | RejectedCanceled(id, -, iku)   | Reject(id, iku, T)    | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 240 | RejectedCanceled(id, -, iku)   | Reject(id, iku, F)    | RejectedCanceled(id, -, iku)   | OK, Deduplicated     |
+| 241 | RejectedCanceled(id, -, iku)   | Reject(id, iku\*, T)  | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 242 | RejectedCanceled(id, -, iku)   | Reject(id, iku\*, F)  | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 243 | RejectedCanceled(id, -, iku)   | Cancel(id, -, T)      | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 244 | RejectedCanceled(id, -, iku)   | Cancel(id, -, F)      | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 245 | RejectedCanceled(id, -, iku)   | Cancel(id, iku, T)    | RejectedCanceled(id, -, iku)   | OK, Deduplicated     |
+| 246 | RejectedCanceled(id, -, iku)   | Cancel(id, iku, F)    | RejectedCanceled(id, -, iku)   | OK, Deduplicated     |
+| 247 | RejectedCanceled(id, -, iku)   | Cancel(id, iku\*, T)  | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 248 | RejectedCanceled(id, -, iku)   | Cancel(id, iku\*, F)  | RejectedCanceled(id, -, iku)   | KO, Already RejectedCanceled |
+| 249 | RejectedCanceled(id, ikc, -)   | Create(id, -, T)      | RejectedCanceled(id, ikc, -)   | KO, Already RejectedCanceled |
+| 250 | RejectedCanceled(id, ikc, -)   | Create(id, -, F)      | RejectedCanceled(id, ikc, -)   | KO, Already RejectedCanceled |
+| 251 | RejectedCanceled(id, ikc, -)   | Create(id, ikc, T)    | RejectedCanceled(id, ikc, -)   | KO, Already RejectedCanceled |
+| 252 | RejectedCanceled(id, ikc, -)   | Create(id, ikc, F)    | RejectedCanceled(id, ikc, -)   | OK, Deduplicated     |
+| 253 | RejectedCanceled(id, ikc, -)   | Create(id, ikc\*, T)  | RejectedCanceled(id, ikc, -)   | KO, Already RejectedCanceled |
+| 254 | RejectedCanceled(id, ikc, -)   | Create(id, ikc\*, F)  | RejectedCanceled(id, ikc, -)   | KO, Already RejectedCanceled |
+| 255 | RejectedCanceled(id, ikc, -)   | Resolve(id, -, T)     | RejectedCanceled(id, ikc, -)   | KO, Already RejectedCanceled |
+| 256 | RejectedCanceled(id, ikc, -)   | Resolve(id, -, F)     | RejectedCanceled(id, ikc, -)   | KO, Already RejectedCanceled |
+| 257 | RejectedCanceled(id, ikc, -)   | Resolve(id, iku, T)   | RejectedCanceled(id, ikc, -)   | KO, Already RejectedCanceled |
+| 258 | RejectedCanceled(id, ikc, -)   | Resolve(id, iku, F)   | RejectedCanceled(id, ikc, -)   | KO, Already RejectedCanceled |
+| 259 | RejectedCanceled(id, ikc, -)   | Reject(id, -, T)      | RejectedCanceled(id, ikc, -)   | KO, Already RejectedCanceled |
+| 260 | RejectedCanceled(id, ikc, -)   | Reject(id, -, F)      | RejectedCanceled(id, ikc, -)   | KO, Already RejectedCanceled |
+| 261 | RejectedCanceled(id, ikc, -)   | Reject(id, iku, T)    | RejectedCanceled(id, ikc, -)   | KO, Already RejectedCanceled |
+| 262 | RejectedCanceled(id, ikc, -)   | Reject(id, iku, F)    | RejectedCanceled(id, ikc, -)   | KO, Already RejectedCanceled |
+| 263 | RejectedCanceled(id, ikc, -)   | Cancel(id, -, T)      | RejectedCanceled(id, ikc, -)   | KO, Already RejectedCanceled |
+| 264 | RejectedCanceled(id, ikc, -)   | Cancel(id, -, F)      | RejectedCanceled(id, ikc, -)   | KO, Already RejectedCanceled |
+| 265 | RejectedCanceled(id, ikc, -)   | Cancel(id, iku, T)    | RejectedCanceled(id, ikc, -)   | KO, Already RejectedCanceled |
+| 266 | RejectedCanceled(id, ikc, -)   | Cancel(id, iku, F)    | RejectedCanceled(id, ikc, -)   | KO, Already RejectedCanceled |
+| 267 | RejectedCanceled(id, ikc, iku) | Create(id, -, T)      | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 268 | RejectedCanceled(id, ikc, iku) | Create(id, -, F)      | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 269 | RejectedCanceled(id, ikc, iku) | Create(id, ikc, T)    | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 270 | RejectedCanceled(id, ikc, iku) | Create(id, ikc, F)    | RejectedCanceled(id, ikc, iku) | OK, Deduplicated     |
+| 271 | RejectedCanceled(id, ikc, iku) | Create(id, ikc\*, T)  | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 272 | RejectedCanceled(id, ikc, iku) | Create(id, ikc\*, F)  | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 273 | RejectedCanceled(id, ikc, iku) | Resolve(id, -, T)     | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 274 | RejectedCanceled(id, ikc, iku) | Resolve(id, -, F)     | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 275 | RejectedCanceled(id, ikc, iku) | Resolve(id, iku, T)   | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 276 | RejectedCanceled(id, ikc, iku) | Resolve(id, iku, F)   | RejectedCanceled(id, ikc, iku) | OK, Deduplicated     |
+| 277 | RejectedCanceled(id, ikc, iku) | Resolve(id, iku\*, T) | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 278 | RejectedCanceled(id, ikc, iku) | Resolve(id, iku\*, F) | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 279 | RejectedCanceled(id, ikc, iku) | Reject(id, -, T)      | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 280 | RejectedCanceled(id, ikc, iku) | Reject(id, -, F)      | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 281 | RejectedCanceled(id, ikc, iku) | Reject(id, iku, T)    | RejectedCanceled(id, ikc, iku) | OK, Deduplicated     |
+| 282 | RejectedCanceled(id, ikc, iku) | Reject(id, iku, F)    | RejectedCanceled(id, ikc, iku) | OK, Deduplicated     |
+| 283 | RejectedCanceled(id, ikc, iku) | Reject(id, iku\*, T)  | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 284 | RejectedCanceled(id, ikc, iku) | Reject(id, iku\*, F)  | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 285 | RejectedCanceled(id, ikc, iku) | Cancel(id, -, T)      | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 286 | RejectedCanceled(id, ikc, iku) | Cancel(id, -, F)      | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 287 | RejectedCanceled(id, ikc, iku) | Cancel(id, iku, T)    | RejectedCanceled(id, ikc, iku) | OK, Deduplicated     |
+| 288 | RejectedCanceled(id, ikc, iku) | Cancel(id, iku, F)    | RejectedCanceled(id, ikc, iku) | OK, Deduplicated     |
+| 289 | RejectedCanceled(id, ikc, iku) | Cancel(id, iku\*, T)  | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 290 | RejectedCanceled(id, ikc, iku) | Cancel(id, iku\*, F)  | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
+| 291 | RejectedTimedout(id, -, -)     | Create(id, -, T)      | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 292 | RejectedTimedout(id, -, -)     | Create(id, -, F)      | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 293 | RejectedTimedout(id, -, -)     | Create(id, ikc, T)    | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 294 | RejectedTimedout(id, -, -)     | Create(id, ikc, F)    | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 295 | RejectedTimedout(id, -, -)     | Resolve(id, -, T)     | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 296 | RejectedTimedout(id, -, -)     | Resolve(id, -, F)     | RejectedTimedout(id, -, -)     | OK, Deduplicated     |
+| 297 | RejectedTimedout(id, -, -)     | Resolve(id, iku, T)   | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 298 | RejectedTimedout(id, -, -)     | Resolve(id, iku, F)   | RejectedTimedout(id, -, -)     | OK, Deduplicated     |
+| 299 | RejectedTimedout(id, -, -)     | Reject(id, -, T)      | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 300 | RejectedTimedout(id, -, -)     | Reject(id, -, F)      | RejectedTimedout(id, -, -)     | OK, Deduplicated     |
+| 301 | RejectedTimedout(id, -, -)     | Reject(id, iku, T)    | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 302 | RejectedTimedout(id, -, -)     | Reject(id, iku, F)    | RejectedTimedout(id, -, -)     | OK, Deduplicated     |
+| 303 | RejectedTimedout(id, -, -)     | Cancel(id, -, T)      | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 304 | RejectedTimedout(id, -, -)     | Cancel(id, -, F)      | RejectedTimedout(id, -, -)     | OK, Deduplicated     |
+| 305 | RejectedTimedout(id, -, -)     | Cancel(id, iku, T)    | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 306 | RejectedTimedout(id, -, -)     | Cancel(id, iku, F)    | RejectedTimedout(id, -, -)     | OK, Deduplicated     |
+| 307 | RejectedTimedout(id, ikc, -)   | Create(id, -, T)      | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 308 | RejectedTimedout(id, ikc, -)   | Create(id, -, F)      | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 309 | RejectedTimedout(id, ikc, -)   | Create(id, ikc, T)    | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 310 | RejectedTimedout(id, ikc, -)   | Create(id, ikc, F)    | RejectedTimedout(id, ikc, -)   | OK, Deduplicated     |
+| 311 | RejectedTimedout(id, ikc, -)   | Create(id, ikc\*, T)  | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 312 | RejectedTimedout(id, ikc, -)   | Create(id, ikc\*, F)  | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 313 | RejectedTimedout(id, ikc, -)   | Resolve(id, -, T)     | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 314 | RejectedTimedout(id, ikc, -)   | Resolve(id, -, F)     | RejectedTimedout(id, ikc, -)   | OK, Deduplicated     |
+| 315 | RejectedTimedout(id, ikc, -)   | Resolve(id, iku, T)   | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 316 | RejectedTimedout(id, ikc, -)   | Resolve(id, iku, F)   | RejectedTimedout(id, ikc, -)   | OK, Deduplicated     |
+| 317 | RejectedTimedout(id, ikc, -)   | Reject(id, -, T)      | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 318 | RejectedTimedout(id, ikc, -)   | Reject(id, -, F)      | RejectedTimedout(id, ikc, -)   | OK, Deduplicated     |
+| 319 | RejectedTimedout(id, ikc, -)   | Reject(id, iku, T)    | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 320 | RejectedTimedout(id, ikc, -)   | Reject(id, iku, F)    | RejectedTimedout(id, ikc, -)   | OK, Deduplicated     |
+| 321 | RejectedTimedout(id, ikc, -)   | Cancel(id, -, T)      | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 322 | RejectedTimedout(id, ikc, -)   | Cancel(id, -, F)      | RejectedTimedout(id, ikc, -)   | OK, Deduplicated     |
+| 323 | RejectedTimedout(id, ikc, -)   | Cancel(id, iku, T)    | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 324 | RejectedTimedout(id, ikc, -)   | Cancel(id, iku, F)    | RejectedTimedout(id, ikc, -)   | OK, Deduplicated     |
 
 ---
 
@@ -19327,20 +19321,26 @@ A task and its associated promise share an identifier. They are paired but disti
 
 ## Lifecycle
 
-A task moves through five states. Transitions back to `pending` increment the task's version; the version is the optimistic concurrency control (OCC) token every mutating operation must present.
+A task moves through five states. The version increments only on the `pending → acquired` transition (`task.acquire`); it is the optimistic concurrency control (OCC) token every mutating operation must present.
 
 ```text
           create (via promise.create with resonate:target)
             |
             v
-        [pending] <---(release)--- [acquired] <--- create (via task.create)
-            ^                         |   ^
-            |                      (suspend)
-            |                         |   |
-            |                         v   |
-            |                     [suspended]
-            |                         |
-            +---(resume, version++)---+
+        [pending] ---(acquire, version++) ---> [acquired] <--- create (via task.create)
+            ^                                      |   ^
+            |          <------(release)-----       (suspend)
+            |                                      |   |
+            |                                      v   |
+            |                                  [suspended]
+            |                                      |
+            +-------------(resume)----------------+
+            |
+            |   [pending] ---(halt)---> [halted]
+            |   [acquired] --(halt)---> [halted]
+            |   [suspended]-(halt)---> [halted]
+            |
+            +<-----------(continue)--- [halted]
 
         [acquired] ---(fulfill)---> [fulfilled]
 ```
@@ -19350,22 +19350,22 @@ A task moves through five states. Transitions back to `pending` increment the ta
 | `pending` | The task is available to be claimed. The server has enqueued an `execute` message to the `resonate:target` address. |
 | `acquired` | A worker has claimed the task and is making progress. The worker holds a lease that must be refreshed via heartbeat. |
 | `suspended` | The worker has declared it is awaiting one or more other promises. The server holds the task here until any awaited promise settles. |
+| `halted` | Admin-blocked state. A halted task can be returned to `pending` via `task.continue`. |
 | `fulfilled` | Terminal. The associated promise has settled and the task is complete. |
-| `halted` | Terminal admin state for tasks that should not progress. (See operations below.) |
 
-`task.create` creates the task directly in `acquired` state. `promise.create` with a `resonate:target` tag creates the task in `pending` state. The version field increments on every transition back to `pending` (release, resume, lease expiry); it does not change on `pending → acquired`.
+`task.create` creates the task directly in `acquired` state. `promise.create` with a `resonate:target` tag creates the task in `pending` state. The version field increments only on the `pending → acquired` transition (`task.acquire`); it does not change on transitions back to `pending` (release, resume, lease expiry).
 
 All mutating task operations require the caller to present the current version. A version mismatch results in conflict (status 409) — the task has moved on without you, and the operation must be re-fetched and retried.
 
 ## Lease and heartbeat
 
-An acquired task carries a **lease**: a deadline by which the worker must signal liveness. The lease is set when the task is acquired and refreshed by every successful heartbeat. If the lease expires, the server releases the task back to `pending` with an incremented version, allowing a different worker to claim it.
+An acquired task carries a **lease**: a deadline by which the worker must signal liveness. The lease is set when the task is acquired and refreshed by every successful heartbeat. If the lease expires, the server releases the task back to `pending` (without incrementing the version), re-enqueues the execute message, and allows a different worker to claim it — at which point `task.acquire` will increment the version.
 
 ```text
-acquire     →  set lease = now + leaseTimeout
-heartbeat   →  set lease = now + leaseTimeout
-release     →  delete lease, version++
-lease expiry → release back to pending, version++
+acquire      →  set lease = now + leaseTimeout, version++
+heartbeat    →  set lease = now + leaseTimeout
+release      →  delete lease, transition back to pending (version unchanged)
+lease expiry →  transition back to pending (version unchanged), re-enqueue execute
 ```
 
 Heartbeat is **process-level, not task-level**. A worker sends one heartbeat for all the acquired tasks it holds; the server refreshes every matching `(id, version)` pair in a single round-trip.
@@ -19384,15 +19384,15 @@ The server exposes the following task operations. Each operation takes the task'
 | `task.heartbeat` | Refresh the lease on one or more acquired tasks. Each `(id, version)` pair is processed independently; mismatches are silently skipped. |
 | `task.suspend` | Declare the worker is awaiting one or more promises. The server registers callbacks atomically and transitions the task to `suspended`. If any awaited promise has already settled, the server returns 300 — the worker should resume immediately without suspending. |
 | `task.fulfill` | Settle the task's promise and transition the task to `fulfilled` in one atomic operation. The action's promise id must equal the task id. |
-| `task.fence` | Conditional fulfill: settle only if the task is still acquired at the presented version. Used when the worker needs to know it is the unique current claimant before externalizing a side effect. |
-| `task.release` | Surrender the claim. The task transitions back to `pending` with an incremented version, becoming available to other workers. |
+| `task.fence` | Run a `promise.create` or `promise.settle` guarded by the task's fencing token. The guard checks that the task is `acquired`, the associated promise is `pending` and not timed out, and the presented version matches — any failure returns 409. The `req.action` field selects which promise operation to execute. |
+| `task.release` | Surrender the claim. The task transitions back to `pending` (version unchanged), the server re-enqueues the `execute` message to the `resonate:target` address, and the task becomes available to other workers. The version increments when a successor calls `task.acquire`. |
 | `task.halt` | Administratively block the task from being claimed or resumed. |
 | `task.continue` | Reverse `task.halt`. |
 | `task.search` | Enumerate tasks (filtered by state, target, etc.). |
 
 ## Asymmetry with promises
 
-Task operations are **not idempotent** in the way promise operations are. A promise carries idempotency keys (`ikc`, `iku`) that allow safe retry after an unknown-outcome failure (see the [Durable Promise Specification](/spec/programming-model/durable-promise-specification#state-transitions)). A task carries only its version — retrying a successful `task.acquire` with the same version succeeds again at first but fails as soon as the next operation increments the version.
+Task operations are **not idempotent** in the way promise operations are. A promise carries idempotency keys (`ikc`, `iku`) that allow safe retry after an unknown-outcome failure (see the [Durable Promise Specification](/spec/programming-model/durable-promise-specification#state-transitions)). A task carries only its version — retrying a successful `task.acquire` with the same version succeeds again at first but fails as soon as the successor's `task.acquire` increments the version.
 
 This asymmetry reflects the role of each: a promise represents *state* whose final value is what matters; a task represents *progress*, where each transition is a decisive moment of claim ownership. The version protects against duplicate progress; idempotency keys protect against duplicate state.
 

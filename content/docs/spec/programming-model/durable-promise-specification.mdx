@@ -20,7 +20,7 @@ A promise (also called future, awaitable, or deferred) is a representation of a 
 
 ![Promise lifecycle diagram](/images/spec/promise-lifecycle.svg)
 
-A promise is a coordination primitive. In a typical scenario, a downstream function execution creates a promise and awaits its completion. An upstream function execution either resolves or rejects the promise. On completion, the downstream execution resumes with the value of the promise.
+A promise is a coordination primitive. In a typical scenario, a downstream function execution creates a promise and awaits its completion. An upstream function execution settles the promise. On completion, the downstream execution resumes with the value of the promise.
 
 ## API
 
@@ -73,9 +73,9 @@ Logically, the Application Programming Interface (API) is divided into two parts
   Settle(promise-id, idempotency-key, state, value, header, strict)
   ```
 
-  Where `state` is one of `resolved`, `rejected`, or `rejected_canceled`. (`rejected_timedout` is reserved for server-initiated timeout settlement and cannot be set by a caller.)
+  Where `state` is one of `resolved`, `rejected`, or `rejectedCanceled`. (By convention, `rejectedTimedout` is reserved for server-initiated timeout settlement.)
 
-  The legacy Downstream API exposed separate `Resolve(...)`, `Reject(...)`, and `Cancel(...)` operations; the current wire protocol unifies these into a single `promise.settle` handler.
+  The legacy API exposed these as separate operations — `Resolve(...)` and `Reject(...)` upstream, `Cancel(...)` downstream; the current wire protocol unifies all three into the single `promise.settle` handler.
 
 ### OpenAPI spec example
 
@@ -579,37 +579,37 @@ For the full task lifecycle, operations, and invariants, see [Tasks](/spec/syste
 | 288 | RejectedCanceled(id, ikc, iku) | Cancel(id, iku, F)    | RejectedCanceled(id, ikc, iku) | OK, Deduplicated     |
 | 289 | RejectedCanceled(id, ikc, iku) | Cancel(id, iku\*, T)  | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
 | 290 | RejectedCanceled(id, ikc, iku) | Cancel(id, iku\*, F)  | RejectedCanceled(id, ikc, iku) | KO, Already RejectedCanceled |
-| 291 | Timedout(id, -, -)     | Create(id, -, T)      | Timedout(id, -, -)     | KO, Already Timedout |
-| 292 | Timedout(id, -, -)     | Create(id, -, F)      | Timedout(id, -, -)     | KO, Already Timedout |
-| 293 | Timedout(id, -, -)     | Create(id, ikc, T)    | Timedout(id, -, -)     | KO, Already Timedout |
-| 294 | Timedout(id, -, -)     | Create(id, ikc, F)    | Timedout(id, -, -)     | KO, Already Timedout |
-| 295 | Timedout(id, -, -)     | Resolve(id, -, T)     | Timedout(id, -, -)     | KO, Already Timedout |
-| 296 | Timedout(id, -, -)     | Resolve(id, -, F)     | Timedout(id, -, -)     | OK, Deduplicated     |
-| 297 | Timedout(id, -, -)     | Resolve(id, iku, T)   | Timedout(id, -, -)     | KO, Already Timedout |
-| 298 | Timedout(id, -, -)     | Resolve(id, iku, F)   | Timedout(id, -, -)     | OK, Deduplicated     |
-| 299 | Timedout(id, -, -)     | Reject(id, -, T)      | Timedout(id, -, -)     | KO, Already Timedout |
-| 300 | Timedout(id, -, -)     | Reject(id, -, F)      | Timedout(id, -, -)     | OK, Deduplicated     |
-| 301 | Timedout(id, -, -)     | Reject(id, iku, T)    | Timedout(id, -, -)     | KO, Already Timedout |
-| 302 | Timedout(id, -, -)     | Reject(id, iku, F)    | Timedout(id, -, -)     | OK, Deduplicated     |
-| 303 | Timedout(id, -, -)     | Cancel(id, -, T)      | Timedout(id, -, -)     | KO, Already Timedout |
-| 304 | Timedout(id, -, -)     | Cancel(id, -, F)      | Timedout(id, -, -)     | OK, Deduplicated     |
-| 305 | Timedout(id, -, -)     | Cancel(id, iku, T)    | Timedout(id, -, -)     | KO, Already Timedout |
-| 306 | Timedout(id, -, -)     | Cancel(id, iku, F)    | Timedout(id, -, -)     | OK, Deduplicated     |
-| 307 | Timedout(id, ikc, -)   | Create(id, -, T)      | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 308 | Timedout(id, ikc, -)   | Create(id, -, F)      | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 309 | Timedout(id, ikc, -)   | Create(id, ikc, T)    | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 310 | Timedout(id, ikc, -)   | Create(id, ikc, F)    | Timedout(id, ikc, -)   | OK, Deduplicated     |
-| 311 | Timedout(id, ikc, -)   | Create(id, ikc\*, T)  | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 312 | Timedout(id, ikc, -)   | Create(id, ikc\*, F)  | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 313 | Timedout(id, ikc, -)   | Resolve(id, -, T)     | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 314 | Timedout(id, ikc, -)   | Resolve(id, -, F)     | Timedout(id, ikc, -)   | OK, Deduplicated     |
-| 315 | Timedout(id, ikc, -)   | Resolve(id, iku, T)   | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 316 | Timedout(id, ikc, -)   | Resolve(id, iku, F)   | Timedout(id, ikc, -)   | OK, Deduplicated     |
-| 317 | Timedout(id, ikc, -)   | Reject(id, -, T)      | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 318 | Timedout(id, ikc, -)   | Reject(id, -, F)      | Timedout(id, ikc, -)   | OK, Deduplicated     |
-| 319 | Timedout(id, ikc, -)   | Reject(id, iku, T)    | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 320 | Timedout(id, ikc, -)   | Reject(id, iku, F)    | Timedout(id, ikc, -)   | OK, Deduplicated     |
-| 321 | Timedout(id, ikc, -)   | Cancel(id, -, T)      | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 322 | Timedout(id, ikc, -)   | Cancel(id, -, F)      | Timedout(id, ikc, -)   | OK, Deduplicated     |
-| 323 | Timedout(id, ikc, -)   | Cancel(id, iku, T)    | Timedout(id, ikc, -)   | KO, Already Timedout |
-| 324 | Timedout(id, ikc, -)   | Cancel(id, iku, F)    | Timedout(id, ikc, -)   | OK, Deduplicated     |
+| 291 | RejectedTimedout(id, -, -)     | Create(id, -, T)      | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 292 | RejectedTimedout(id, -, -)     | Create(id, -, F)      | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 293 | RejectedTimedout(id, -, -)     | Create(id, ikc, T)    | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 294 | RejectedTimedout(id, -, -)     | Create(id, ikc, F)    | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 295 | RejectedTimedout(id, -, -)     | Resolve(id, -, T)     | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 296 | RejectedTimedout(id, -, -)     | Resolve(id, -, F)     | RejectedTimedout(id, -, -)     | OK, Deduplicated     |
+| 297 | RejectedTimedout(id, -, -)     | Resolve(id, iku, T)   | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 298 | RejectedTimedout(id, -, -)     | Resolve(id, iku, F)   | RejectedTimedout(id, -, -)     | OK, Deduplicated     |
+| 299 | RejectedTimedout(id, -, -)     | Reject(id, -, T)      | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 300 | RejectedTimedout(id, -, -)     | Reject(id, -, F)      | RejectedTimedout(id, -, -)     | OK, Deduplicated     |
+| 301 | RejectedTimedout(id, -, -)     | Reject(id, iku, T)    | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 302 | RejectedTimedout(id, -, -)     | Reject(id, iku, F)    | RejectedTimedout(id, -, -)     | OK, Deduplicated     |
+| 303 | RejectedTimedout(id, -, -)     | Cancel(id, -, T)      | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 304 | RejectedTimedout(id, -, -)     | Cancel(id, -, F)      | RejectedTimedout(id, -, -)     | OK, Deduplicated     |
+| 305 | RejectedTimedout(id, -, -)     | Cancel(id, iku, T)    | RejectedTimedout(id, -, -)     | KO, Already RejectedTimedout |
+| 306 | RejectedTimedout(id, -, -)     | Cancel(id, iku, F)    | RejectedTimedout(id, -, -)     | OK, Deduplicated     |
+| 307 | RejectedTimedout(id, ikc, -)   | Create(id, -, T)      | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 308 | RejectedTimedout(id, ikc, -)   | Create(id, -, F)      | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 309 | RejectedTimedout(id, ikc, -)   | Create(id, ikc, T)    | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 310 | RejectedTimedout(id, ikc, -)   | Create(id, ikc, F)    | RejectedTimedout(id, ikc, -)   | OK, Deduplicated     |
+| 311 | RejectedTimedout(id, ikc, -)   | Create(id, ikc\*, T)  | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 312 | RejectedTimedout(id, ikc, -)   | Create(id, ikc\*, F)  | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 313 | RejectedTimedout(id, ikc, -)   | Resolve(id, -, T)     | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 314 | RejectedTimedout(id, ikc, -)   | Resolve(id, -, F)     | RejectedTimedout(id, ikc, -)   | OK, Deduplicated     |
+| 315 | RejectedTimedout(id, ikc, -)   | Resolve(id, iku, T)   | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 316 | RejectedTimedout(id, ikc, -)   | Resolve(id, iku, F)   | RejectedTimedout(id, ikc, -)   | OK, Deduplicated     |
+| 317 | RejectedTimedout(id, ikc, -)   | Reject(id, -, T)      | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 318 | RejectedTimedout(id, ikc, -)   | Reject(id, -, F)      | RejectedTimedout(id, ikc, -)   | OK, Deduplicated     |
+| 319 | RejectedTimedout(id, ikc, -)   | Reject(id, iku, T)    | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 320 | RejectedTimedout(id, ikc, -)   | Reject(id, iku, F)    | RejectedTimedout(id, ikc, -)   | OK, Deduplicated     |
+| 321 | RejectedTimedout(id, ikc, -)   | Cancel(id, -, T)      | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 322 | RejectedTimedout(id, ikc, -)   | Cancel(id, -, F)      | RejectedTimedout(id, ikc, -)   | OK, Deduplicated     |
+| 323 | RejectedTimedout(id, ikc, -)   | Cancel(id, iku, T)    | RejectedTimedout(id, ikc, -)   | KO, Already RejectedTimedout |
+| 324 | RejectedTimedout(id, ikc, -)   | Cancel(id, iku, F)    | RejectedTimedout(id, ikc, -)   | OK, Deduplicated     |

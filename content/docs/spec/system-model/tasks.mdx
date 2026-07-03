@@ -24,14 +24,14 @@ A task moves through five states. The version increments only on the `pending �
           create (via promise.create with resonate:target)
             |
             v
-        [pending] <---(release)--- [acquired] <--- create (via task.create)
-            ^          (version++)    |   ^
-            |                     (suspend)
-            |                        |   |
-            |                        v   |
-            |                    [suspended]
-            |                        |
-            +-------(resume)---------+
+        [pending] ---(acquire, version++) ---> [acquired] <--- create (via task.create)
+            ^                                      |   ^
+            |          <------(release)-----       (suspend)
+            |                                      |   |
+            |                                      v   |
+            |                                  [suspended]
+            |                                      |
+            +-------------(resume)----------------+
             |
             |   [pending] ---(halt)---> [halted]
             |   [acquired] --(halt)---> [halted]
@@ -82,7 +82,7 @@ The server exposes the following task operations. Each operation takes the task'
 | `task.suspend` | Declare the worker is awaiting one or more promises. The server registers callbacks atomically and transitions the task to `suspended`. If any awaited promise has already settled, the server returns 300 — the worker should resume immediately without suspending. |
 | `task.fulfill` | Settle the task's promise and transition the task to `fulfilled` in one atomic operation. The action's promise id must equal the task id. |
 | `task.fence` | Run a `promise.create` or `promise.settle` guarded by the task's fencing token. The guard checks that the task is `acquired`, the associated promise is `pending` and not timed out, and the presented version matches — any failure returns 409. The `req.action` field selects which promise operation to execute. |
-| `task.release` | Surrender the claim. The task transitions back to `pending` (version unchanged), becoming available to other workers. The version increments when a successor calls `task.acquire`. |
+| `task.release` | Surrender the claim. The task transitions back to `pending` (version unchanged), the server re-enqueues the `execute` message to the `resonate:target` address, and the task becomes available to other workers. The version increments when a successor calls `task.acquire`. |
 | `task.halt` | Administratively block the task from being claimed or resumed. |
 | `task.continue` | Reverse `task.halt`. |
 | `task.search` | Enumerate tasks (filtered by state, target, etc.). |
