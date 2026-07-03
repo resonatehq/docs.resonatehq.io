@@ -114,7 +114,7 @@ Promises carry a `tags` map. The protocol reserves the `resonate:` namespace for
 | `resonate:origin` | Identifies the root promise that initiated the execution. All promises in an execution tree share the same `resonate:origin` value. |
 | `resonate:parent` | Identifies the direct parent promise in the execution tree. |
 | `resonate:branch` | Identifies the current execution branch. Set when a promise in an execution tree has a `resonate:target` tag. Drives preload semantics. |
-| `resonate:delay` | Reserved for future use. *Semantics not yet specified — implementations should ignore this tag until a future spec revision defines its behavior.* |
+| `resonate:delay` | When present on a `promise.create` request that also carries a `resonate:target` tag, the server parses the value as a timestamp (natural number). If the delay value is greater than `now`, the server arms the task's retry timeout at `delay` rather than emitting an immediate `execute` message, effectively scheduling the execution for a future time. |
 
 User-defined tags outside the `resonate:` namespace are opaque to the protocol and may be used freely.
 
