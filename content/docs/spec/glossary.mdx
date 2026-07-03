@@ -77,7 +77,7 @@ The dynamic instance of a [Definition](#definition) — the running program, wit
 
 ### Fence
 
-A conditional task fulfill: settle the task's promise *only if* the task is still acquired at the presented version. Used when a worker needs to know it is the unique current claimant before externalizing a side effect. See [Tasks](/spec/system-model/tasks#operations).
+A version-guarded operation that atomically runs either a `promise.create` or a `promise.settle` only if the task is still acquired at the presented version. Used when a worker needs to confirm it is the unique current claimant before externalizing a side effect. See [Tasks](/spec/system-model/tasks#operations).
 
 ### Function
 
@@ -105,7 +105,7 @@ A property of an [Execution](#execution): an execution that experiences an inter
 
 ### Lease
 
-A deadline by which a [Worker](#worker) must signal liveness on an acquired [Task](#task). Each successful [Heartbeat](#heartbeat) extends the lease. If the lease expires, the server releases the task back to `pending` with an incremented [Version](#version), allowing a successor worker to claim it. See [Recovery Protocol](/spec/execution-model/recovery-protocol#lease-and-heartbeat).
+A deadline by which a [Worker](#worker) must signal liveness on an acquired [Task](#task). Each successful [Heartbeat](#heartbeat) extends the lease. If the lease expires, the server releases the task back to `pending` (version unchanged) and re-enqueues the execute message; a successor worker's `task.acquire` will then increment the [Version](#version). See [Recovery Protocol](/spec/execution-model/recovery-protocol#lease-and-heartbeat).
 
 ### Listener
 
@@ -142,7 +142,7 @@ The developer-facing surface of a system: the abstractions that authors compose 
 
 ### Promise
 
-A representation of a future value. A promise is either *pending* or *completed*; a completed promise is either *resolved* (success) or *rejected* (failure). Promises are the universal abstraction for [Coordination](#coordination) — a caller awaits a promise to receive a callee's result. In Distributed Async Await, promises are *durable*: they persist independently of the processes that reference them. See the [Durable Promise Specification](/spec/programming-model/durable-promise-specification) for the formal API and state-transition table.
+A representation of a future value. A promise is either *pending* or *completed*; a completed promise is *resolved* (success), *rejected* (failure), *rejectedCanceled* (canceled), or *rejectedTimedout* (timed out). Promises are the universal abstraction for [Coordination](#coordination) — a caller awaits a promise to receive a callee's result. In Distributed Async Await, promises are *durable*: they persist independently of the processes that reference them. See the [Durable Promise Specification](/spec/programming-model/durable-promise-specification) for the formal API and state-transition table.
 
 ### Recovery
 
@@ -162,7 +162,7 @@ The linear sequence of effects triggered by every promise settlement: *settle* �
 
 ### Task
 
-The unit of work the server delivers to a worker. A task and its associated promise share an identifier; the promise owns the *value*, the task owns the *claim*. Tasks have a lifecycle (`pending`/`acquired`/`suspended`/`fulfilled`), a [Version](#version), and a [Lease](#lease). See [Tasks](/spec/system-model/tasks).
+The unit of work the server delivers to a worker. A task and its associated promise share an identifier; the promise owns the *value*, the task owns the *claim*. Tasks have a lifecycle (`pending`/`acquired`/`suspended`/`halted`/`fulfilled`), a [Version](#version), and a [Lease](#lease). See [Tasks](/spec/system-model/tasks).
 
 ### Unicast
 
@@ -170,7 +170,7 @@ A delivery mode in which a message is sent to exactly one specific worker by id.
 
 ### Version
 
-The optimistic concurrency control (OCC) token on a [Task](#task). The version increments on every transition back to `pending`. All mutating task operations must present the current version; a mismatch returns `409 Conflict`. See [Tasks](/spec/system-model/tasks#lifecycle).
+The optimistic concurrency control (OCC) token on a [Task](#task). The version increments only on the `pending → acquired` transition (`task.acquire`); transitions back to `pending` (release, resume, lease expiry) do not change the version. All mutating task operations must present the current version; a mismatch returns `409 Conflict`. See [Tasks](/spec/system-model/tasks#lifecycle).
 
 ### Worker
 
