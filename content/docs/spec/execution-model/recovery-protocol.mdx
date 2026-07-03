@@ -37,15 +37,15 @@ The recovery semantics described below rest on three load-bearing pieces:
 Liveness is enforced by a lease. When a worker acquires a task, the server records a deadline by which the worker must signal it is still making progress. Each successful heartbeat extends that deadline.
 
 ```text
-acquire     →  lease = now + leaseTimeout
-heartbeat   →  lease = now + leaseTimeout
-release     →  lease deleted, version++
-lease expiry → release back to pending, version++
+acquire      →  lease = now + leaseTimeout, version++
+heartbeat    →  lease = now + leaseTimeout
+release      →  lease deleted, transition back to pending (version unchanged)
+lease expiry →  transition back to pending (version unchanged), re-enqueue execute
 ```
 
 Heartbeat is **process-level, not task-level**: a worker sends one heartbeat for all the acquired tasks it holds, and the server refreshes every matching `(id, version)` pair in a single round-trip. Workers typically heartbeat at roughly half the lease interval to absorb transient network delay.
 
-If a worker crashes — or loses the ability to make progress — its lease expires. The server transitions the task back to `pending` with an incremented version, deletes the lease, and re-enqueues the execute message. A successor worker can then claim the task with the new version.
+If a worker crashes — or loses the ability to make progress — its lease expires. The server transitions the task back to `pending` (without changing the version), deletes the lease, and re-enqueues the execute message. A successor worker calls `task.acquire`, which increments the version, and any in-flight operation from the prior worker will then fail with 409 on its next mutating call.
 
 The version is the optimistic concurrency control (OCC) token: every mutating task operation must present the current version, and the server returns `409 Conflict` on mismatch. This guarantees a worker that has lost the lease cannot still effect a settle or a fulfill — the new version on the task means the late operation collides with whatever the successor is doing.
 

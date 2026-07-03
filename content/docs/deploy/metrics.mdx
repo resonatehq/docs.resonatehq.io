@@ -200,11 +200,11 @@ rate(promises_total[5m])
 
 ```text
 # Total tasks by state
-tasks_total{state="claimed"}
-tasks_total{state="completed"}
+tasks_total{state="acquired"}
+tasks_total{state="fulfilled"}
 
 # Task completion rate
-rate(tasks_total{state="completed"}[5m])
+rate(tasks_total{state="fulfilled"}[5m])
 ```
 
 **Server load:**
@@ -245,16 +245,16 @@ Track outcomes to understand success/failure patterns.
 
 **Task completion rate:**
 ```text
-rate(tasks_total{state="completed"}[5m])
+rate(tasks_total{state="fulfilled"}[5m])
 ```
 How fast tasks are being processed. Compare with promise rate to understand throughput.
 
-**Claimed vs completed:**
+**Acquired vs fulfilled:**
 ```text
-tasks_total{state="claimed"}
-tasks_total{state="completed"}
+tasks_total{state="acquired"}
+tasks_total{state="fulfilled"}
 ```
-Large gap between claimed and completed indicates tasks are stalling.
+Large gap between acquired and fulfilled indicates tasks are stalling.
 
 ### Server metrics
 
@@ -325,13 +325,13 @@ groups:
           description: "Pending promises are accumulating - scale workers or check processing"
 
       - alert: TasksNotCompleting
-        expr: tasks_total{state="claimed"} - tasks_total{state="completed"} > 1000
+        expr: tasks_total{state="acquired"} - tasks_total{state="fulfilled"} > 1000
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "Tasks claimed but not completing"
-          description: "Large gap between claimed and completed tasks"
+          summary: "Tasks acquired but not completing"
+          description: "Large gap between acquired and fulfilled tasks"
 
       - alert: HighAPILatency
         expr: histogram_quantile(0.95, rate(api_duration_seconds_bucket[5m])) > 5
