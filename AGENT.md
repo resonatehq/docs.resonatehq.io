@@ -97,7 +97,7 @@ npm start           # serve built output
 ## Known gaps (as of 2026-04-28)
 
 - **No v0.9.x → v0.10.x SDK migration guide** — write `content/docs/develop/migrations/typescript-v0.10.mdx`. Echo's corrections layer is patching the API rename for now, but a real migration page is the right home.
-- **`/evaluate/how-it-works` didn't link to a formal protocol spec** — now links to `/spec`. The canonical machine-checkable spec is the public `resonatehq/resonate-specification` Lean 4 repo; link to `/spec` in-docs and from there to the GitHub repo.
+- **The spec no longer lives on this site** (migrated 2026-07-06). The prose specification's home is `https://distributed-async-await.io/spec/...` — docs pages reference it via absolute URLs, and `docs.resonatehq.io/spec/:path*` 308-redirects there (`vercel.json`). The machine-checkable ground truth remains the public `resonatehq/resonate-specification` Lean 4 repo. Do not re-add spec content here.
 - **Python SDK page framing is stale** — says "support for v0.9.x server coming," but the v0.10-era Rust server is what's live. The SDK is still on the legacy server protocol; the framing should reflect that gap clearly without implying v0.9 is the target.
 - **Rust server lacks an "evaluate vs legacy" comparison page** — Echo can't surface the new-vs-legacy distinction when asked. `/deploy/run-server` describes the new server in isolation; a positioning page (or a section in `/evaluate/`) would close the retrieval gap.
 

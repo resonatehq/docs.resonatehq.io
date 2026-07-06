@@ -7,7 +7,6 @@
     "develop",
     "debug",
     "deploy",
-    "reference",
-    "spec"
+    "reference"
   ]
 }

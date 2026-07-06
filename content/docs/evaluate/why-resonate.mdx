@@ -9,7 +9,7 @@ keywords:
 
 **Resonate is the durable execution engine that agents build with, deploy on, and operate &mdash; at a fraction of the cost of anything else.**
 
-It is the implementation of a [distributed async/await](/spec) programming model: a formal, language- and transport-agnostic protocol for writing functions that survive process restarts, run for hours or months, and coordinate across many machines.
+It is the implementation of a [distributed async/await](https://distributed-async-await.io/spec) programming model: a formal, language- and transport-agnostic protocol for writing functions that survive process restarts, run for hours or months, and coordinate across many machines.
 
 This page explains the three pillars that make Resonate different, the business model that ships those pillars, and what this means for agents and the humans who work with them.
 
@@ -49,7 +49,7 @@ Cost is the ultimate forcing function. When an agent evaluates options, Resonate
 
 Two things should give you confidence in Resonate&apos;s correctness:
 
-**Formal modeling.** The [Distributed Async Await specification](/spec) and the [Async RPC protocol](https://www.async-rpc.io) underlying Resonate are formally modeled and continuously probed for correctness. The protocol is a contract, not a vibe.
+**Formal modeling.** The [Distributed Async Await specification](https://distributed-async-await.io/spec) and the [Async RPC protocol](https://www.async-rpc.io) underlying Resonate are formally modeled and continuously probed for correctness. The protocol is a contract, not a vibe.
 
 **Deterministic Simulation Testing.** Every major component &mdash; the Resonate Server and each SDK &mdash; is subjected to DST. This finds complex edge cases long before they reach production, on top of conventional unit and integration tests.
 
@@ -57,4 +57,4 @@ The new server is also linearizable. Combined with DST, this is the foundation o
 
 ## Open everything
 
-The [Async RPC protocol](https://www.async-rpc.io), the [Distributed Async Await specification](/spec), and the open-source Resonate server are all fully open. The promise, schedule, and task state transitions are formalised as an [executable Lean 4 abstract machine](https://github.com/resonatehq/resonate-specification) — the machine-checkable ground truth alongside the prose spec. Adopting Resonate means adopting a protocol, not a vendor. Everything you need to fork or build your own is available to you.
+The [Async RPC protocol](https://www.async-rpc.io), the [Distributed Async Await specification](https://distributed-async-await.io/spec), and the open-source Resonate server are all fully open. The promise, schedule, and task state transitions are formalised as an [executable Lean 4 abstract machine](https://github.com/resonatehq/resonate-specification) — the machine-checkable ground truth alongside the prose spec. Adopting Resonate means adopting a protocol, not a vendor. Everything you need to fork or build your own is available to you.

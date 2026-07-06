@@ -11,7 +11,7 @@ keywords:
 
 ## TL;DR
 
-Resonate does not ship a native Kafka transport in the current server. The supported integration today is the **Kafka worker pattern**: your code consumes Kafka with a normal client library and dispatches a Resonate workflow per message. Native `kafka://` transport is specified in the [Message Passing Protocol](/spec/execution-model/message-passing#address-schemes) and is on the roadmap — when it ships, the server will deliver task messages over Kafka directly.
+Resonate does not ship a native Kafka transport in the current server. The supported integration today is the **Kafka worker pattern**: your code consumes Kafka with a normal client library and dispatches a Resonate workflow per message. Native `kafka://` transport is specified in the [Message Passing Protocol](https://distributed-async-await.io/spec/execution-model/message-passing#address-schemes) and is on the roadmap — when it ships, the server will deliver task messages over Kafka directly.
 
 ## The Kafka worker pattern
 
@@ -62,7 +62,7 @@ The `@resonatehq/kafka` NPM package (and the [resonatehq/resonate-transport-kafk
 
 If you want native Kafka transport, watch:
 
-- The [`kafka://` address scheme](/spec/execution-model/message-passing#address-schemes) in the protocol specification.
+- The [`kafka://` address scheme](https://distributed-async-await.io/spec/execution-model/message-passing#address-schemes) in the protocol specification.
 - The [Planned section](/deploy/message-transports#planned) of the Message transports page — it gets updated when transports land in the server.
 
 ## Roadmap
