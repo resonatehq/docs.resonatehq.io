@@ -34,7 +34,7 @@ TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (
 
 ## The problem
 
-Webhook providers retry on any timeout, slow ACK, or 5xx response — that's the whole point. Your handler has to be idempotent, or duplicate deliveries double-charge the customer. The conventional fix is a "processed events" table you check before doing work, paired with a worker that polls a queue, paired with retry logic for partial failures. Three moving parts, and any one of them not being idempotent breaks the whole shape.
+Webhook providers are built to retry — any timeout, slow ACK, or 5xx response triggers a redelivery. Your handler has to be idempotent, or duplicate deliveries double-charge the customer. The conventional fix is a "processed events" table you check before doing work, paired with a worker that polls a queue, paired with retry logic for partial failures. Three moving parts, and any one of them not being idempotent breaks the whole shape.
 
 ## Resonate's solution
 

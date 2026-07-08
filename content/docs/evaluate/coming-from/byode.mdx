@@ -89,7 +89,7 @@ function* processOrder(ctx: Context, order: Order) {
 }
 ```
 
-That's it. No queue abstraction to learn. No lease management. No state machine diagrams. Just functions.
+The code above is complete — ordinary functions, checkpointed at each step. There's no queue abstraction, lease management, or state-machine diagram to learn.
 
 **If the process crashes**, Resonate resumes from the last completed step. **If chargeCard succeeds but reserveItems fails**, the retry doesn't re-charge the card.
 
