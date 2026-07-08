@@ -128,7 +128,7 @@ export default async function Page({ params }: PageProps) {
     publisher: {
       "@type": "Organization",
       name: "Resonate HQ",
-      url: "https://resonatehq.io",
+      url: "https://www.resonatehq.io",
     },
   };
 
@@ -136,7 +136,7 @@ export default async function Page({ params }: PageProps) {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
       />
     <div className="flex">
       <Sidebar tree={tree} currentPath={page.url} />

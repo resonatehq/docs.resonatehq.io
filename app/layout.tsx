@@ -86,7 +86,8 @@ export default function RootLayout({
             __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',functionality_storage:'granted',security_storage:'granted',wait_for_update:2000});`,
           }}
         />
-        {/* JSON-LD: WebSite (with SearchAction) + Organization */}
+        {/* JSON-LD: WebSite + Organization. No SearchAction — the docs search
+            is a client-side dialog with no URL query entry point. */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
@@ -96,28 +97,20 @@ export default function RootLayout({
                 "@type": "WebSite",
                 name: "Resonate Docs",
                 url: "https://docs.resonatehq.io",
-                potentialAction: {
-                  "@type": "SearchAction",
-                  target: {
-                    "@type": "EntryPoint",
-                    urlTemplate: "https://docs.resonatehq.io/?q={search_term_string}",
-                  },
-                  "query-input": "required name=search_term_string",
-                },
               },
               {
                 "@context": "https://schema.org",
                 "@type": "Organization",
                 name: "Resonate HQ",
-                url: "https://resonatehq.io",
-                logo: "https://resonatehq.io/images/logo.png",
+                url: "https://www.resonatehq.io",
+                logo: "https://www.resonatehq.io/images/apple-touch-icon.png",
                 sameAs: [
                   "https://github.com/resonatehq",
                   "https://x.com/resonatehqio",
-                  "https://www.linkedin.com/company/resonatehq",
+                  "https://www.linkedin.com/company/resonatehqio",
                 ],
               },
-            ]),
+            ]).replace(/</g, "\\u003c"),
           }}
         />
       </head>

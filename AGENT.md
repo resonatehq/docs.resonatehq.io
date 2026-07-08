@@ -29,7 +29,7 @@ Other live drift: **Python SDK page (`content/docs/develop/python.mdx`) still fr
 | Framework | **Next.js 15** + **fumadocs-core** + **fumadocs-mdx** |
 | Routing | Root-routed (`/get-started/...`, not `/docs/get-started/...`). 26+ redirect rules in `vercel.json` preserve old Docusaurus paths |
 | Package mgr | **npm** (`package-lock.json` is canonical — yarn era is over, don't reintroduce `yarn.lock`) |
-| Build | `npm run build` (runs `next build` + regenerates `public/llms.txt` + `public/llms-full.txt` via `scripts/generate-llms-txt.mjs`) |
+| Build | `npm run build` (`next build`; `/llms.txt` + `/llms-full.txt` are served by route handlers at `app/llms.txt/route.ts` + `app/llms-full.txt/route.ts`, built from the fumadocs source) |
 | Postbuild | `scripts/check-links.mjs` runs linkinator over the build output |
 | Search | **Orama** keyword nav (`⌘K` "Jump to..."), no Algolia |
 | Code highlighting | **Shiki** (`@shikijs/rehype`, themes: github-light + github-dark) |
@@ -49,11 +49,11 @@ Other live drift: **Python SDK page (`content/docs/develop/python.mdx`) still fr
 | `source.config.ts` | fumadocs MDX config (frontmatter schema, rehype/shiki options) |
 | `next.config.mjs` | Next config (wraps `createMDX()` from fumadocs-mdx) |
 | `vercel.json` | Redirect rules + security headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`) |
-| `scripts/generate-llms-txt.mjs` | Generates `public/llms.txt` and `public/llms-full.txt` at build time |
+| `app/llms.txt/route.ts`, `app/llms-full.txt/route.ts` | Serve `/llms.txt` + `/llms-full.txt` from the fumadocs content source (`scripts/generate-llms-txt.mjs` is retained for reference but no longer runs at build) |
 | `scripts/check-links.mjs` | linkinator wrapper used by `postbuild` |
 | `components/` | Custom React components used in the layout/theme |
 | `resonate-preset.ts` | Shared design tokens with the marketing site |
-| `public/` | Static assets (banners, downloads); regenerated llms files land here |
+| `public/` | Static assets (banners, downloads) |
 | `CONTRIBUTING.md` | Contribution rules |
 
 ## Run
@@ -61,7 +61,7 @@ Other live drift: **Python SDK page (`content/docs/develop/python.mdx`) still fr
 ```bash
 npm install         # install
 npm run dev         # local dev server (Cully runs this himself — don't auto-start)
-npm run build       # production build → .next/, plus regenerated public/llms*.txt
+npm run build       # production build → .next/
 npm start           # serve built output
 ```
 
@@ -92,7 +92,7 @@ npm start           # serve built output
 - Custom components for code samples, callouts, and diagrams live in `components/`.
 - Theme is a fumadocs customization sharing tokens with the marketing site via `resonate-preset.ts`.
 - Search is **Orama**, configured via fumadocs. No external service.
-- `llms.txt` and `llms-full.txt` are regenerated on every build by `scripts/generate-llms-txt.mjs`; don't hand-edit them.
+- `/llms.txt` and `/llms-full.txt` are route handlers built from the fumadocs source at request time — there are no static copies to edit.
 
 ## Known gaps (as of 2026-04-28)
 
