@@ -69,8 +69,22 @@ async function waitForServer(timeoutMs = 30000) {
   throw new Error(`next start did not respond on ${ROOT} within ${timeoutMs}ms`);
 }
 
+// The llms corpus is served by route handlers, not static files — verify the
+// routes respond with real content, since the crawler only follows page links.
+async function checkLlmsRoutes() {
+  for (const path of ["/llms.txt", "/llms-full.txt"]) {
+    const res = await fetch(`${ROOT}${path}`);
+    const body = res.ok ? await res.text() : "";
+    if (!res.ok || body.trim().length === 0) {
+      throw new Error(`${path} unhealthy: status ${res.status}, ${body.length} bytes`);
+    }
+    console.log(`[check-links] ${path} OK (${body.length} bytes)`);
+  }
+}
+
 try {
   await waitForServer();
+  await checkLlmsRoutes();
   console.log(`[check-links] Server up — crawling ${ROOT}`);
 
   const checker = new LinkChecker();

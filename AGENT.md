@@ -49,8 +49,8 @@ Other live drift: **Python SDK page (`content/docs/develop/python.mdx`) still fr
 | `source.config.ts` | fumadocs MDX config (frontmatter schema, rehype/shiki options) |
 | `next.config.mjs` | Next config (wraps `createMDX()` from fumadocs-mdx) |
 | `vercel.json` | Redirect rules + security headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`) |
-| `app/llms.txt/route.ts`, `app/llms-full.txt/route.ts` | Serve `/llms.txt` + `/llms-full.txt` from the fumadocs content source (`scripts/generate-llms-txt.mjs` is retained for reference but no longer runs at build) |
-| `scripts/check-links.mjs` | linkinator wrapper used by `postbuild` |
+| `app/llms.txt/route.ts`, `app/llms-full.txt/route.ts` | Serve `/llms.txt` + `/llms-full.txt` from the fumadocs content source |
+| `scripts/check-links.mjs` | linkinator wrapper used by `postbuild`; also smoke-checks the llms route handlers |
 | `components/` | Custom React components used in the layout/theme |
 | `resonate-preset.ts` | Shared design tokens with the marketing site |
 | `public/` | Static assets (banners, downloads) |
