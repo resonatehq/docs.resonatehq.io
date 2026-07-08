@@ -1,0 +1,595 @@
+---
+title: Java SDK skills
+pageTitle: Skill Guide | Java SDK
+description: APIs that stay simple, even when your use cases aren't
+keywords:
+  - java
+  - jvm
+  - skill-guide
+  - resonate-sdk
+---
+
+<Callout type="caution" title="Pre-release">
+The Java SDK is at `v0.1.1` — the first version published to Maven Central — and is in active development. APIs may change before the API surface settles. Check the [open issues](https://github.com/resonatehq/resonate-sdk-java/issues) for known gaps. The internal protocol is stable; the Java API surface is still settling.
+</Callout>
+
+Whether you are a human or an AI agent, this skill guide will help you develop applications using the Resonate Java SDK.
+
+This skill sheet assumes that you already know Resonate is a good fit for your use case.
+If you are unsure, please refer to [Why Resonate](/evaluate/why-resonate#the-three-pillars).
+
+It's important to think about the potential architecture of your application as it ties to your use case.
+This can determine which APIs and options you will use for function activations.
+If you have a use case in mind, but haven't built with Resonate before, we recommend reviewing some of the common patterns in our [example applications](/get-started/examples). The Java SDK also ships a set of runnable example programs (hello-world, fan-out/fan-in pipeline, saga, human-in-the-loop, retries, and more) under [`src/examples`](https://github.com/resonatehq/resonate-sdk-java/tree/main/src/examples) in the SDK repo.
+
+## Installation
+
+**How to install the Resonate Java SDK into your project.**
+
+The Resonate Java SDK requires **Java 21 or newer**. It uses [virtual threads](https://openjdk.org/jeps/444) (a generally-available feature as of Java 21) to drive durable executions, so Java 8/11/17 are not supported.
+
+The SDK is published to Maven Central as `io.resonatehq:resonate-sdk-java`. Add it with your build tool of choice:
+
+<Tabs
+    groupId="preferred-build-tool-java"
+    defaultValue="gradle"
+    values={[
+        {label: 'Gradle (Kotlin DSL)', value: 'gradle'},
+        {label: 'Gradle (Groovy)', value: 'gradle-groovy'},
+        {label: 'Maven', value: 'maven'},
+    ]}>
+
+    <TabItem value="gradle">
+
+```kotlin title="build.gradle.kts"
+dependencies {
+    implementation("io.resonatehq:resonate-sdk-java:0.1.1")
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+```
+
+    </TabItem>
+
+    <TabItem value="gradle-groovy">
+
+```groovy title="build.gradle"
+dependencies {
+    implementation 'io.resonatehq:resonate-sdk-java:0.1.1'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+```
+
+    </TabItem>
+
+    <TabItem value="maven">
+
+```xml title="pom.xml"
+<dependency>
+    <groupId>io.resonatehq</groupId>
+    <artifactId>resonate-sdk-java</artifactId>
+    <version>0.1.1</version>
+</dependency>
+```
+
+    </TabItem>
+
+</Tabs>
+
+The SDK pulls in Jackson (`com.fasterxml.jackson.core:jackson-databind`) transitively for the JSON durability boundary — no extra dependency to declare.
+
+Once added, the SDK lives under a single package; import the types you need:
+
+```java
+import io.resonatehq.resonate.Resonate;
+import io.resonatehq.resonate.Context;
+```
+
+## Initialization
+
+**How to initialize a Resonate instance.**
+
+Initializing a Resonate instance gives you the APIs needed to register, activate, and await durable functions. The instance is built with a fluent builder:
+
+```java title="Main.java"
+import io.resonatehq.resonate.Resonate;
+
+Resonate r = Resonate.builder()
+        .url("http://localhost:8001")
+        .build();
+try {
+    // register functions, run / rpc invocations ...
+} finally {
+    r.stop();
+}
+```
+
+- A Resonate instance can connect to either an in-process local network (best for development) or a remote Resonate Server (best for production).
+- A Resonate instance is used in the Ephemeral World to register and activate functions — it cannot be used inside Durable Functions. Use the [Context APIs](#context-apis) for function activations inside Durable Functions.
+
+The builder selects its network using the following precedence:
+
+1. `url(...)` — when set, the SDK builds a default HTTP transport pointing at this address.
+2. `network(...)` — an explicitly constructed transport (used when no `url` is set).
+3. `RESONATE_URL` (or the `RESONATE_HOST` / `RESONATE_PORT` / `RESONATE_SCHEME` trio) environment variable — consulted when neither `url` nor `network` is set.
+4. Otherwise — an in-process `LocalNetwork` (zero-dependency local mode).
+
+The full set of builder options:
+
+| Builder method | Type | Default | Purpose |
+|---|---|---|---|
+| `url(String)` | `String` | _unset_ | Builds a default HTTP transport at this address. Takes precedence over `network` and `RESONATE_URL`. |
+| `network(Network)` | `Network` | _auto_ | An explicitly constructed transport. Used when `url` is empty. |
+| `group(String)` | `String` | `"default"` | The routing group this instance subscribes to (the anycast target other workers dispatch to). |
+| `token(String)` | `String` | `RESONATE_TOKEN` | Sent as Bearer auth on every protocol request. |
+| `ttl(Duration)` | `Duration` | `60s` | Per-task lease duration. |
+| `prefix(String)` | `String` | `RESONATE_PREFIX` | Prepended (with `:`) to every promise/task ID created by `run`, `rpc`, or `get`. |
+| `pid(String)` | `String` | _auto_ | Worker process ID used for the task lease/heartbeat endpoint. Auto-generated when unset. |
+| `heartbeat(Hb)` | `Hb` | _auto_ | Keeps an acquired task's lease alive. Defaults to an async heartbeat at `TTL/2` for remote mode, and a no-op for local mode. |
+| `encryptor(Encryptor)` | `Encryptor` | `NoopEncryptor` | Controls codec encryption at the durability boundary. |
+| `maxConcurrentTasks(Integer)` | `Integer` | `64` | Ceiling on tasks executing (holding a lease) at once in this process. |
+| `retryPolicy(RetryPolicy)` | `RetryPolicy` | `Exponential` | The SDK-wide default retry policy for leaf functions. See [Retries](#retries). |
+
+<Callout type="note" title="Worker groups are a builder option">
+Unlike some sibling SDKs that set the group on a separately-constructed transport, the Java SDK exposes `group(...)` directly on the builder:
+
+```java
+Resonate r = Resonate.builder()
+        .url("http://localhost:8001")
+        .group("worker-group-a")
+        .build();
+```
+
+When omitted, the instance joins the default group (`"default"`).
+</Callout>
+
+### Zero-dependency development
+
+Unlike other Durable Execution offerings, apart from installing the SDK itself, Resonate enables you to get started without any additional dependencies.
+This is because Resonate can run in a local development mode that runs the server state machine in-process, using in-memory storage for promises and tasks.
+
+When you construct a Resonate instance with no `url`, no `network`, and no `RESONATE_URL` in the environment, the SDK uses an in-process `LocalNetwork`:
+
+```java title="Main.java"
+import io.resonatehq.resonate.Resonate;
+
+Resonate r = new Resonate(); // in-process local mode, no server required
+```
+
+In local mode the SDK automatically uses a no-op heartbeat (there is no server lease endpoint to keep alive), so there is nothing extra to configure.
+
+Local development mode can be suitable for a while.
+However, when you want to run multiple worker processes, persist state across restarts, or share work between machines, you will need to connect to a Resonate Server.
+See the [Quickstart guide](/get-started/quickstart) or [How to run a Resonate Server](/deploy/run-server) for guidance on getting a server up and running.
+
+### Authentication
+
+The Java SDK supports token-based authentication (JWT) when connecting to a secured Resonate Server. Set `token(...)` on the builder:
+
+```java title="Main.java"
+Resonate r = Resonate.builder()
+        .url("https://localhost:8001")
+        .token(System.getenv("RESONATE_TOKEN"))
+        .build();
+```
+
+When omitted, `token` falls back to the `RESONATE_TOKEN` environment variable.
+
+<Callout type="tip" title="Token-based authentication is recommended for production. See the [Security & Authentication](/deploy/security) guide for detailed configuration, best practices, and server setup.">
+
+</Callout>
+
+### Environment variables
+
+When neither `url(...)` nor `network(...)` is set, the builder reads the connection from the environment:
+
+#### `RESONATE_URL`
+
+- Provides the full base URL (scheme, host, and port) for connecting to a remote Resonate server.
+- Example:
+
+  ```bash
+  export RESONATE_URL="http://localhost:8001"
+  ```
+
+  ```java
+  Resonate r = new Resonate(); // picks up RESONATE_URL
+  ```
+
+#### `RESONATE_HOST` / `RESONATE_PORT` / `RESONATE_SCHEME`
+
+- A fallback used when `RESONATE_URL` is not set. `RESONATE_HOST` is required to trigger the fallback; `RESONATE_SCHEME` defaults to `http` and `RESONATE_PORT` defaults to `8001`.
+
+#### `RESONATE_TOKEN` / `RESONATE_PREFIX`
+
+- `RESONATE_TOKEN` supplies the Bearer auth token when `token(...)` is not set; `RESONATE_PREFIX` supplies the ID prefix when `prefix(...)` is not set.
+
+## Defining durable functions
+
+**How to write a function that Resonate can run durably.**
+
+A durable function in Java is an ordinary `static` method whose **first parameter is a `Context`**, followed by up to five application arguments:
+
+```java
+import io.resonatehq.resonate.Context;
+
+public final class Greeter {
+    // A leaf function: no durable op, just computes a value.
+    public static String formatGreeting(Context ctx, String name) {
+        return "hello, " + name + "!";
+    }
+
+    // A workflow: orchestrates sub-tasks via the Context.
+    public static String greetWorkflow(Context ctx, String name) {
+        return ctx.run(Greeter::formatGreeting, name).await();
+    }
+}
+```
+
+Functions are always supplied as **method references** (`Owner::fn`), never as a `String` name or a reflected `Method` — the SDK recovers the method behind the reference for you. The reference's functional-interface arity (`Fn.F0` through `Fn.F5`) is what bounds a durable function to **at most five arguments** beyond the `Context`. The argument types and the return type must be JSON-serializable, because they cross the durability boundary.
+
+There are two ways a function enters the system, with different registration rules:
+
+- **Registered functions** — anything you pass to [`register`](#resonate-register) so it can be invoked by name (via `rpc`, the CLI, or as a top-level `run` entrypoint). Registration is required for these entry points.
+- **`ctx.run` targets** — a function you only ever hand to [`ctx.run`](#ctx-run) as a method reference does **not** need to be registered; the SDK runs the referenced method directly. (Invoking by name — `ctx.run("name", ...)` — does require a local registration, since there is no reference to resolve.)
+
+<Callout type="note" title="Args are JSON-serialized into the durable promise">
+A function's arguments and return value are encoded into the durable promise's payload so the workflow can resume on any worker that has the function registered. Use plain data types (records, collections, primitives, strings) for anything you want carried across a crash or a remote dispatch.
+</Callout>
+
+## Client APIs
+
+The following Client APIs are used in the Ephemeral World — they cannot be used inside Durable Functions.
+
+### `Resonate.register`
+
+Register a durable function to expose it to the Resonate system.
+A registered function can then be activated by the Resonate Client, the Resonate CLI, or from inside another Durable Function via the Context APIs.
+
+`register` takes a method reference and returns it unchanged (so the call site can keep a reference if it wants one):
+
+```java
+r.register(Greeter::greetWorkflow);
+```
+
+By default a function registers under its own method name at version `1`. Override the name, version, and (optionally) a per-function retry policy with the longer overloads:
+
+```java
+import io.resonatehq.resonate.Retry.Constant;
+
+r.register(Greeter::greetWorkflow, "greet", 1);
+r.register(Greeter::greetWorkflow, "greet", 2, new Constant(3, 1)); // per-function retry policy
+```
+
+The same name may be registered at several versions.
+
+### `Resonate.run`
+
+`run` starts a durable invocation of a function in the **same process** and returns a typed handle.
+You can think of it as a "run right here" invocation.
+After invocation, the function is durable and will recover in another process if required.
+
+```java
+import io.resonatehq.resonate.Handle.ResonateHandle;
+
+ResonateHandle<String> handle = r.run("greet-1", Greeter::greetWorkflow, "world");
+String result = handle.result(); // typed: String
+```
+
+Passing the function as a method reference makes the handle typed (`ResonateHandle<String>` here). There is also a by-name form that returns an untyped handle (`ResonateHandle<Object>`), useful when the function is registered elsewhere:
+
+```java
+ResonateHandle<Object> handle = r.run("greet-1", "greet", "world");
+Object result = handle.result();
+```
+
+Per-call options (timeout, target, version, retry policy) come from a fresh options handle — see [Per-call options](#per-call-options).
+
+### `Resonate.rpc`
+
+`rpc` (Remote Procedure Call) invokes a function in a **remote process** by registered name and returns a handle.
+You can think of it as a "run somewhere else" invocation.
+The target function does not need to be registered locally.
+
+```java
+import io.resonatehq.resonate.Context.Opts;
+import io.resonatehq.resonate.Handle.ResonateHandle;
+
+ResonateHandle<Object> handle = r.options(new Opts().withTarget("backend"))
+        .rpc("greet-1", "greet", "world");
+Object result = handle.result();
+```
+
+`withTarget(...)` routes the call to a named group's anycast address; the server hands the execute message to a worker subscribed there. Like `run`, `rpc` also accepts a method reference for a typed handle.
+
+### `Resonate.get`
+
+Get a handle to an existing execution by its promise ID. The handle is untyped (`ResonateHandle<Object>`).
+
+```java
+import io.resonatehq.resonate.Handle.ResonateHandle;
+
+ResonateHandle<Object> handle = r.get("greet-1");
+Object result = handle.result();
+```
+
+### Reading a handle's result
+
+A handle blocks until its underlying promise settles, then decodes the value.
+
+- **Typed:** `run` / `rpc` given a method reference return a `ResonateHandle<R>` whose `result()` returns `R`.
+- **Untyped:** the by-name `run` / `rpc` forms and `get` return a `ResonateHandle<Object>` whose `result()` returns `Object`.
+
+```java
+String value = handle.result();   // blocks until settled, returns the decoded value
+String id = handle.id().join();   // the durable promise id, once creation is confirmed
+boolean done = handle.done();     // non-blocking: has the promise settled?
+```
+
+A rejected promise re-throws the application error embedded in the rejection payload — where the original exception type can be reconstructed across the durability boundary you catch it by its real type, otherwise an `ApplicationError` carrying the message is the fallback.
+
+### The `promises` sub-client
+
+`r.promises` is a sub-client for direct durable-promise manipulation — the building block for human-in-the-loop and external-coordination patterns, where an external party settles a promise created from inside a workflow with [`ctx.promise`](#ctx-promise).
+
+```java
+import io.resonatehq.resonate.Types.Value;
+
+// Resolve a durable promise by id (e.g. an approval a workflow is awaiting):
+r.promises.resolve("approval-1", new Value(null, "approved")).join();
+```
+
+`promises` also exposes `reject`, `cancel`, `get`, `create`, and `search`. Each returns a `CompletableFuture`, so call `.join()` (or compose with `thenApply`) to wait for it.
+
+### The `schedules` sub-client
+
+`r.schedule(...)` creates a schedule that periodically invokes a registered function on a cron expression:
+
+```java
+import java.util.List;
+import java.util.Map;
+
+Resonate.ResonateSchedule daily = r.schedule(
+        "daily-report",      // schedule id
+        "0 0 * * *",         // cron expression
+        "generateReport",    // registered function name
+        List.of(),           // positional args
+        Map.of(),            // keyword args
+        null,                // promise timeout (null = default)
+        1);                  // function version
+
+daily.delete(); // remove the schedule when no longer needed
+```
+
+The lower-level `r.schedules` sub-client (`create` / `get` / `delete` / `search`) is available for direct schedule manipulation.
+
+### `Resonate.stop`
+
+Gracefully shuts down a Resonate instance. Stops the network connection, joins outstanding background jobs, cancels the subscription-refresh loop, and shuts down the heartbeat. Idempotent.
+
+```java
+r.stop();
+```
+
+**When to call it.** Call `stop` from any process that should exit after its work finishes — demo binaries, one-shot jobs, examples, CI tasks. Without it, the background virtual threads keep the process from exiting after `main` would otherwise return.
+
+<Callout type="caution" title="Don't call `stop` on a long-running worker">
+Calling `stop` on a worker (an RPC service, a queue consumer, or any other long-lived process) tears down the channels the worker uses to receive and hold work:
+
+- The connection to the Resonate Server closes — the worker stops receiving dispatched tasks.
+- The heartbeat loop stops — the server-side TTL on in-flight tasks expires, and the server reassigns them.
+- The subscription-refresh loop is cancelled — listeners on awaited promises are no longer re-registered.
+
+Workers should stay up; let process termination (SIGINT / SIGTERM) end the lifecycle.
+</Callout>
+
+## Context APIs
+
+**How to use the Resonate Context inside Durable Functions.**
+
+Resonate's Context enables you to invoke sub-tasks from inside a workflow.
+This is how you extend the Call Graph and create a world of Durable Functions.
+
+Each Context method returns a `ResonateFuture` immediately (the durable promise is created synchronously); you call `future.await()` to read the result. If the awaited promise is still pending, `await` suspends the workflow and re-enters it when the promise settles. Because of this, **fan-out is "dispatch all, then await all"**: call `ctx.run` / `ctx.rpc` for every branch first to create the promises, then `await` each future.
+
+### `ctx.run`
+
+Invoke a function in the **same process**.
+By default, calling `await` immediately after executes sequentially — the workflow blocks until the invoked function returns.
+
+```java
+public static String myWorkflow(Context ctx, String input) {
+    return ctx.run(Greeter::formatGreeting, input).await();
+}
+```
+
+To run in parallel, dispatch every child first, then await each future:
+
+```java
+import io.resonatehq.resonate.Context.ResonateFuture;
+
+public static String myWorkflow(Context ctx, String a, String b) {
+    ResonateFuture<String> fa = ctx.run(Greeter::formatGreeting, a);
+    ResonateFuture<String> fb = ctx.run(Greeter::formatGreeting, b);
+    return fa.await() + " | " + fb.await();
+}
+```
+
+<Callout type="caution" title="`ctx.run` functions must return promptly">
+The workflow runtime drains every `ctx.run`-spawned child future before it can suspend or settle the parent task. A function that blocks indefinitely holds the task lease open until it expires. Long-running or external-blocking work belongs in `ctx.rpc` (remote dispatch) or `ctx.promise` (latent durable promise), not `ctx.run`.
+</Callout>
+
+### `ctx.rpc`
+
+Invoke a function in a **remote process**, either by method reference or by registered name.
+Await on the returned future suspends the workflow until the remote function returns.
+
+```java
+public static String myWorkflow(Context ctx, String input) {
+    return (String) ctx.rpc("remote-func", input).await();
+}
+```
+
+The by-name form returns a `ResonateFuture<Object>` (hence the cast); pass a method reference instead for a typed future. The by-name form does **not** require the target to be registered locally — it dispatches to a function registered on the executing (remote) group. The method-reference form, by contrast, requires a **local** registration, because it recovers the target's name and version from the registry. `ctx.rpc` takes per-call options (e.g. `target`) the same way `ctx.run` does — see [Per-call options](#per-call-options). The fan-out-then-await pattern shown for `ctx.run` applies equally to `ctx.rpc`.
+
+### `ctx.sleep`
+
+Durable sleep. There is no limit to how long the function can sleep — hours, days, or weeks.
+The sleep survives process restarts.
+
+```java
+import java.time.Duration;
+
+public static void reminder(Context ctx) {
+    ctx.sleep(Duration.ofHours(1)).await(); // no value to decode
+    // ... send the reminder
+}
+```
+
+<Callout type="caution" title="Code above a durable point re-runs on resume">
+Whenever a workflow suspends and resumes (after a `sleep`, a remote `rpc`, or a pending `promise`), the entire workflow body runs again from the top. Durable child promises short-circuit work that already settled, but any side effect that runs *before* reaching that boundary executes again. Wrap observable side effects (DB writes, payments, emails) in their own `ctx.run` / `ctx.rpc` so the durable promise records the result.
+</Callout>
+
+### `ctx.promise`
+
+Create a latent durable promise resolved by an external system (a webhook, a human, another process). Hand the promise's ID to the external resolver; `await` suspends until it settles. This is the building block for human-in-the-loop and webhook workflows.
+
+```java
+import io.resonatehq.resonate.Context.ResonateFuture;
+
+public static String approval(Context ctx) {
+    ResonateFuture<Object> promise = ctx.promise(); // 1-day default timeout, capped at the workflow deadline
+    String approvalId = promise.id();
+    // hand approvalId to whoever resolves it
+    // (e.g. resonate promise resolve <id> --data '"approved"', or r.promises.resolve(id, ...))
+
+    Object decision = promise.await(); // suspends until the promise is settled externally
+    return decision.toString();
+}
+```
+
+`ctx.promise(Duration)` sets an explicit timeout; `ctx.promise()` uses a 1-day default, capped at the parent's remaining deadline.
+
+### `ctx.detached`
+
+Dispatch a remote function fire-and-forget. Unlike `ctx.rpc`, the parent workflow does **not** suspend on it — `detached` returns only the new promise's ID, and the detached execution's lifecycle is independent of the parent.
+
+```java
+public static void placeOrder(Context ctx, String orderId) {
+    // Fire-and-forget: dispatch the audit workflow without blocking the order.
+    String auditId = ctx.detached("writeAuditLog", orderId).id();
+    // auditId references the detached execution; the parent does not await it
+}
+```
+
+<Callout type="note" title="`detached` is by-name only">
+Unlike `ctx.run` and `ctx.rpc`, which accept either a method reference or a `String` name, `ctx.detached` takes the target function's **registered name as a `String`** — there is no method-reference overload. The detached target must be registered on whichever group executes it.
+</Callout>
+
+### Context accessors
+
+Inside a workflow, `ctx.info()` exposes read-only metadata about the current execution:
+
+```java
+import io.resonatehq.resonate.Types.Info;
+
+public static void inspect(Context ctx) {
+    Info info = ctx.info();
+    String id = info.id();             // this execution's promise ID
+    String parent = info.parentId();   // parent promise ID
+    String origin = info.originId();   // root workflow ID — stable across the whole tree
+    String fn = info.funcName();       // registered function name
+    long deadline = info.timeoutAt();  // promise deadline, epoch milliseconds
+    // info.branchId() and info.tags() are also available
+}
+```
+
+### Dependency injection
+
+Application dependencies (database handles, HTTP clients, gateways) are registered on the instance with `withDependency` and fetched inside a function by type with `ctx.getDependency`:
+
+```java
+r.withDependency(new PaymentGateway());
+
+public static String charge(Context ctx, int amount) {
+    PaymentGateway gateway = ctx.getDependency(PaymentGateway.class);
+    return gateway.submit(amount);
+}
+```
+
+Dependencies are keyed by their concrete class — register at most one instance per type, before processing starts.
+
+### Per-call options
+
+`run` / `rpc` (both on the instance and on the Context) take their options from a fresh handle minted by `options(...)`, carrying a `Context.Opts` value. `Opts` is an immutable record with builder-style `with*` methods, so you override one field and inherit the rest:
+
+```java
+import io.resonatehq.resonate.Context.Opts;
+import io.resonatehq.resonate.Retry.Constant;
+
+public static String checkout(Context ctx) {
+    return ctx.options(new Opts().withRetryPolicy(new Constant(5, 0)))
+            .run(Greeter::formatGreeting, "world")
+            .await();
+}
+```
+
+| `Opts` field | Method | Purpose |
+|---|---|---|
+| `timeout` | `withTimeout(Duration)` | Caps the promise deadline (bounded by the parent's remaining deadline). |
+| `target` | `withTarget(String)` | Logical routing address for `rpc`. Empty falls back to the configured group. |
+| `version` | `withVersion(int)` | Selects the registered version for by-name dispatch. |
+| `retryPolicy` | `withRetryPolicy(RetryPolicy)` | Per-call retry policy for a `ctx.run` leaf. See [Retries](#retries). |
+
+The options handle is a fresh instance — the originating `Resonate` / `Context` is untouched, so held handles never interfere.
+
+## Retries
+
+When a function passed to `ctx.run` (or a top-level `run`) returns by throwing, Resonate re-executes it according to a retry policy. Retries apply only to **leaf** functions — a function that itself performs a durable op (`ctx.run` / `ctx.rpc` / `ctx.sleep` / `ctx.promise`) is a workflow, recovered by replay, and is never retried.
+
+The SDK ships four policies, all implementing the `Retry.RetryPolicy` interface (delays are in **seconds**):
+
+| Policy | Behavior |
+|---|---|
+| `new Retry.Exponential(delay, maxRetries, factor, maxDelay)` | Delay `delay * factor^attempt`, capped at `maxDelay`, for `maxRetries` retries. |
+| `new Retry.Linear(maxRetries, delay)` | Attempt N waits `delay * N`. |
+| `new Retry.Constant(maxRetries, delay)` | Fixed `delay` between attempts. |
+| `new Retry.Never()` | A single attempt (no retries). |
+
+```java
+import io.resonatehq.resonate.Context.Opts;
+import io.resonatehq.resonate.Retry.Exponential;
+
+public static String chargeStep(Context ctx, int amount) {
+    return ctx.options(new Opts().withRetryPolicy(
+                    new Exponential(1, 5, 2, 30))) // 1s base, doubling, capped at 30s, 5 retries
+            .run(Greeter::formatGreeting, "card")
+            .await();
+}
+```
+
+A retry policy can be set three ways, in increasing specificity:
+
+1. **SDK-wide** — `Resonate.builder().retryPolicy(...)`, the default for every leaf.
+2. **Per-function** — `register(ref, name, version, retryPolicy)`, read by the worker that executes the function.
+3. **Per-call** — `ctx.options(new Opts().withRetryPolicy(...)).run(...)`, overriding the above for a single `ctx.run`.
+
+## Defaults
+
+The Java SDK ships with these key defaults:
+
+- **`new Resonate()`** — in-process `LocalNetwork` (no server); `TTL = 60s`; no-op heartbeat in local mode (async at `TTL/2` in remote mode); `NoopEncryptor`; group `"default"`; `maxConcurrentTasks = 64`.
+- **Top-level `run` / `rpc` timeout** — `1 day` when no per-call `timeout` is set.
+- **Child `ctx.run` / `ctx.rpc` / `ctx.promise` / `ctx.sleep` timeout** — `1 day` when the call sets no `timeout`, capped at the parent's remaining deadline.
+- **Default retry policy** — `Exponential(delay=1s, maxRetries=30, factor=2, maxDelay≈unbounded)` — 1-second base, doubling, 30 retries — applied to leaf functions when no more specific policy is set.
+
+For server defaults and the TypeScript/Python/Rust comparison with source citations, see the [Defaults reference](/reference/defaults).
