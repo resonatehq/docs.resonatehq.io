@@ -4,6 +4,7 @@ import localFont from "next/font/local";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import ConsentManager from "@/components/ConsentManager";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const inter = Inter({
@@ -55,6 +56,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
+    site: "@resonatehqio",
     title: "Resonate Documentation",
     description: "Documentation for Resonate — durable execution, dead simple.",
     images: ["/images/resonate-documentation-banner.png"],
@@ -84,6 +86,33 @@ export default function RootLayout({
             __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',functionality_storage:'granted',security_storage:'granted',wait_for_update:2000});`,
           }}
         />
+        {/* JSON-LD: WebSite + Organization. No SearchAction — the docs search
+            is a client-side dialog with no URL query entry point. */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify([
+              {
+                "@context": "https://schema.org",
+                "@type": "WebSite",
+                name: "Resonate Docs",
+                url: "https://docs.resonatehq.io",
+              },
+              {
+                "@context": "https://schema.org",
+                "@type": "Organization",
+                name: "Resonate HQ",
+                url: "https://www.resonatehq.io",
+                logo: "https://www.resonatehq.io/images/apple-touch-icon.png",
+                sameAs: [
+                  "https://github.com/resonatehq",
+                  "https://x.com/resonatehqio",
+                  "https://www.linkedin.com/company/resonatehqio",
+                ],
+              },
+            ]).replace(/</g, "\\u003c"),
+          }}
+        />
       </head>
       <body className="bg-surface-light dark:bg-dark min-h-screen font-serif">
         <Navigation />
@@ -92,6 +121,7 @@ export default function RootLayout({
         </div>
         <Footer />
         <ConsentManager />
+        <Analytics />
       </body>
     </html>
   );

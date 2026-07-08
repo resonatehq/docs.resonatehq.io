@@ -114,7 +114,30 @@ export default async function Page({ params }: PageProps) {
 
   const MDX = page.data.body;
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    headline: page.data.title,
+    description: page.data.description ?? `${page.data.title} — Resonate documentation`,
+    url: `https://docs.resonatehq.io${page.url}`,
+    isPartOf: {
+      "@type": "WebSite",
+      name: "Resonate Docs",
+      url: "https://docs.resonatehq.io",
+    },
+    publisher: {
+      "@type": "Organization",
+      name: "Resonate HQ",
+      url: "https://www.resonatehq.io",
+    },
+  };
+
   return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
+      />
     <div className="flex">
       <Sidebar tree={tree} currentPath={page.url} />
 
@@ -199,6 +222,7 @@ export default async function Page({ params }: PageProps) {
 
       <TableOfContents toc={page.data.toc} />
     </div>
+    </>
   );
 }
 
@@ -234,6 +258,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const description = page.data.description || `${title} — Resonate documentation`;
   const banner = bannerForSlug(slug);
 
+  // Section banners are 1500×500; the default docs banner is 1200×630.
+  const isSectionBanner = slug?.[0] !== undefined && SECTION_BANNERS.has(slug[0]);
+  const bannerWidth = isSectionBanner ? 1500 : 1200;
+  const bannerHeight = isSectionBanner ? 500 : 630;
+
   return {
     title,
     description,
@@ -241,11 +270,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       title: `${title} — Resonate Docs`,
       description,
       url: `https://docs.resonatehq.io${page.url}`,
-      type: "article",
-      images: [{ url: banner, width: 1200, height: 630 }],
+      siteName: "Resonate Docs",
+      type: "website",
+      images: [{ url: banner, width: bannerWidth, height: bannerHeight }],
     },
     twitter: {
       card: "summary_large_image",
+      site: "@resonatehqio",
       title: `${title} — Resonate Docs`,
       description,
       images: [banner],

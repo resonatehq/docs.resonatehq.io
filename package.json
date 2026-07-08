@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "rm -rf .next && next dev",
-    "build": "rm -rf .next && next build && node scripts/generate-llms-txt.mjs",
+    "build": "rm -rf .next && next build",
     "postbuild": "node scripts/check-links.mjs",
     "check-links": "node scripts/check-links.mjs",
     "start": "next start",
@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@shikijs/rehype": "^3.0.0",
+    "@vercel/analytics": "^2.0.1",
     "fumadocs-core": "15.7.13",
     "fumadocs-mdx": "11.10.1",
     "lucide-react": "^0.500.0",
