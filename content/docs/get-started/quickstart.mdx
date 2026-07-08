@@ -26,6 +26,7 @@ brew install resonatehq/tap/resonate
   { label: "Python", value: "python" },
   { label: "Rust", value: "rust" },
   { label: "Go", value: "go" },
+  { label: "Java", value: "java" },
 ]}>
 
 <TabItem value="typescript">
@@ -74,6 +75,20 @@ No semver tag is published yet — `@latest` resolves to the latest `main` commi
 
 </TabItem>
 
+<TabItem value="java">
+
+Requires **Java 21** or later (the SDK uses virtual threads).
+
+```kotlin title="build.gradle.kts"
+dependencies {
+    implementation("io.resonatehq:resonate-sdk-java:0.1.1")
+}
+```
+
+The SDK is published on Maven Central; `0.1.1` is the latest release. The SDK is pre-release (v0.1.x) — expect API changes before `v1.0`. See the [Java SDK guide](/develop/java) for Maven coordinates and details.
+
+</TabItem>
+
 </Tabs>
 
 ## Write a function
@@ -85,6 +100,7 @@ A countdown loop that survives restarts — minutes, hours, or days.
   { label: "Python", value: "python" },
   { label: "Rust", value: "rust" },
   { label: "Go", value: "go" },
+  { label: "Java", value: "java" },
 ]}>
 
 <TabItem value="typescript">
@@ -259,6 +275,58 @@ Go's `Register` takes a single args type, so the CLI's `--arg 5 --arg 60` arrive
 
 </TabItem>
 
+<TabItem value="java">
+
+```java title="src/main/java/io/resonatehq/examples/quickstart/Quickstart.java"
+package io.resonatehq.examples.quickstart;
+
+import io.resonatehq.resonate.Context;
+import io.resonatehq.resonate.Resonate;
+import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+
+public final class Quickstart {
+    private Quickstart() {}
+
+    // The two CLI --arg values arrive as positional arguments:
+    // `--arg 5 --arg 60` binds to (count=5, delaySeconds=60).
+    public static String countdown(Context ctx, int count, int delaySeconds) {
+        for (int i = count; i > 0; i--) {
+            // Run a function, persist its result.
+            ctx.run(Quickstart::tick, i).await();
+            // Suspend between ticks (but not after the last one) — a durable sleep.
+            if (i > 1) {
+                ctx.sleep(Duration.ofSeconds(delaySeconds)).await();
+            }
+        }
+        return "done";
+    }
+
+    public static String tick(Context ctx, int i) {
+        System.out.println("Countdown: " + i);
+        return "ok";
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        String url = System.getenv().getOrDefault("RESONATE_URL", "http://localhost:8001");
+        // Instantiate Resonate
+        Resonate r = Resonate.builder().url(url).build();
+        // Register the workflow + its leaf
+        r.register(Quickstart::countdown);
+        r.register(Quickstart::tick);
+        System.out.println("worker ready — registered 'countdown'. Invoke it with the Resonate CLI. Ctrl-C to exit.");
+        // Keep the worker alive to receive work.
+        new CountDownLatch(1).await();
+    }
+}
+```
+
+Java binds each CLI `--arg` to one method parameter positionally — the shared `--arg 5 --arg 60` step below becomes `(count=5, delaySeconds=60)`. This is the opposite of Go's single-slice binding. See the [Java SDK guide](/develop/java).
+
+[Working example](https://github.com/resonatehq-examples/example-quickstart-java)
+
+</TabItem>
+
 </Tabs>
 
 ## Start the server
@@ -274,6 +342,7 @@ resonate dev
   { label: "Python", value: "python" },
   { label: "Rust", value: "rust" },
   { label: "Go", value: "go" },
+  { label: "Java", value: "java" },
 ]}>
 
 <TabItem value="typescript">
@@ -304,6 +373,16 @@ cargo run
 
 ```shell
 go run .
+```
+
+</TabItem>
+
+<TabItem value="java">
+
+In a Gradle project with the `application` plugin pointed at `Quickstart` (the [working example](https://github.com/resonatehq-examples/example-quickstart-java) ships one ready to run):
+
+```shell
+./gradlew run
 ```
 
 </TabItem>
@@ -325,6 +404,7 @@ resonate invoke countdown.1 --func countdown --arg 5 --arg 60
   { label: "Python", value: "python" },
   { label: "Rust", value: "rust" },
   { label: "Go", value: "go" },
+  { label: "Java", value: "java" },
 ]}>
 
 <TabItem value="typescript">
@@ -378,6 +458,20 @@ Countdown: 3
 Countdown: 2
 Countdown: 1
 Done!
+```
+
+</TabItem>
+
+<TabItem value="java">
+
+```shell
+./gradlew run
+worker ready — registered 'countdown'. Invoke it with the Resonate CLI. Ctrl-C to exit.
+Countdown: 5
+Countdown: 4
+Countdown: 3
+Countdown: 2
+Countdown: 1
 ```
 
 </TabItem>
