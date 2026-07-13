@@ -317,7 +317,7 @@ Subcommands ([`resonate/src/cli.rs:1101-1145`](https://github.com/resonatehq/res
 
 ### `resonate schedules create`
 
-`--cron` accepts a standard 5-field cron expression. `--promise-id` is a **template**; `{{.timestamp}}` is substituted with the firing time so each run gets a unique promise ID.
+`--cron` accepts a 5-, 6-, or 7-field cron expression, evaluated in **UTC only** with Quartz day-of-week numbering (`1` = Sunday — prefer day names like `MON-FRI`); see the [Schedules & cron reference](/reference/schedules) for the full format. `--promise-id` is a **template**; `{{.id}}` is substituted with the schedule's ID and `{{.timestamp}}` with the firing time (epoch ms) so each run gets a unique promise ID.
 
 ```shell
 resonate schedules create nightly-rollup \

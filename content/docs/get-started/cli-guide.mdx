@@ -95,7 +95,7 @@ resonate promises get order-123
 **Search for promises:**
 
 ```shell title="Find pending promises"
-resonate promises search "*" --state pending --limit 10
+resonate promises search --state pending --limit 10
 ```
 
 ### Work with schedules
@@ -106,13 +106,16 @@ resonate promises search "*" --state pending --limit 10
 resonate schedules create hourly-sync \
   --cron "0 * * * *" \
   --promise-id "sync-{{.timestamp}}" \
-  --description "Hourly data sync"
+  --promise-timeout 1h \
+  --promise-tags '{"resonate:target": "poll://any@default"}'
 ```
+
+The `resonate:target` tag routes each fired promise to a worker group — the server rejects a schedule without it. Cron expressions are evaluated in UTC; see the [Schedules & cron reference](/reference/schedules) for the format and day-of-week convention.
 
 **List schedules:**
 
 ```shell title="See all schedules"
-resonate schedules search "*"
+resonate schedules search --limit 10
 ```
 
 **Delete a schedule:**
@@ -161,16 +164,21 @@ Run `resonate serve --help` for all available flags.
 
 ## Tips and tricks
 
-### Use wildcards for search
+### Filter searches with flags
 
-```shell title="Search for promises by pattern"
-resonate promises search "order-*" --limit 20
+`promises search` filters by `--state` and `--tags` (there is no ID-pattern argument):
+
+```shell title="Search promises by state and tags"
+resonate promises search --state resolved --limit 20
+resonate promises search --tags '{"resonate:target": "poll://any@default"}' --limit 20
 ```
 
-### Format output as JSON
+### Pipe JSON output to jq
+
+Every command already prints JSON to stdout, so scripting is a pipe away:
 
 ```shell title="Get machine-readable output"
-resonate promises get order-123 --output json
+resonate promises get order-123 | jq -r '.promise.state'
 ```
 
 Useful for scripting and automation.

@@ -1,18 +1,20 @@
 ---
 title: Reference
-description: Canonical, source-cited reference for Resonate defaults and the resonate CLI.
+description: Canonical, source-cited reference for Resonate defaults, the resonate CLI, and schedule/cron behavior.
 keywords:
   - reference
   - defaults
   - cli
+  - schedules
+  - cron
 ---
 
 <img src="/images/banner-reference-dark.png" alt="Reference section" className="hidden dark:block" />
 <img src="/images/banner-reference-light.png" alt="Reference section" className="block dark:hidden" />
 
-The reference section is the **single source of truth** for the facts that don't change with the page you're reading — default values across the server and SDKs, and the surface of the `resonate` CLI.
+The reference section is the **single source of truth** for the facts that don't change with the page you're reading — default values across the server and SDKs, the surface of the `resonate` CLI, and how schedules and cron expressions behave.
 
-Both pages cite every value back to a specific file and line in the canonical source repositories. If a default or a flag changes in source, the page is wrong until it is updated.
+Every page cites every value back to a specific file and line in the canonical source repositories. If a default or a flag changes in source, the page is wrong until it is updated.
 
 ## What's here
 
@@ -44,12 +46,26 @@ Every `resonate` subcommand, with scenarios and worked examples:
 
 Use it when you need to know "what command do I run for X?" and want a working example.
 
+### [Schedules & cron reference](/reference/schedules)
+
+How schedules behave on the server, independent of SDK or CLI:
+
+- **Cron expression format** — 5/6/7-field layouts, with examples
+- **Day-of-week convention** — Quartz numbering (`1` = Sunday), why day names like `MON-FRI` are the safe form
+- **Timezone** — expressions evaluate in UTC only; there is no timezone option
+- **The `resonate:target` requirement** — the routing tag every schedule must carry, and the exact error when it's missing
+- **Promise-ID templates** — the two substituted variables (`{{.id}}`, `{{.timestamp}}`) and why templates need `{{.timestamp}}`
+- **Tags on fired promises** — what the server injects at fire time, and how to search fired promises
+
+Use it when a schedule fires at the wrong time, fires and nothing runs, or won't create.
+
 ## How to use the reference pages
 
-The two pages are sister surfaces:
+The pages are sister surfaces:
 
 - **Defaults** answers "*what* is the default for X?" — read it when you need a value.
 - **CLI** answers "*how* do I run X?" — read it when you need a command.
+- **Schedules & cron** answers "*why* did my schedule do that?" — read it when cron behavior surprises you.
 
 If a CLI flag's default surprises you, the CLI page links to the matching row on the defaults page. If a default value's owner isn't obvious, the defaults page links to the command that exposes it.
 

@@ -1,0 +1,115 @@
+---
+title: Schedules & cron reference
+description: Canonical reference for Resonate schedules — cron expression format, day-of-week convention, UTC timezone, the resonate:target requirement, promise-ID templates, and the tags the server injects at fire time.
+keywords:
+  - reference
+  - schedules
+  - cron
+  - cron expression
+  - day of week
+  - timezone
+  - UTC
+  - resonate:target
+  - promise-id template
+---
+
+This page is the **single source of truth** for how Resonate schedules behave, independent of which SDK (or the CLI) you create them with. Every fact below is sourced from a specific file and line in [`resonatehq/resonate`](https://github.com/resonatehq/resonate); if the server changes, this page is wrong until it is updated.
+
+For the CLI commands that operate on schedules, see [CLI reference › `resonate schedules`](/reference/cli#resonate-schedules).
+
+## What a schedule is
+
+A schedule is a server-side cron rule that creates a new durable promise on every tick. The schedule stores a **promise-ID template**, a **promise timeout**, an optional **promise param** (the payload workers decode to know what to run), and **promise tags** (copied onto every fired promise). Workers never poll the schedule itself — they receive the fired promises, routed by the `resonate:target` tag.
+
+## Cron expression format
+
+The server parses cron expressions with the [`cron` crate](https://docs.rs/cron) ([`resonate/Cargo.toml:34`](https://github.com/resonatehq/resonate/blob/main/Cargo.toml#L34)), which accepts 5, 6, or 7 fields:
+
+| Fields | Layout | Example | Meaning |
+|---|---|---|---|
+| 5 | `min hour dom month dow` | `0 2 * * *` | Daily at 02:00 |
+| 6 | `sec min hour dom month dow` | `*/30 * * * * *` | Every 30 seconds |
+| 7 | `sec min hour dom month dow year` | `0 0 9 * * MON-FRI 2027` | Weekday mornings in 2027 only |
+
+### Day-of-week: use names, not numbers
+
+The day-of-week field follows the **Quartz convention**: `1` = Sunday through `7` = Saturday. This silently differs from POSIX cron (`0`–`6` = Sunday–Saturday), so numeric day-of-week expressions copied from a crontab do not mean what they meant there:
+
+- `1-5` means **Sunday through Thursday**, not Monday through Friday
+- `0` is not a valid day — the create fails with `Invalid cron expression`
+
+Day **names** are unambiguous and always mean the same thing. Prefer them:
+
+```text
+0 9 * * MON-FRI    # 09:00 on weekdays — says what it means
+0 9 * * 2-6        # the same thing in Quartz numbering — avoid
+```
+
+### Timezone: UTC only
+
+Cron expressions are evaluated in **UTC**. There is no per-schedule or per-server timezone option — no config field exists for it. `0 9 * * MON-FRI` fires at 09:00 UTC, which is 02:00 in Los Angeles (PDT) and 10:00 in Berlin (CEST). Convert your local time to UTC when writing the expression, and remember the UTC offset of a civil time changes across daylight-saving transitions.
+
+## The `resonate:target` requirement
+
+Every fired promise needs a routing target, or no worker group will ever receive it. The server therefore **rejects** `schedule.create` when `promiseTags` lacks a `resonate:target` tag ([`resonate/src/types.rs:641-643`](https://github.com/resonatehq/resonate/blob/main/src/types.rs#L641-L643)):
+
+```text
+400 promiseTags must include a resonate:target tag
+```
+
+The value is an address like `poll://any@default` — the same convention as `resonate invoke --target` and the SDKs' `target` option. The high-level `schedule()` APIs that inject this tag for you take the target from the same option surface as `run`/`rpc`; the low-level schedule sub-clients and the CLI require you to pass it explicitly:
+
+```shell
+resonate schedules create nightly-rollup \
+  --cron "0 2 * * *" \
+  --promise-id "nightly-{{.timestamp}}" \
+  --promise-timeout 1h \
+  --promise-tags '{"resonate:target": "poll://any@default"}'
+```
+
+## Promise-ID templates
+
+The schedule's `promiseId` is a template. The server substitutes **exactly two** variables at fire time ([`resonate/src/oracle.rs:1875-1877`](https://github.com/resonatehq/resonate/blob/main/src/oracle.rs#L1875-L1877)):
+
+| Variable | Substituted with |
+|---|---|
+| `{{.id}}` | The schedule's ID |
+| `{{.timestamp}}` | The tick's fire time, as a Unix epoch timestamp in **milliseconds** |
+
+Anything else in the template is literal text. A template of `report.{{.id}}.{{.timestamp}}` on a schedule named `nightly` produces promise IDs like `report.nightly.1783978446000`.
+
+Include `{{.timestamp}}` in every template: promise creation is idempotent by ID, so a template without it produces the **same** promise ID on every tick — the first tick creates the promise and every later tick is a no-op against it.
+
+## Tags on fired promises
+
+Each fired promise carries the schedule's `promiseTags` (including your `resonate:target`) plus five tags the server injects at fire time ([`resonate/src/oracle.rs:1874-1881`](https://github.com/resonatehq/resonate/blob/main/src/oracle.rs#L1874-L1881)):
+
+| Tag | Value |
+|---|---|
+| `resonate:schedule` | The schedule's ID |
+| `resonate:origin` | The fired promise's own ID |
+| `resonate:branch` | The fired promise's own ID |
+| `resonate:parent` | The fired promise's own ID |
+| `resonate:prefix` | The fired promise's own ID |
+
+Each fired promise is the **root** of its own call graph — origin, branch, parent, and prefix all point at itself, exactly like a top-level `run`/`rpc` promise. Two useful consequences:
+
+- `resonate tree <fired-promise-id>` shows the full call graph of that one tick
+- `resonate promises search --tags '{"resonate:schedule": "<schedule-id>"}'` lists every promise a schedule has ever fired
+
+## Delete and search
+
+Deleting a schedule stops future ticks; promises already fired are unaffected and settle (or time out) on their own:
+
+```shell
+resonate schedules delete nightly-rollup
+```
+
+Schedules are searchable with cursor pagination. The `--tags` filter matches against each schedule's **promise tags** ([`resonate/src/oracle.rs:1581-1587`](https://github.com/resonatehq/resonate/blob/main/src/oracle.rs#L1581-L1587)) — a schedule has no separate tag set of its own:
+
+```shell
+resonate schedules search --limit 100
+resonate schedules search --tags '{"resonate:target": "poll://any@default"}' --limit 100
+```
+
+The equivalent operations exist on every SDK's `schedules` sub-client.
