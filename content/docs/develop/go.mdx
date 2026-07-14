@@ -352,9 +352,30 @@ Calling `Stop` on a worker (an RPC service, a queue consumer, an MCP server, or 
 The worker keeps running but silently stops processing work. Workers should stay up; let process termination (SIGINT / SIGTERM) end the lifecycle.
 </Callout>
 
-<Callout type="note" title="No `Schedule` or top-level promises sub-client yet">
-The Go SDK does not (yet) expose a `Schedule` API or a top-level promises sub-client. To create or settle a durable promise from outside a workflow — for human-in-the-loop and external-coordination patterns — create the promise from inside a workflow with [`ctx.Promise`](#ctxpromise) and settle it via the Resonate CLI (`resonate promise resolve <id>`) or the server's HTTP API. These surfaces will land as the API settles toward the first tag.
-</Callout>
+### `Resonate.Promises`
+
+`r.Promises()` is the direct promise API — `Get` / `Create` / `Resolve` / `Reject` / `Cancel` — for creating or settling a durable promise from outside a workflow (human-in-the-loop and external-coordination patterns).
+
+### `Resonate.Schedules`
+
+`r.Schedules()` is the direct schedule API: `Get`, `Create`, and `Delete`. A schedule creates a fresh promise on every cron firing, from a promise-ID template.
+
+There is no high-level `Schedule()` that binds a registered function yet, so the caller supplies everything the fired promises need — including the `resonate:target` routing tag, which the server **requires** (creates without it are rejected). Encode the payload your workers expect, and tag the promises with the group that should execute them:
+
+```go
+_, err := r.Schedules().Create(context.TODO(),
+    "nightly-report",          // schedule ID
+    "0 2 * * *",               // cron — evaluated in UTC
+    "report-{{.timestamp}}",   // promise-ID template
+    time.Hour,                 // timeout of each fired promise
+    resonate.ScheduleCreateOptions{
+        PromiseParam: payload,
+        PromiseTags:  map[string]string{"resonate:target": "poll://any@report-workers"},
+    },
+)
+```
+
+Cron expressions are evaluated in **UTC**, with Quartz day-of-week numbering (`1` = Sunday) — prefer day names like `MON-FRI`. See the [Schedules & cron reference](/reference/schedules) for the expression format, template variables, and the tags the server injects on fired promises.
 
 ## Context APIs
 

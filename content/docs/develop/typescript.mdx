@@ -399,10 +399,32 @@ The scheduled function will be invoked until the schedule is deleted.
 ```ts
 const schedule = await resonate.schedule(
   "scheduled-foo",
-  "0 * * * *", // every hour
+  "0 * * * *", // every hour, on the hour, UTC
   foo,
   ...args
 );
+```
+
+Cron expressions are evaluated in **UTC**, and the day-of-week field uses Quartz numbering (`1` = Sunday) — prefer day names like `MON-FRI`. See the [Schedules & cron reference](/reference/schedules) for the expression format, promise-ID templates, and the tags the server injects on fired promises.
+
+**Target routing.** Each promise the schedule fires carries a `resonate:target` tag that routes it to a worker group — without it the server rejects the schedule. `.schedule()` injects the tag for you from the `target` option (as the final argument, same as `.run()`/`.rpc()`), defaulting to the `default` group:
+
+```ts
+await resonate.schedule(
+  "nightly-report",
+  "0 2 * * *",
+  generateReport,
+  resonate.options({ target: "poll://any@report-workers" })
+);
+```
+
+**Delete and inspect.** The returned handle deletes the schedule; the `resonate.schedules` sub-client gives you direct `get` / `create` / `delete` access:
+
+```ts
+await schedule.delete(); // stop future ticks (already-fired promises are unaffected)
+
+const record = await resonate.schedules.get("nightly-report");
+console.log(record.nextRunAt);
 ```
 
 ### `.options()`
