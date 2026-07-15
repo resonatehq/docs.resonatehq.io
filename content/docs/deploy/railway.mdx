@@ -1,0 +1,126 @@
+---
+title: Deploy to Railway
+description: Run the Resonate server on Railway with a managed Postgres database.
+keywords:
+  - deploy
+  - railway
+  - server
+  - configuration
+  - postgres
+---
+
+This page walks through deploying the Resonate server to [Railway](https://railway.com) using the official Docker image and Railway's managed Postgres database.
+
+## Prerequisites
+
+- A Railway account with a project created
+- The Resonate server Docker image: [`resonatehqio/resonate`](https://hub.docker.com/r/resonatehqio/resonate)
+
+## Overview
+
+You will create two services in one Railway environment:
+
+1. **Postgres** — Railway's managed Postgres database, provisioned directly from the project canvas
+2. **resonate-server** — the Resonate server, deployed from the official Docker Hub image
+
+Workers run separately (in your own services or elsewhere) and connect to the Resonate server over Railway's private network or via its public URL.
+
+## Step 1 — Add a Postgres database
+
+From your Railway project canvas, click **+ New** and choose **Database > Postgres**. Railway provisions the database and immediately exposes connection variables, including `DATABASE_URL`, on the Postgres service.
+
+No additional configuration is required. The database is ready to accept connections once the provisioning step completes.
+
+## Step 2 — Add the Resonate server service
+
+From the project canvas, click **+ New** and choose **Docker Image**. Enter the image path:
+
+```
+resonatehqio/resonate:v0.9.8
+```
+
+Railway pulls the image from Docker Hub. The service is created in a stopped state — you configure environment variables before the first deploy in the next step.
+
+<Callout type="tip" title="Image tags">
+Tags track server release versions (e.g. `v0.9.8`) plus a rolling `latest`. Pin to a version tag in production so redeployments are predictable.
+</Callout>
+
+## Step 3 — Configure environment variables
+
+Open the Resonate server service, go to **Variables**, and add the following:
+
+```shell title="Environment variables"
+# Tell Railway which port to route external traffic to.
+# Without this, Railway may pick the metrics port (9090) and return 502 errors.
+PORT=8001
+
+# Use Railway's managed Postgres as the storage backend.
+RESONATE_STORAGE__TYPE=postgres
+RESONATE_STORAGE__POSTGRES__URL=${{Postgres.DATABASE_URL}}
+
+# Set the externally-reachable URL so task dispatch headers are correct.
+# Fill this in after generating a public domain in Step 4.
+RESONATE_SERVER__URL=https://<your-railway-domain>
+
+# Lower the task retry interval for chained workflows.
+# The 30-second default adds significant latency to multi-step executions.
+RESONATE_TASKS__RETRY_TIMEOUT=500
+```
+
+The `${{Postgres.DATABASE_URL}}` syntax is Railway's [service variable reference](https://docs.railway.com/guides/variables). Replace `Postgres` with the exact name of your Postgres service if you renamed it.
+
+<Callout type="caution" title="PORT and the metrics port">
+The Resonate server listens on two ports: `8001` (HTTP API) and `9090` (Prometheus metrics).
+Railway's port detection picks one port to route public traffic to. Setting `PORT=8001` tells Railway to route to the API port.
+Without this, Railway may route to `9090` and all API requests will receive unexpected responses.
+</Callout>
+
+## Step 4 — Generate a public domain and configure health checks
+
+In the Resonate server service settings:
+
+1. Under **Networking > Public Networking**, click **Generate Domain**. Copy the generated URL.
+2. Go back to **Variables** and set `RESONATE_SERVER__URL` to the generated URL (e.g. `https://resonate-server-production.up.railway.app`).
+3. Under **Health Checks**, set the **Path** to `/health`. The server also exposes `/ready`, which returns `503` when Postgres is not reachable — useful for readiness gating, though Railway's health check mechanism uses a single path. See [Run server > Health and readiness](/deploy/run-server#health-and-readiness) for the full endpoint spec.
+
+## Step 5 — Deploy
+
+Trigger a deploy. Railway pulls `resonatehqio/resonate:v0.9.8`, starts the container, and runs the health check against `/health` on port `8001`. Postgres migrations are applied automatically on first startup — no manual migration step is required.
+
+Once the deploy reports healthy, confirm the server is up:
+
+```shell title="Verify the deployment"
+curl -s -o /dev/null -w "%{http_code}\n" https://<your-railway-domain>/health
+# 200
+```
+
+## Connecting workers
+
+Workers running inside the same Railway environment can reach the Resonate server over Railway's private network using the internal DNS hostname:
+
+```
+http://resonate-server.railway.internal:8001
+```
+
+Replace `resonate-server` with the exact name of your Railway service if you renamed it. Private networking is zero-configuration — no additional setup is needed for services in the same project environment.
+
+Workers running outside Railway (or in a different Railway environment) use the public domain generated in Step 4.
+
+Configure your worker SDK to point at the server URL. Example for TypeScript:
+
+```typescript
+import { Resonate } from "@resonatehq/sdk";
+
+const resonate = new Resonate({
+  url: process.env.RESONATE_URL, // set to the internal or public server URL
+  group: "workers",
+});
+```
+
+Set the `RESONATE_URL` environment variable on your worker service to:
+- `http://resonate-server.railway.internal:8001` — for workers in the same Railway environment
+- `https://<your-railway-domain>` — for workers outside Railway
+
+## Environment variable reference
+
+Full variable reference: [Run a server > Environment variables](/deploy/run-server#environment-variables). The two Railway-specific pieces — `PORT` (tells Railway which port to route external traffic to; not a Resonate variable) and the `${{Postgres.DATABASE_URL}}` service variable reference — are shown in Step 3 above.
