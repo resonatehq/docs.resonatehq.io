@@ -1,0 +1,153 @@
+---
+title: Production readiness
+description: Recommended deployment shape, server constraints, and operational checklist for running the Resonate server in production.
+keywords:
+  - deploy
+  - production
+  - operations
+  - checklist
+  - health
+  - metrics
+---
+
+This page describes the recommended production configuration for the Resonate server, what operational surface the server exposes, and what to verify before you send real traffic.
+
+## Recommended deployment shape
+
+The standard production deployment has three layers:
+
+1. **One Resonate server** — coordinates promises, schedules tasks, routes work to workers. Runs as a single process backed by persistent storage.
+2. **A managed PostgreSQL database with HA** — stores all execution state. The server's durability guarantee is only as strong as the database's.
+3. **Horizontally scaled workers** — execute your application code. Add as many as the workload requires; there is no fixed limit.
+
+Workers scale horizontally without any server-side coordination because they pull work from the server rather than requiring the server to know about them statically. The server does not execute your functions, so worker pod restarts or crashes do not lose in-flight execution state — state is always in the database.
+
+For the Kubernetes manifest that wires this together, see [Run server](/deploy/run-server#run-on-kubernetes). For the full set of infrastructure patterns (Cloud Run, Fargate, bare-metal systemd), see [Deployment patterns](/deploy/deployment-patterns).
+
+## Server constraints
+
+### No horizontal server scaling
+
+The server runs as a single instance — multi-server coordination is not yet implemented (true of the current released version, v0.9.8, and of `main`). In practice this is rarely a capacity limit: the server coordinates work but never executes your functions, so a single instance comfortably handles thousands of task dispatches per second. Scale vertically if you observe the server as a bottleneck, and keep scaling workers horizontally; see [Scaling](/deploy/scaling). Two independent servers sharing one database race to process the same timeouts and task queues, so keep `replicas: 1` (or `--max-instances=1` on Cloud Run) — the checklist below carries this as its first server item.
+
+### State in the database
+
+All durable promise state lives in PostgreSQL (or MySQL). A server restart is safe — workers detect the disconnect, reconnect automatically, and resume from their last checkpoint. This also means database availability is the primary availability concern. See [Availability](/deploy/availability) for PostgreSQL HA options.
+
+## Health and readiness endpoints
+
+The server exposes `GET /health` (liveness — always `200` while the process is up) and `GET /ready` (readiness — `503` when storage is unreachable, logged as `Readiness check failed: storage database unavailable`) on the API port (`:8001` by default). A liveness probe on `/health` and a readiness probe on `/ready` is the recommended Kubernetes configuration. See [Run server > Health and readiness](/deploy/run-server#health-and-readiness) for the endpoint reference, probe configuration, and examples; the checklist below captures what to configure in your orchestrator.
+
+## Prometheus metrics
+
+The server runs a separate HTTP listener that exposes Prometheus metrics. The default port is `9090`; the endpoint is `GET /metrics`.
+
+```shell title="Scrape metrics"
+curl http://localhost:9090/metrics
+```
+
+The metrics port is controlled by `RESONATE_OBSERVABILITY__METRICS_PORT`. Set it to `0` to disable the endpoint entirely — for example, when your platform routes all external traffic through port `8001` and you want to block metrics from being publicly reachable:
+
+```toml title="resonate.toml — disable metrics"
+[observability]
+metrics_port = 0
+```
+
+Or via environment variable:
+
+```shell
+RESONATE_OBSERVABILITY__METRICS_PORT=0
+```
+
+See [Metrics](/deploy/metrics) for the full metrics catalog, Prometheus scrape configuration, and Grafana dashboard examples.
+
+<Callout type="caution" title="PaaS port routing">
+Platforms that auto-detect a single primary port (Railway, Render, Fly.io) may route traffic to `:9090` instead of `:8001`. Explicitly route your platform to port `8001`. Consider disabling the metrics port or binding it to a private network interface if the platform exposes both ports publicly.
+</Callout>
+
+## Logs
+
+The server writes structured key-value logs to stdout via the Rust `tracing` ecosystem. The default log level is `info`. Set `RESONATE_LEVEL=debug` for verbose request-level diagnostics; revert to `info` in production once the issue is resolved, since debug output is significantly higher volume.
+
+For log aggregation, alerting on critical error patterns, and correlation with metrics, see [Logging](/deploy/logging).
+
+## Graceful shutdown
+
+The server handles `SIGTERM` and `SIGINT` for graceful shutdown. When a signal is received, the server:
+
+1. Stops accepting new connections on the API port.
+2. Signals background processing loops (timeout scanner, message dispatcher) to stop.
+3. Waits up to the configured `shutdown_timeout` for background tasks to finish, then exits.
+
+The default `shutdown_timeout` is `10000` milliseconds (10 seconds). Raise it if background loops are consistently interrupted before completing:
+
+```toml title="resonate.toml"
+[server]
+shutdown_timeout = 30000  # milliseconds
+```
+
+Or via environment variable:
+
+```shell
+RESONATE_SERVER__SHUTDOWN_TIMEOUT=30000
+```
+
+Because all execution state is persisted in the database, a forceful exit during the shutdown window does not lose work — workers reconnect and tasks are reassigned after the server comes back up.
+
+## Configuration for production
+
+Configuration fields are reachable as environment variables (`RESONATE_` prefix, double-underscore nesting) or via `resonate.toml`; the full surface, defaults, and layering order are in [Run a server > Configuration](/deploy/run-server#configuration). The settings below are the ones with production-specific consequences:
+
+| Setting | Default | Production guidance |
+|---|---|---|
+| `RESONATE_STORAGE__TYPE` | `sqlite` | Set to `postgres` — SQLite is not recommended for shared production workloads |
+| `RESONATE_SERVER__URL` | — | No runtime default; set to the externally-reachable URL so workers can call back. Required on Cloud Run and similar |
+| `RESONATE_TASKS__RETRY_TIMEOUT` | `30000` (ms) | Set to `500` for chained or recursive workflows; the default adds significant latency per suspend/wake cycle |
+| `RESONATE_AUTH__PUBLICKEY` | — | Strongly recommended; without it the server logs `Auth disabled — all requests accepted`. See [Security](/deploy/security) |
+
+Inject secrets (`RESONATE_STORAGE__POSTGRES__URL`, key paths, push-auth tokens) via environment variables or a secret manager — never commit them.
+
+## Pre-launch checklist
+
+Use this list before sending production traffic to a new deployment.
+
+**Storage**
+- [ ] `RESONATE_STORAGE__TYPE=postgres` — SQLite is not recommended for shared or multi-user production workloads
+- [ ] PostgreSQL is a managed HA instance (Multi-AZ, Cloud SQL HA, Supabase, or equivalent)
+- [ ] Connection string uses a dedicated database user with the minimum required permissions
+- [ ] Backup and point-in-time recovery are confirmed and tested
+
+**Server**
+- [ ] `replicas: 1` (or equivalent) — multi-server is not supported; verify the container scheduler will not auto-scale the server
+- [ ] `RESONATE_SERVER__BIND=0.0.0.0` so the API port is reachable from workers and the orchestrator
+- [ ] `RESONATE_SERVER__URL` is set to the externally-reachable URL when workers call back from outside the server's local network
+- [ ] `RESONATE_TASKS__RETRY_TIMEOUT` is tuned — `500` for chained workflows, `30000` only if low latency is not required
+
+**Authentication**
+- [ ] `RESONATE_AUTH__PUBLICKEY` is configured — the server logs `Auth disabled — all requests accepted` at startup when auth is off
+- [ ] JWT keys are generated with `openssl genpkey -algorithm Ed25519`; private key is in a secret manager, not on disk or in a repo
+- [ ] See [Security](/deploy/security) for the full auth configuration guide
+
+**Observability**
+- [ ] Liveness probe on `GET /health` (port `8001`)
+- [ ] Readiness probe on `GET /ready` (port `8001`)
+- [ ] Prometheus scraper pointed at port `9090` (or the configured `RESONATE_OBSERVABILITY__METRICS_PORT`)
+- [ ] Log aggregation ingesting stdout from the server container
+- [ ] Alert on `Readiness check failed: storage database unavailable` in server logs
+- [ ] Alert on `Background tasks did not finish within shutdown timeout, forcing exit` in server logs
+
+**Workers**
+- [ ] Workers connect to the server via the `RESONATE_URL` environment variable (or equivalent SDK config)
+- [ ] Worker Deployment has at least 2 replicas so worker restarts do not stall in-flight promises
+- [ ] `RESONATE_TASKS__LEASE_TIMEOUT` on the server is larger than the maximum expected task execution time; otherwise tasks will be re-queued while still in progress
+
+{/* Maintainers: if you have public-facing production users who have consented to being named, add a brief "Used by" or "Case studies" section here. Do not add users without explicit consent. */}
+
+## Related pages
+
+- [Run server](/deploy/run-server) — full configuration reference, CLI flags, and platform-specific manifests
+- [Availability](/deploy/availability) — PostgreSQL HA setup, server restart procedures, and rolling update process
+- [Security](/deploy/security) — JWT authentication, CORS, and outbound push auth
+- [Scaling](/deploy/scaling) — worker scaling patterns and when to scale
+- [Metrics](/deploy/metrics) — full Prometheus metrics catalog, Grafana setup, and alerting rules
+- [Logging](/deploy/logging) — log levels, aggregation patterns, and critical error reference
