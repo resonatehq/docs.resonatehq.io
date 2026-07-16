@@ -94,8 +94,7 @@ from report import generate_report
 
 
 async def main() -> None:
-    url = os.environ.get("RESONATE_URL", "http://localhost:8001")
-    resonate = Resonate(url=url)
+    resonate = Resonate(url=os.environ.get("RESONATE_URL", "http://localhost:8001"))
     resonate.register(generate_report)
 
     # Yield to the event loop once so the SDK's background network task
@@ -103,14 +102,18 @@ async def main() -> None:
     # the fix (resonate-sdk-py#444) is released.
     await asyncio.sleep(0)
 
-    await resonate.schedule(
-        "daily_report",            # schedule ID — re-running this script is a no-op once it exists
-        "* * * * *",               # cron: every minute (use "0 9 * * *" for daily 9am UTC)
-        "generate_report",         # registered function name
-        args=(123,),               # user_id
-    )
-    print("Schedule created. Start the worker to process executions.")
-    await resonate.stop()
+    try:
+        # Schedule generate_report to run every minute.
+        # Re-running this script is a no-op once the schedule exists.
+        await resonate.schedule(
+            id="daily_report",
+            cron="* * * * *",          # every minute (change to "0 9 * * *" for daily at 9am UTC)
+            func_name="generate_report",
+            args=(123,),               # user_id
+        )
+        print("Schedule created. Start the worker to process executions.")
+    finally:
+        await resonate.stop()
 
 
 if __name__ == "__main__":
