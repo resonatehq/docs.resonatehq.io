@@ -9,7 +9,7 @@ pagination_prev: null
 ---
 
 <Callout type="info" title="SDK version">
-This page reflects `resonate-sdk` v0.7.0 (current on PyPI). Python ≥3.12 required. The remote-mode examples below need a running server (`resonate dev`, Rust server v0.9.x+); `Resonate()` without a `url` runs entirely in-process and needs no server.
+This page reflects `resonate-sdk` v0.7.4 (current on PyPI). Python ≥3.12 required. The remote-mode examples below need a running server (`resonate dev`, Rust server v0.9.x+); `Resonate()` without a `url` runs entirely in-process and needs no server.
 </Callout>
 
 Welcome to the Resonate Python SDK guide!
@@ -118,7 +118,7 @@ The `token` kwarg falls back to the `RESONATE_TOKEN` environment variable when o
 
 ### Concurrency
 
-A single Python worker process executes multiple functions concurrently inside a single asyncio event loop. The v0.7.0 SDK is fully async; every durable function is an `async def` coroutine and effects are `await`ed.
+A single Python worker process executes multiple functions concurrently inside a single asyncio event loop. The v0.7 SDK line is fully async; every durable function is an `async def` coroutine and effects are `await`ed.
 
 See [Scaling — Worker concurrency](/deploy/scaling#worker-concurrency) for more on concurrency strategies.
 
@@ -216,9 +216,53 @@ async def main():
 asyncio.run(main())
 ```
 
+### `.schedule()`
+
+Resonate's `.schedule()` method allows you to schedule a function to be invoked on a specified cron schedule.
+The scheduled function will be invoked until the schedule is deleted.
+`.schedule()` is async.
+
+```py
+schedule = await resonate.schedule(
+    "scheduled-foo",  # schedule ID
+    "0 * * * *",      # every hour, on the hour, UTC
+    "foo",            # the function's registered name
+    args=(1,),
+    kwargs={"greeting": "hello"},
+)
+```
+
+The function is addressed by its registered **name** (a string), not the function object — the worker that receives each invocation resolves the name in its own registry.
+`args` and `kwargs` are the arguments every fired invocation is called with, and `promise_timeout` (a `timedelta`, default 1 day) bounds each fired execution.
+
+Cron expressions are evaluated in **UTC**, and the day-of-week field uses Quartz numbering (`1` = Sunday) — prefer day names like `MON-FRI`. See the [Schedules & cron reference](/reference/schedules) for the expression format, promise-ID templates, and the tags the server injects on fired promises.
+
+**Target routing.** Each promise the schedule fires carries a `resonate:target` tag that routes it to a worker group — without it, fired promises are never dispatched to a worker. `.schedule()` injects the tag for you from the `target` option, falling back to the handle's network group (`default` unless configured):
+
+```py
+await resonate.options(target="report-workers").schedule(
+    "nightly-report",
+    "0 2 * * *",
+    "generate_report",
+)
+```
+
+**Delete and inspect.** The returned handle deletes the schedule; the `resonate.schedules` sub-client gives you direct `create` / `get` / `delete` / `search` access:
+
+```py
+await schedule.delete()  # stop future ticks (already-fired promises are unaffected)
+
+record = await resonate.schedules.get("nightly-report")
+print(record.cron, record.promise_id)
+```
+
+<Callout type="caution" title="Known issue in 0.7.x">
+If the first awaited call your process makes is `.schedule()` — or any `.schedules.*` / `.promises.*` call — it fails with `http error: network has been stopped`: the SDK starts its network as a background task, and a script that calls straight in reaches the network before that task has run. Until the fix ([resonate-sdk-py#444](https://github.com/resonatehq/resonate-sdk-py/pull/444)) is released, yield to the event loop once first: `await asyncio.sleep(0)`.
+</Callout>
+
 ### `.options()`
 
-Options can be used preceding `.run()` and `.rpc()` on the client.
+Options can be used preceding `.run()`, `.rpc()`, and `.schedule()` on the client.
 
 ```py
 from datetime import timedelta

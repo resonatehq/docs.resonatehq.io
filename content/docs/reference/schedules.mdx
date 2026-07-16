@@ -57,6 +57,10 @@ Every fired promise needs a routing target, or no worker group will ever receive
 400 promiseTags must include a resonate:target tag
 ```
 
+<Callout type="note" title="Server versions">
+This validation is on the server's `main` branch and ships in the release after v0.9.8. A v0.9.8 (or earlier) server **accepts** an untagged `schedule.create` — the schedule fires, but its promises are never dispatched to any worker. SDK releases that carry the schedule fixes (Python `resonate-sdk` ≥0.7.4) enforce the same rejection in their in-process (local) networks regardless of server version.
+</Callout>
+
 The value is an address like `poll://any@default` — the same convention as `resonate invoke --target` and the SDKs' `target` option. The high-level `schedule()` APIs that inject this tag for you take the target from the same option surface as `run`/`rpc`; the low-level schedule sub-clients and the CLI require you to pass it explicitly:
 
 ```shell
