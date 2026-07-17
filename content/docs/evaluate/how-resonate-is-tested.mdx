@@ -11,7 +11,7 @@ keywords:
 ---
 
 <Callout type="info" title="Versions">
-This page reflects Resonate Server v0.9.8, `@resonatehq/sdk` v0.11.2 (TypeScript), `resonate-sdk` v0.7.3 (Python), `resonate-sdk` v0.5.0 (Rust), `resonate-sdk` v0.1.1 (Java), and the Resonate Go SDK 0.1.0.
+This page reflects Resonate Server v0.9.8, `@resonatehq/sdk` v0.11.2 (TypeScript), `resonate-sdk` v0.7.4 (Python), `resonate-sdk` v0.5.0 (Rust), `resonate-sdk` v0.1.1 (Java), and the Resonate Go SDK 0.1.0.
 </Callout>
 
 Resonate's correctness story rests on three foundations that reinforce each other: a machine-checkable formal companion to the protocol specification, differential random testing of the server implementation against a pure in-memory reference model, and deterministic simulation testing of the TypeScript SDK. Unit, integration, and end-to-end test suites across all five SDKs sit alongside these.
@@ -36,11 +36,37 @@ cd spec && lake build
 
 The companion currently covers twenty handlers in full: five promise handlers (create, get, settle, register\_callback, register\_listener), ten task handlers (get, create, acquire, fence, heartbeat, suspend, fulfill, release, halt, continue), three schedule handlers (get, create, delete), and the two internal transitions (resume, timeouts). The three search handlers return a placeholder `501` response while their specs are being written.
 
+The companion also states the protocol's central safety property — the durable-execution guarantee — as an executable predicate, in [`spec/02-actions/04-guarantee.lean`](https://github.com/resonatehq/resonate-specification/blob/main/spec/02-actions/04-guarantee.lean):
+
+```lean title="The durable-execution guarantee"
+def durableExecutionGuarantee (s : ServerState) : Bool :=
+  s.tasks.all (fun t =>
+    match t.state with
+    | .pending | .acquired | .halted | .fulfilled =>
+      true
+    | .suspended =>
+      match s.promises.find? (·.id == t.id) with
+      | none => true
+      | some tP =>
+        if tP.state != .pending || tP.timeoutAt <= tP.createdAt then
+          true
+        else
+          let awaitedIds := t.resumes
+          let anySettled := s.promises.any (fun p =>
+            awaitedIds.contains p.id && awaitedSettledLive p tP)
+          if !anySettled then
+            true
+          else
+            hasExecuteInOutbox t.id s.outbox)
+```
+
+In words: if a task has suspended on awaited promises, and one of those promises settles while the task's own promise is still pending and unexpired, an `execute` message must be queued. The same file checks the predicate against concrete scenarios; a general theorem over all reachable states is not yet proven, and the file says so.
+
 This is a companion to the prose specification, not a replacement for it. Its purpose is to make the protocol contract machine-verifiable — a second, checkable representation of the same rules that a prose reader can audit independently.
 
 ## Resonate Server
 
-The Resonate Server ([`resonatehq/resonate`](https://github.com/resonatehq/resonate), written in Rust) uses two test strategies on every pull request.
+The Resonate Server ([`resonatehq/resonate`](https://github.com/resonatehq/resonate), written in Rust) is tested in several layers on every pull request.
 
 ### Differential random testing
 
@@ -66,6 +92,10 @@ TEST_MYSQL_URL=mysql://<USER>:<PASSWORD>@localhost:3306/resonate \
 
 The server's unit tests run with `cargo test --all-features` and cover configuration parsing, transport message handling, and individual processing modules. CI gates every pull request on format (`cargo fmt`), compilation (`cargo check`), and linting (`cargo clippy --all-features -- -D warnings`) before tests run.
 
+### Conformance and linearizability
+
+A separate conformance testbed is checked out and run in the server's CI matrix on every pull request (visible in [`ci.yml`](https://github.com/resonatehq/resonate/blob/main/.github/workflows/ci.yml)): state-machine transition tests, randomized fuzz runs, and linearizability checking of concurrent operation histories with [Porcupine](https://github.com/anishathalye/porcupine). The testbed itself is not yet public — the CI steps that fetch and run it are.
+
 ## TypeScript SDK
 
 The TypeScript SDK ([`resonatehq/resonate-sdk-ts`](https://github.com/resonatehq/resonate-sdk-ts)) carries a conventional Jest test suite and a dedicated deterministic simulation test.
@@ -78,7 +108,7 @@ The harness uses a seeded linear-congruential PRNG. From a single integer seed, 
 
 A default run executes 10,000 steps. Three simulated worker processes and one simulated server process receive and process messages inside the harness, exercising recursive fan-out patterns (Fibonacci with local and remote calls) and multi-step chained functions.
 
-Determinism is verified explicitly: CI runs each seed twice and diffs the two log files. Different output from the same seed is a failing run. When a run fails, a GitHub issue is filed automatically with the seed, the commit SHA, and the exact command to reproduce it:
+Determinism is verified explicitly: CI runs each seed twice and diffs the two log files. Different output from the same seed is a failing run. When a run fails, a GitHub issue is filed automatically with the seed, the commit SHA, and the exact command to reproduce it — [issue #414](https://github.com/resonatehq/resonate-sdk-ts/issues/414) is one such report, filed by the harness with the seed, commit, and command included:
 
 ```shell title="Reproduce a DST failure"
 npm run dst -- --seed <seed> --steps 10000
@@ -107,3 +137,7 @@ The Go SDK ([`resonatehq/resonate-sdk-go`](https://github.com/resonatehq/resonat
 ## Java SDK
 
 The Java SDK ([`resonatehq/resonate-sdk-java`](https://github.com/resonatehq/resonate-sdk-java)) compiles against Java 21 and runs its test suite against Java 21, 24, and 25 via `./gradlew test`. CI also runs the SDK's examples end-to-end against a live server.
+
+## Where to go next
+
+To see the system these tests protect, the [quickstart](/get-started/quickstart) gets a durable function running in a few minutes. Questions about the testing approach are welcome in [Discord](https://resonatehq.io/discord).
