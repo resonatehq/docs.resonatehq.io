@@ -9,8 +9,8 @@ keywords:
   - resonate-sdk
 ---
 
-<Callout type="caution" title="Pre-release">
-The Go SDK has no semver-tagged release yet and is in active development. APIs may change before the first tag is cut. Use `@latest` to track the most recent `main`, or pin a specific commit for stability, and check the [open issues](https://github.com/resonatehq/resonate-sdk-go/issues) for known gaps. The internal protocol is stable; the Go API surface is still settling.
+<Callout type="caution" title="Early release">
+[0.1.0](https://github.com/resonatehq/resonate-sdk-go/releases/tag/0.1.0) is the Go SDK's first tagged release, and the SDK is in active development — APIs may still change between releases. Check the [open issues](https://github.com/resonatehq/resonate-sdk-go/issues) for known gaps. The internal protocol is stable; the Go API surface is still settling.
 </Callout>
 
 Whether you are a human or an AI agent, this skill guide will help you develop applications using the Resonate Go SDK.
@@ -32,7 +32,7 @@ The Go SDK is a standard Go module. Add it with `go get`:
 go get github.com/resonatehq/resonate-sdk-go@latest
 ```
 
-No semver tag is published yet — `@latest` resolves to a Go module pseudo-version (a generated string like `v0.0.0-<timestamp>-<commit>`) pinned to the latest `main` commit. Pin to a specific commit if you need stability before the first tag is cut:
+The current git tag is `0.1.0` (no `v` prefix), which Go's module resolver does not recognize as a module version — so `@v0.1.0` does not resolve, and `@latest` resolves to a Go module pseudo-version (a generated string like `v0.0.0-<timestamp>-<commit>`) pinned to the latest `main` commit. Pin to a specific commit if you need a reproducible build:
 
 ```shell
 go get github.com/resonatehq/resonate-sdk-go@<commit-sha>
