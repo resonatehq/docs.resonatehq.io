@@ -16,7 +16,7 @@ keywords:
 A workflow spawns four notification channels (email, SMS, Slack, push) in parallel and joins their results. Total wall time approaches the slowest channel, not the sum. If one channel fails and retries, the others stay checkpointed — they don't re-send.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.4 (current). Rust: 0.4.0, in active development. Go: pre-release — no semver tag yet, so the example pins a specific commit (see [Go SDK](/develop/go)).
+TypeScript: `@resonatehq/sdk` v0.11.2 (current). Python: `resonate-sdk` v0.7.4 (current). Rust: 0.4.0, in active development. Go: pre-release — no semver tag yet, so the example pins a specific commit (see [Go SDK](/develop/go)).
 </Callout>
 
 <CloneRepoGrid>
@@ -134,7 +134,7 @@ async def notify_all(ctx: Context, event: dict, simulate_crash: bool):
     }
 ```
 
-In v0.7.0, `ctx.run(...)` returns a handle immediately without blocking, so issuing all four calls first starts every channel concurrently; awaiting each handle then collects the results. Each `ctx.run` is a durable child checkpoint, so if push retries, email/SMS/Slack stay checkpointed and do not re-execute.
+In the v0.7 SDK line, `ctx.run(...)` returns a handle immediately without blocking, so issuing all four calls first starts every channel concurrently; awaiting each handle then collects the results. Each `ctx.run` is a durable child checkpoint, so if push retries, email/SMS/Slack stay checkpointed and do not re-execute.
 
 </TabItem>
 

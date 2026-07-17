@@ -726,7 +726,7 @@ func sleepingWorkflow(ctx *resonate.Context, args SleepArgs) (string, error) {
 
 </Tabs>
 
-For recurring work, DBOS schedules a workflow on a cron expression — either the `@DBOS.scheduled(cron)` decorator (the workflow receives the scheduled and actual fire times) or the database-backed `DBOS.create_schedule(...)` / `apply_schedules(...)` API. Resonate registers a schedule with `resonate.schedule(...)` (TypeScript and Rust) or `resonate.schedules.create(...)` (Python), and the Resonate Server fires the promise on the cron.
+For recurring work, DBOS schedules a workflow on a cron expression — either the `@DBOS.scheduled(cron)` decorator (the workflow receives the scheduled and actual fire times) or the database-backed `DBOS.create_schedule(...)` / `apply_schedules(...)` API. Resonate registers a schedule with `resonate.schedule(...)` (TypeScript, Python, and Rust), and the Resonate Server fires the promise on the cron.
 
 <Callout type="caution" title="Mind the cron fields">
 DBOS uses a **6-field** cron with a leading seconds component — `* * * * * *` means *every second*. Resonate takes a **standard 5-field** cron — `* * * * *` means *every minute*. Drop the leading seconds field when migrating, or a `* * * * * *` copied across fires far more often than you intend.
@@ -753,14 +753,13 @@ def test_workflow(scheduled: datetime, actual: datetime) -> None:
     # ...
 ```
 
-**Resonate** — registers a cron schedule with the server (`example-schedule-py`):
+**Resonate** — registers a cron schedule with the server (`example-schedule-py`, `resonate-sdk` ≥0.7.4):
 
 ```python
-resonate.schedules.create(
+await resonate.schedule(
     id="my-schedule",
     cron="* * * * *",
-    promise_id="my-schedule.{{.timestamp}}",
-    # ... also required: promise_timeout, promise_data (the function-invoke payload), promise_tags
+    func_name="my_function",   # registered name; args=(...) for arguments
 )
 ```
 
