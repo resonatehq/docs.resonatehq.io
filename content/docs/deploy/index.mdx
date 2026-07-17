@@ -176,9 +176,10 @@ Do you have variable/unpredictable load?
 ```yaml
 services:
   resonate-server:
-    image: resonatehq/resonate:latest
+    image: resonatehqio/resonate:v0.9.8
     environment:
-      RESONATE_STORE_POSTGRES_HOST: your-postgres.rds.amazonaws.com
+      RESONATE_STORAGE__TYPE: postgres
+      RESONATE_STORAGE__POSTGRES__URL: postgres://<USER>:<PASSWORD>@your-postgres.rds.amazonaws.com:5432/resonate
 
   worker:
     image: your-app:latest
