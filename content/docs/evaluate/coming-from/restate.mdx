@@ -7,7 +7,11 @@ keywords:
 ---
 
 <Callout type="info" title="SDK version">
-This page reflects `@resonatehq/sdk` v0.10.2 (current on npm) and `resonate-sdk` v0.6.7 for Python.
+This page reflects `@resonatehq/sdk` v0.11.2 (current on npm) and `resonate-sdk` v0.7.4 for Python.
+</Callout>
+
+<Callout type="note" title="Two TypeScript engines">
+Since v0.11.0 the TypeScript SDK ships two interchangeable engines: the generator engine (`function*` with `yield* ctx.run(fn)`, shown in the examples on this page) and an async/await engine, where workflows are ordinary `async function`s and durable steps are `await ctx.run(() => ...)`. The async engine is imported from `@resonatehq/sdk/async`; its class is named `Resonate`. If you are coming from Restate, the async engine will look closest to what you already write.
 </Callout>
 
 **Are you coming from experience with Restate?**
@@ -31,7 +35,7 @@ Both Resonate and Restate provide durable execution for reliable distributed app
 
 **Restate's approach:** Define your application using three different service types depending on your needs (stateless handlers, stateful objects, or workflows), wrap non-deterministic operations in `ctx.run()`, and deploy behind endpoints that register with the Restate Server.
 
-**Resonate's approach:** Write normal async/await code. Resonate's distributed async/await automatically makes it durable without wrapper functions or service type abstractions.
+**Resonate's approach:** Write ordinary functions. A durable step is any call wrapped in `ctx.run()` — there is no service-type hierarchy to choose from, and no endpoint registration.
 
 ## Programming model
 
@@ -128,7 +132,7 @@ const result = yield* ctx.run(doDbRequest);
 
 </Tabs>
 
-Both achieve the same goal - making non-deterministic operations durable - but Resonate's generator-based approach enables automatic checkpointing of the entire call stack.
+Both achieve the same goal - making non-deterministic operations durable. Resonate's generator engine checkpoints the entire call stack automatically; the async/await engine (v0.11.0+) creates a durable promise eagerly at each `ctx.run()` call site.
 
 ### State management
 
@@ -257,7 +261,7 @@ You can develop and test without any infrastructure. Add the server when you nee
 
 Both systems support human-in-the-loop patterns.
 
-**Restate:** Uses workflow promises or signals
+**Restate:** Uses workflow promises or signals. The `ctx.promise()` API below is specific to Restate Workflows; Restate Services and Virtual Objects use awakeables instead (`ctx.awakeable<T>()`, which returns an ID and a promise).
 
 ```typescript title="Restate workflow promise"
 // In workflow
@@ -286,7 +290,7 @@ Same concept, similar API. Resonate's version works with any function, not just 
 If you're moving from Restate to Resonate:
 
 1. **Start simple:** Remove service type abstractions - your handlers become functions
-2. **Adjust syntax:** Change `await ctx.run(() => fn())` to `yield* ctx.run(fn)`  
+2. **Adjust syntax:** The async engine (`@resonatehq/sdk/async`) is the closest match to Restate — `await ctx.run(() => fn())` carries over nearly unchanged. If you prefer the generator engine, the equivalent is `yield* ctx.run(fn)`.
 3. **Rethink state:** If using Virtual Object state, decide whether to use external DB or Durable Promises
 4. **Simplify deployment:** Remove endpoint registration step - just deploy and connect
 5. **Test locally:** Take advantage of zero-dependency mode for faster iteration
@@ -370,7 +374,7 @@ Same logic, fewer abstractions. The Resonate version is a plain function with ge
 | Virtual Object | Function + external state or Durable Promise |
 | Workflow | Function with Durable Promises |
 | Handler | Function |
-| ctx.run() | ctx.run() (with generator syntax) |
+| ctx.run() | ctx.run() (generator or async engine) |
 | ctx.promise() (workflow) | ctx.promise() (any function) |
 | ctx.sleep() | ctx.sleep() |
 | ctx.get/set (state) | External DB or Durable Promise |
