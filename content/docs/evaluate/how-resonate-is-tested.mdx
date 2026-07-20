@@ -14,13 +14,13 @@ keywords:
 This page reflects Resonate Server v0.9.8, `@resonatehq/sdk` v0.11.2 (TypeScript), `resonate-sdk` v0.7.4 (Python), `resonate-sdk` v0.5.0 (Rust), `resonate-sdk` v0.1.1 (Java), and the Resonate Go SDK 0.1.0.
 </Callout>
 
-Resonate's correctness story rests on three foundations that reinforce each other: a machine-checkable formal companion to the protocol specification, differential random testing of the server implementation against a pure in-memory reference model, and deterministic simulation testing of the TypeScript SDK. Unit, integration, and end-to-end test suites across all five SDKs sit alongside these.
+Resonate's correctness story rests on three foundations that reinforce each other: an executable formal specification of the protocol in Lean 4, differential random testing of the server implementation against a pure in-memory reference model, and deterministic simulation testing of the TypeScript SDK. Unit, integration, and end-to-end test suites across all five SDKs sit alongside these.
 
-## Lean 4 executable companion
+## The Lean 4 abstract machine
 
-The [Distributed Async Await specification](https://distributed-async-await.io/spec) is the authoritative prose description of Resonate's protocol — the state machine governing promises, tasks, and schedules. Alongside it sits a Lean 4 executable, machine-checkable companion: [`resonatehq/resonate-specification`](https://github.com/resonatehq/resonate-specification).
+The Distributed Async Await protocol is specified twice, on purpose. [`resonatehq/resonate-specification`](https://github.com/resonatehq/resonate-specification) is the executable abstract machine in Lean 4 — the normative, machine-checkable definition of the protocol's core handlers and state transitions: promises, tasks, and schedules. The [prose specification](https://distributed-async-await.io/spec) is the human-readable companion that explains the same protocol. Where prose and Lean disagree, the Lean model wins.
 
-The companion encodes each protocol handler as a pure, deterministic, total function:
+The Lean model encodes each protocol handler as a pure, deterministic, total function:
 
 ```lean
 -- every handler has this shape:
@@ -30,29 +30,71 @@ def promiseCreate (req : PromiseCreateReq) (now : Nat) : M PromiseCreateRes
 
 State is touched only through named atomic effects — `getPromise` / `setPromise`, `getTask` / `setTask`, `getSchedule` / `setSchedule` / `delSchedule`, timeout management, and outbox writes. Handlers compose these effects and nothing else, which makes the model directly auditable and buildable with a single command:
 
-```shell title="Build the Lean companion"
+```shell title="Build the Lean model"
 cd spec && lake build
 ```
 
-The companion currently covers twenty handlers in full: five promise handlers (create, get, settle, register\_callback, register\_listener), ten task handlers (get, create, acquire, fence, heartbeat, suspend, fulfill, release, halt, continue), three schedule handlers (get, create, delete), and the two internal transitions (resume, timeouts). The three search handlers return a placeholder `501` response while their specs are being written.
+The model currently covers twenty handlers in full: five promise handlers (create, get, settle, register\_callback, register\_listener), ten task handlers (get, create, acquire, fence, heartbeat, suspend, fulfill, release, halt, continue), three schedule handlers (get, create, delete), and the two internal transitions (resume, timeouts). The three search handlers return a placeholder `501` response while their specs are being written.
 
-This is a companion to the prose specification, not a replacement for it. Its purpose is to make the protocol contract machine-verifiable — a second, checkable representation of the same rules that a prose reader can audit independently.
+The model also states the protocol's central safety property — the durable-execution guarantee — as an executable predicate, in [`spec/02-actions/04-guarantee.lean`](https://github.com/resonatehq/resonate-specification/blob/main/spec/02-actions/04-guarantee.lean):
+
+```lean title="The durable-execution guarantee"
+def durableExecutionGuarantee (s : ServerState) : Bool :=
+  s.tasks.all (fun t =>
+    match t.state with
+    | .pending | .acquired | .halted | .fulfilled =>
+      true
+    | .suspended =>
+      match s.promises.find? (·.id == t.id) with
+      | none => true
+      | some tP =>
+        if tP.state != .pending || tP.timeoutAt <= tP.createdAt then
+          true
+        else
+          let awaitedIds := t.resumes
+          let anySettled := s.promises.any (fun p =>
+            awaitedIds.contains p.id && awaitedSettledLive p tP)
+          if !anySettled then
+            true
+          else
+            hasExecuteInOutbox t.id s.outbox)
+```
+
+In words: if a task has suspended on awaited promises, and one of those promises settles while the task's own promise is still pending and unexpired, an `execute` message must be queued. The same file checks the predicate against concrete scenarios; a general theorem over all reachable states is not yet proven, and the file says so.
+
+Having the protocol in two representations is the point: the Lean model is the definition the compiler checks, and the prose specification explains the same rules for human readers. Anyone can audit one against the other.
 
 ## Resonate Server
 
-The Resonate Server ([`resonatehq/resonate`](https://github.com/resonatehq/resonate), written in Rust) uses two test strategies on every pull request.
+The Resonate Server ([`resonatehq/resonate`](https://github.com/resonatehq/resonate), written in Rust) is tested in several layers on every pull request.
 
 ### Differential random testing
 
 [`diff/differential.rs`](https://github.com/resonatehq/resonate/blob/main/diff/differential.rs) defines a test named `differential_random`. It drives the same randomly-generated sequence of API operations through multiple backends at once — always an in-memory SQLite instance and an in-memory Oracle reference model; optionally Postgres and MySQL when environment variables supply connection URLs. After every operation the test asserts two things: that every backend returned the same HTTP status and response body, and that the complete server state (promises, tasks, messages, timeouts) matches across all backends.
 
-The Oracle is a pure Rust in-memory implementation of the protocol state machine, derived from the same handler rules encoded in the Lean 4 companion. A disagreement between the Oracle and any concrete storage backend is an immediate test failure, with a precise field-level diff showing the divergence.
+The Oracle is a pure Rust in-memory implementation of the protocol state machine, derived from the same handler rules encoded in the Lean 4 model. A disagreement between the Oracle and any concrete storage backend is an immediate test failure, with a precise field-level diff showing the divergence.
 
 Coverage is enforced: the test runs until all twenty-two operation kinds in the API have each produced at least one 2xx response, then continues until no new operation signatures appear for twenty consecutive batches of two hundred steps. CI runs this against all three storage backends — SQLite, Postgres, and MySQL — as a matrix on every pull request.
+
+To run it locally:
+
+```shell title="Run the differential test locally"
+# SQLite + Oracle only (no external database required):
+cargo test --test differential -- --nocapture
+
+# All backends:
+TEST_POSTGRES_URL=postgres://<USER>:<PASSWORD>@localhost:5432/resonate \
+TEST_MYSQL_URL=mysql://<USER>:<PASSWORD>@localhost:3306/resonate \
+  cargo test --test differential -- --nocapture
+```
 
 ### Unit tests
 
 The server's unit tests run with `cargo test --all-features` and cover configuration parsing, transport message handling, and individual processing modules. CI gates every pull request on format (`cargo fmt`), compilation (`cargo check`), and linting (`cargo clippy --all-features -- -D warnings`) before tests run.
+
+### Conformance and linearizability
+
+A separate conformance testbed is checked out and run in the server's CI matrix on every pull request (visible in [`ci.yml`](https://github.com/resonatehq/resonate/blob/main/.github/workflows/ci.yml)): state-machine transition tests, randomized fuzz runs, and linearizability checking of concurrent operation histories with [Porcupine](https://github.com/anishathalye/porcupine). The testbed itself is not yet public — the CI steps that fetch and run it are.
 
 ## TypeScript SDK
 
@@ -66,7 +108,7 @@ The harness uses a seeded linear-congruential PRNG. From a single integer seed, 
 
 A default run executes 10,000 steps. Three simulated worker processes and one simulated server process receive and process messages inside the harness, exercising recursive fan-out patterns (Fibonacci with local and remote calls) and multi-step chained functions.
 
-Determinism is verified explicitly: CI runs each seed twice and diffs the two log files. Different output from the same seed is a failing run. When a run fails, a GitHub issue is filed automatically with the seed, the commit SHA, and the exact command to reproduce it:
+Determinism is verified explicitly: CI runs each seed twice and diffs the two log files. Different output from the same seed is a failing run. When a run fails, a GitHub issue is filed automatically with the seed, the commit SHA, and the exact command to reproduce it — [issue #414](https://github.com/resonatehq/resonate-sdk-ts/issues/414) is one such report, filed by the harness with the seed, commit, and command included:
 
 ```shell title="Reproduce a DST failure"
 npm run dst -- --seed <seed> --steps 10000
@@ -95,3 +137,7 @@ The Go SDK ([`resonatehq/resonate-sdk-go`](https://github.com/resonatehq/resonat
 ## Java SDK
 
 The Java SDK ([`resonatehq/resonate-sdk-java`](https://github.com/resonatehq/resonate-sdk-java)) compiles against Java 21 and runs its test suite against Java 21, 24, and 25 via `./gradlew test`. CI also runs the SDK's examples end-to-end against a live server.
+
+## Where to go next
+
+To see the system these tests protect, the [quickstart](/get-started/quickstart) gets a durable function running in a few minutes. Questions about the testing approach are welcome in [Discord](https://resonatehq.io/discord).
