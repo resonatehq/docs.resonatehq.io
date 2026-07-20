@@ -105,8 +105,10 @@ Ready to use example apps:
 
 **Quick example:**
 
+Supabase Edge Functions run on Deno, so the shim is published on [JSR](https://jsr.io/@resonatehq/supabase) rather than npm.
+
 ```shell title="Install the shim package"
-npm install @resonatehq/supabase
+deno add jsr:@resonatehq/supabase
 ```
 
 Instead of importing Resonate from the SDK package, import it from the Supabase shim package.
