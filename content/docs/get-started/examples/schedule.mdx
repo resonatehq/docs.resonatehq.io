@@ -16,7 +16,7 @@ keywords:
 Register a function to run on a cron expression and Resonate handles the rest. Every fired execution is a durable workflow — a worker that crashes mid-run hands off to a survivor, and a missed run because all workers were down still gets dispatched when one comes back.
 
 <Callout type="info" title="SDK versions">
-TypeScript: `@resonatehq/sdk` v0.10.2 (current). Python: `resonate-sdk` v0.7.0 (current). Rust: 0.4.0, in active development.
+TypeScript: `@resonatehq/sdk` v0.11.2 (current). Python: `resonate-sdk` v0.7.4 (current). Rust: 0.4.0, in active development.
 </Callout>
 
 <CloneRepoGrid>
@@ -88,25 +88,32 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import timedelta
 
 from resonate.resonate import Resonate
 from report import generate_report
 
 
 async def main() -> None:
-    url = os.environ.get("RESONATE_URL", "http://localhost:8001")
-    resonate = Resonate(url=url)
+    resonate = Resonate(url=os.environ.get("RESONATE_URL", "http://localhost:8001"))
     resonate.register(generate_report)
 
-    await resonate.schedule(
-        "daily_report",        # schedule ID — re-running this script is a no-op once it exists
-        "* * * * *",           # cron: every minute
-        func_name="generate_report",
-        promise_timeout=timedelta(minutes=10),
-    )
-    print("Schedule created. Start the worker to process executions.")
-    await resonate.stop()
+    # Yield to the event loop once so the SDK's background network task
+    # starts before the first call -- needed on resonate-sdk 0.7.x until
+    # resonatehq/resonate-sdk-py#443 is fixed.
+    await asyncio.sleep(0)
+
+    try:
+        # Schedule generate_report to run every minute.
+        # Re-running this script is a no-op once the schedule exists.
+        await resonate.schedule(
+            id="daily_report",
+            cron="* * * * *",          # every minute (change to "0 9 * * *" for daily at 9am UTC)
+            func_name="generate_report",
+            args=(123,),               # user_id
+        )
+        print("Schedule registered. Start the worker to process executions.")
+    finally:
+        await resonate.stop()
 
 
 if __name__ == "__main__":
