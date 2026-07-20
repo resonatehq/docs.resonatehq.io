@@ -10,7 +10,7 @@ keywords:
 This page reflects `@resonatehq/sdk` v0.11.2 (current on npm) and `resonate-sdk` v0.7.4 for Python.
 </Callout>
 
-<Callout type="note" title="Two TypeScript engines">
+<Callout type="note" title="Two execution engines">
 Since v0.11.0 the TypeScript SDK ships two interchangeable engines: the generator engine (`function*` with `yield* ctx.run(fn)`, shown in the examples on this page) and an async/await engine, where workflows are ordinary `async function`s and durable steps are `await ctx.run(() => ...)`. The async engine is imported from `@resonatehq/sdk/async`; its class is named `Resonate`. If you are coming from Restate, the async engine will look closest to what you already write.
 </Callout>
 
