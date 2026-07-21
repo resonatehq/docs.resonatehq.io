@@ -6,10 +6,16 @@ keywords:
   - typescript
   - skill-guide
   - resonate-sdk
+  - async-engine
+  - async-await
 ---
 
 <Callout type="info" title="SDK version">
-This page reflects `@resonatehq/sdk` v0.10.2 (current on npm). APIs are subject to change in future releases.
+This page reflects `@resonatehq/sdk` v0.11.2 (current on npm). APIs are subject to change in future releases.
+</Callout>
+
+<Callout type="note" title="Two execution engines">
+Since v0.11.0, the SDK ships two interchangeable engines: the **generator engine** (`function*` with `yield* ctx.run(fn)`, documented throughout this page) and an **async/await engine** where workflows are ordinary `async` functions and durable steps are `await ctx.run(myFn, ...args)`. The async engine is imported from `@resonatehq/sdk/async`. See [Async/await engine](#asyncawait-engine) at the end of this page for a full walkthrough and migration guide.
 </Callout>
 
 **Requires Node.js 22 or later.**
@@ -407,7 +413,7 @@ const schedule = await resonate.schedule(
 
 Cron expressions are evaluated in **UTC**, and the day-of-week field uses Quartz numbering (`1` = Sunday) — prefer day names like `MON-FRI`. See the [Schedules & cron reference](/reference/schedules) for the expression format, promise-ID templates, and the tags the server injects on fired promises.
 
-**Target routing.** Each promise the schedule fires carries a `resonate:target` tag that routes it to a worker group — without it the server rejects the schedule. `.schedule()` injects the tag for you from the `target` option (as the final argument, same as `.run()`/`.rpc()`), defaulting to the `default` group:
+**Target routing.** Each promise the schedule fires carries a `resonate:target` tag that routes it to a worker group — without it, fired promises are never dispatched to any worker (and the server release after v0.9.8 rejects the call outright; see [Schedules & cron reference](/reference/schedules)). `.schedule()` injects the tag for you from the `target` option (as the final argument, same as `.run()`/`.rpc()`), defaulting to the `default` group:
 
 ```ts
 await resonate.schedule(
@@ -928,9 +934,118 @@ The TypeScript SDK ships with these key defaults. All values are in **millisecon
 - **`new Resonate()`** — `group = "default"`, `ttl = 60_000 ms`, `logLevel = "warn"`. URL falls back to `RESONATE_URL`; when both are unset, a local in-memory network is used.
 - **`HttpNetwork`** — request `timeout = 10_000 ms` (overridable via `RESONATE_TIMEOUT`), URL fallback `"http://localhost:8001"`.
 - **`ctx.run` / `Options`** — `timeout = 86_400_000 ms (24 h)`, `target = "default"`, `version = 0`, `tags = {}`, `nonRetryableErrors = []`.
-- **`retryPolicy`** for `ctx.run` — `Exponential()` for regular `async` functions, `Never()` for generator functions.
+- **`retryPolicy` — generator engine** — `Exponential()` for regular `async` functions; `Never()` for generator functions (`function*`).
+- **`retryPolicy` — async engine** — `Never()` for all function types; opt in per call with `ctx.options({ retryPolicy: new Exponential() })`.
 - **`Exponential()` defaults** — `delay = 1_000 ms`, `factor = 2`, `maxDelay = 30_000 ms`, `maxRetries = Number.MAX_SAFE_INTEGER`.
 - **`Constant()` / `Linear()` defaults** — `delay = 1_000 ms`, `maxRetries = Number.MAX_SAFE_INTEGER`.
 
 For the full table, per-SDK comparison, and source citations, see the [Defaults reference](/reference/defaults).
+
+---
+
+## Async/await engine
+
+Since v0.11.0, the TypeScript SDK ships a second execution engine alongside the generator engine. Both engines speak the same protocol to the same server and use the same durable-promise model — you can run them in the same application side by side and migrate one function at a time.
+
+**When to use which engine:**
+
+- **Generator engine** (`import { Resonate } from "@resonatehq/sdk"`, `function*` + `yield*`) — the original engine; sequential control flow made explicit at each step; good when you want durable checkpoints to be visible as you read the code.
+- **Async/await engine** (`import { Resonate } from "@resonatehq/sdk/async"`, `async function` + `await`) — operations are eager, fan-out is ordinary `Promise.all`, workflows look like regular Node.js async code; closest to what Restate or DBOS users will already be writing; retries default to `Never` for all function types — opt in explicitly per call.
+
+### Import
+
+The async engine lives at a separate package export — both `Resonate` classes accept the same constructor options:
+
+```ts
+import { Resonate, type Context, Exponential, Linear, Constant, Never } from "@resonatehq/sdk/async";
+```
+
+### Register and run
+
+Workflows are ordinary `async` functions. Register and invoke them the same way as in the generator engine:
+
+```ts title="src/index.ts"
+import { Resonate, type Context } from "@resonatehq/sdk/async";
+
+async function greet(ctx: Context, name: string): Promise<string> {
+  return `Hello, ${name}!`;
+}
+
+const resonate = new Resonate({ url: "http://localhost:8001" });
+resonate.register(greet);
+
+// resonate.run() returns a handle, not the result directly
+const handle = await resonate.run("greet-1", greet, "world");
+const result = await handle.result(); // Hello, world!
+
+await resonate.stop();
+```
+
+Key difference from the generator engine: `resonate.run()` returns `Promise<Handle>`, not the result directly. Call `.result()` on the handle to get the value. There are **no `beginRun` or `beginRpc` variants** in the async engine — every `run` and `rpc` on the client already returns a handle, so `beginRun` would be redundant.
+
+### Context APIs — eager operations and fan-out
+
+Inside an async workflow, `ctx.run(fn)` starts the durable operation immediately and returns an awaitable `DurablePromise`. Because operations are eager, fan-out is plain `Promise.all`:
+
+```ts title="src/workflow.ts"
+import { type Context } from "@resonatehq/sdk/async";
+
+async function processItems(ctx: Context, items: string[]) {
+  // All durable steps start immediately and run concurrently
+  const handles = items.map(item => ctx.run(processItem, item));
+  const results = await Promise.all(handles);
+  return results;
+}
+
+async function processItem(ctx: Context, item: string): Promise<string> {
+  return `processed: ${item}`;
+}
+```
+
+In the generator engine, `yield* ctx.run()` blocks until the step completes, and fan-out requires `yield* ctx.beginRun()`. In the async engine, `ctx.run()` always starts eagerly — `await ctx.run(fn)` is call-and-wait, while `ctx.run(fn)` without an immediate `await` is fire-and-collect-later.
+
+<Callout type="caution" title="Only await DurablePromises inside a workflow">
+A plain `await` on a timer, network I/O, or any non-durable promise is invisible to the engine. The workflow may resume after its execution pass has ended, making the plain-await continuation a zombie. Wrap all side effects in `ctx.run`, `ctx.rpc`, or `ctx.sleep` — the same rule as `yield* ctx.run(fn)` in the generator engine.
+</Callout>
+
+### Retries — opt in explicitly
+
+**The async engine defaults to `Never` for all retry policies.** This differs from the generator engine, where a plain `async function` registered with `resonate.register` gets `Exponential` retries by default. The reason: an async workflow and a plain async helper are indistinguishable at the type level, so a blanket retry default would silently retry code you never intended to retry.
+
+Opt in per call via `ctx.options({ retryPolicy })`:
+
+```ts title="src/workflow.ts"
+import { type Context, Exponential } from "@resonatehq/sdk/async";
+
+async function checkout(ctx: Context) {
+  // No retry by default; opt in explicitly per call
+  const chargeResult = await ctx.run(
+    chargeCard,
+    ctx.options({ retryPolicy: new Exponential() })
+  );
+  return chargeResult;
+}
+
+async function chargeCard(ctx: Context) {
+  // ... charge logic ...
+}
+```
+
+`Exponential`, `Linear`, `Constant`, and `Never` are all exported from `@resonatehq/sdk/async`.
+
+### Migrating from the generator engine
+
+Both engines live in the same package and speak the same protocol, so you can migrate function by function. The mechanical changes:
+
+| Generator engine | Async engine |
+|---|---|
+| `import { Resonate } from "@resonatehq/sdk"` | `import { Resonate } from "@resonatehq/sdk/async"` |
+| `function* (ctx: Context, ...)` | `async function (ctx: Context, ...)` |
+| `yield* ctx.run(fn, ...args)` | `await ctx.run(fn, ...args)` |
+| `yield* ctx.beginRun(fn)`, later `yield* future` | `const p = ctx.run(fn)`, later `await p` — every op is eager; no `begin*` variants |
+| `resonate.run(id, fn, ...args)` → returns result | `resonate.run(id, fn, ...args)` → returns handle; `await handle.result()` to get value |
+| `resonate.beginRun(id, fn, ...args)` → returns handle | `beginRun` does not exist — `resonate.run` already returns a handle, making it equivalent |
+| `ctx.run` retries: `Exponential()` for async fns by default | `ctx.run` retries: `Never()` by default — pass `ctx.options({ retryPolicy: new Exponential() })` |
+
+For the full walkthrough, see the [SDK README migration guide](https://github.com/resonatehq/resonate-sdk-ts#migrating-from-generators).
 
