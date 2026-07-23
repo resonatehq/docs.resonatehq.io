@@ -320,7 +320,7 @@ schedule.delete().await?;
 Get a handle to an existing execution by its promise ID.
 
 ```rust
-let mut handle = resonate.get::<String>("invocation-id").await?;
+let handle = resonate.get::<String>("invocation-id").await?;
 let result = handle.result().await?;
 ```
 
@@ -367,7 +367,7 @@ async fn main() {
     let resonate = Resonate::local();
     resonate.register(greet).unwrap();
 
-    let result: String = resonate.run("greet-1", greet, "world").await.unwrap();
+    let result: String = resonate.run("greet-1", greet, "world".into()).await.unwrap();
     println!("{result}");
 
     // Required for the process to exit.

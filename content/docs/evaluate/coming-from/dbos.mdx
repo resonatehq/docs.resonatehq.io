@@ -925,7 +925,7 @@ The Resonate Rust equivalent awaits a latent durable promise and resolves it fro
 #[resonate::function]
 async fn foo(ctx: &Context) -> Result<()> {
     // Latent durable promise — no function backing it. Resolved externally.
-    let blocking_promise = ctx.promise::<bool>();
+    let blocking_promise = ctx.promise::<bool>().create()?;
     let _promise_id = blocking_promise.id().await?;
     // ...
     // suspend until the promise is resolved (survives crashes)
