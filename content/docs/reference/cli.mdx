@@ -197,6 +197,19 @@ resonate promises create my-run-002 \
 
 `--param` and `--tags` are parsed as JSON ([`cli.rs:495-498`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L495-L498)). The `data` field inside `--param` is automatically base64-encoded ([`cli.rs:500-508`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L500-L508)) — pass it as a regular JSON value, the CLI handles encoding.
 
+#### The `resonate:delay` tag
+
+A promise tagged `resonate:delay` has its **task dispatch held back** until the given time — the server waits to send the task to a worker until the deadline elapses, instead of enqueueing it immediately (added in [resonatehq/resonate#844](https://github.com/resonatehq/resonate/pull/844)). The value is an absolute Unix epoch time in **milliseconds**, not a duration:
+
+```shell
+# Create the promise now, but don't dispatch its task until 2026-01-01T00:00:00Z
+resonate promises create nightly-kickoff \
+  --timeout 24h \
+  --tags '{"resonate:target": "poll://any@default", "resonate:delay": "1767225600000"}'
+```
+
+Use it for a one-shot deferred invocation. For recurring work, use a [schedule](#resonate-schedules) instead.
+
 ### `resonate promises resolve | reject | cancel`
 
 All three settle a pending promise; they differ only in the final state ([`cli.rs:642-652`](https://github.com/resonatehq/resonate/blob/main/src/cli.rs#L642-L652)).
