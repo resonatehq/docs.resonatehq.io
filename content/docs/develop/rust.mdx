@@ -430,7 +430,7 @@ The calling function blocks until the remote function returns.
 ```rust
 #[resonate::function]
 async fn my_workflow(ctx: &Context) -> Result<String> {
-    let result = ctx.rpc::<String>("remote-func", "input".into()).await?;
+    let result = ctx.rpc::<String>("remote-func", "input").await?;
     Ok(result)
 }
 ```
