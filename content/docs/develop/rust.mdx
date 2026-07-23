@@ -118,7 +118,9 @@ let resonate = Resonate::new(ResonateConfig {
 });
 ```
 
-Workers receive dispatched work over Postgres `LISTEN`/`NOTIFY` (with a periodic fallback poll), and due timers advance whenever a worker is running. This keeps the entire durable-execution stack on infrastructure you already run — a good fit for serverless and Postgres-centric deployments.
+Workers receive dispatched work over Postgres `LISTEN`/`NOTIFY` (with a periodic fallback poll), and due timers advance whenever a worker is running. Because there is no standalone server process, **durable sleeps and timeouts advance only while at least one worker is connected** — with every worker down, they are suspended until a worker reconnects (a standalone Resonate Server advances timers on its own). This keeps the durable-execution stack on infrastructure you already run, with Postgres handling promise state and routing — a good fit for serverless and Postgres-centric deployments.
+
+Like the SDK itself, `resonate-sdk-postgres` is pre-1.0 and in active development; its API may change between releases.
 
 ### Authentication
 
