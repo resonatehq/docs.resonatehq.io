@@ -372,6 +372,12 @@ daily.delete(); // remove the schedule when no longer needed
 
 The lower-level `r.schedules` sub-client (`create` / `get` / `delete` / `search`) is available for direct schedule manipulation.
 
+Every promise a schedule fires needs a `resonate:target` tag, or no worker group receives it — the server release after v0.9.8 rejects a create without it. Cron expressions are evaluated in **UTC** with Quartz day-of-week numbering (`1` = Sunday); prefer day names like `MON-FRI`. See the [Schedules & cron reference](/reference/schedules) for the expression format, promise-ID templates, and the tags the server injects on fired promises.
+
+<Callout type="caution" title="`schedule()` currently fails against a real server">
+`r.schedule(...)` and `r.schedules.create(...)` send empty `promiseTags`, so the server rejects the create with `400 promiseTags must include a resonate:target tag` (and on older servers the schedule fires but its promises are never dispatched). Tracked in [resonatehq/resonate-sdk-java#6](https://github.com/resonatehq/resonate-sdk-java/issues/6); this page will show the working target-routing form once the fix lands.
+</Callout>
+
 ### `Resonate.stop`
 
 Gracefully shuts down a Resonate instance. Stops the network connection, joins outstanding background jobs, cancels the subscription-refresh loop, and shuts down the heartbeat. Idempotent.
