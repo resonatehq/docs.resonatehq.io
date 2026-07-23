@@ -9,7 +9,7 @@ keywords:
 ---
 
 <Callout type="caution" title="Early development">
-The Rust SDK is at 0.4.0 and in active development. APIs may change between releases.
+The Rust SDK is at 0.6.0 and in active development. APIs may change between releases.
 </Callout>
 
 Whether you are a human or an AI agent, this skill guide will help you develop applications using the Resonate Rust SDK.
@@ -29,7 +29,7 @@ The Rust SDK is published on crates.io as `resonate-sdk`. Add it to your `Cargo.
 
 ```toml title="Cargo.toml"
 [dependencies]
-resonate = { package = "resonate-sdk", version = "0.4" }
+resonate = { package = "resonate-sdk", version = "0.6" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 ```
@@ -87,6 +87,40 @@ let resonate = Resonate::local();
 Local development mode can be suitable for awhile.
 However, when you want to run multiple worker processes, persist state across restarts, or share work between machines, you will need to connect to a Resonate Server.
 See the [Quickstart guide](/get-started/quickstart) or [How to run a Resonate Server](/deploy/run-server) for guidance on getting a server up and running.
+
+### Postgres-backed durable execution
+
+Alongside the in-memory local network and a remote Resonate Server, the Rust SDK can run durable execution directly on **Postgres** — with no separate Resonate Server process. The Resonate protocol runs as stored procedures in a `resonate` schema in your database (see [resonate-pg](https://github.com/resonatehq/resonate-pg)), and your workers talk to Postgres directly.
+
+Add the Postgres network crate alongside the SDK:
+
+```toml title="Cargo.toml"
+[dependencies]
+resonate = { package = "resonate-sdk", version = "0.6" }
+resonate-postgres = { package = "resonate-sdk-postgres", version = "0.6" }
+```
+
+Apply the `resonate.sql` schema (from [resonate-pg](https://github.com/resonatehq/resonate-pg)) to a Postgres 16+ database, then wire a `PostgresNetwork` into the Resonate instance:
+
+```rust title="main.rs"
+use std::sync::Arc;
+use resonate::prelude::*;
+use resonate_postgres::PostgresNetwork;
+
+// Pass your Postgres connection string (for example, from the DATABASE_URL environment variable).
+let network = PostgresNetwork::builder("postgres://localhost:5432/mydb")
+    .group("workers")
+    .build();
+
+let resonate = Resonate::new(ResonateConfig {
+    network: Some(Arc::new(network)),
+    ..Default::default()
+});
+```
+
+Workers receive dispatched work over Postgres `LISTEN`/`NOTIFY` (with a periodic fallback poll), and due timers advance whenever a worker is running. Because there is no standalone server process, **durable sleeps and timeouts advance only while at least one worker is connected** — with every worker down, they are suspended until a worker reconnects (a standalone Resonate Server advances timers on its own). This keeps the durable-execution stack on infrastructure you already run, with Postgres handling promise state and routing — a good fit for serverless and Postgres-centric deployments.
+
+Like the SDK itself, `resonate-sdk-postgres` is pre-1.0 and in active development; its API may change between releases.
 
 ### Authentication
 
@@ -256,14 +290,14 @@ Resonate's `.rpc()` method (Remote Procedure Call) invokes a function in a remot
 You can think of it as a "run somewhere else" invocation.
 
 ```rust
-let result: String = resonate.rpc("invocation-id", "my_workflow", "input".into()).await?;
+let result: String = resonate.rpc("invocation-id", "my_workflow", "input").await?;
 ```
 
 The builder supports `.timeout()`, `.version()`, `.tags()`, and `.target()`:
 
 ```rust
 let result: String = resonate
-    .rpc("invocation-id", "my_workflow", "input".into())
+    .rpc("invocation-id", "my_workflow", "input")
     .target("poll://any@workers")
     .await?;
 ```
@@ -274,7 +308,7 @@ Schedule a function to be invoked on a cron schedule.
 
 ```rust
 let schedule = resonate
-    .schedule("my-schedule", "0 * * * *", "my_workflow", "input".into())
+    .schedule("my-schedule", "0 * * * *", "my_workflow", "input")
     .await?;
 
 // Later, delete the schedule
@@ -286,7 +320,7 @@ schedule.delete().await?;
 Get a handle to an existing execution by its promise ID.
 
 ```rust
-let mut handle = resonate.get::<String>("invocation-id").await?;
+let handle = resonate.get::<String>("invocation-id").await?;
 let result = handle.result().await?;
 ```
 
@@ -333,7 +367,7 @@ async fn main() {
     let resonate = Resonate::local();
     resonate.register(greet).unwrap();
 
-    let result: String = resonate.run("greet-1", greet, "world").await.unwrap();
+    let result: String = resonate.run("greet-1", greet, "world".into()).await.unwrap();
     println!("{result}");
 
     // Required for the process to exit.
@@ -380,8 +414,8 @@ Use `.spawn()` to run in parallel and get a `DurableFuture` handle:
 ```rust
 #[resonate::function]
 async fn my_workflow(ctx: &Context) -> Result<(String, String)> {
-    let future_a = ctx.run(process, "a".into()).spawn().await?;
-    let future_b = ctx.run(process, "b".into()).spawn().await?;
+    let future_a = ctx.run(process, "a".into()).spawn()?;
+    let future_b = ctx.run(process, "b".into()).spawn()?;
 
     let result_a = future_a.await?;
     let result_b = future_b.await?;
@@ -398,7 +432,7 @@ The calling function blocks until the remote function returns.
 ```rust
 #[resonate::function]
 async fn my_workflow(ctx: &Context) -> Result<String> {
-    let result = ctx.rpc::<String>("remote-func", "input".into()).await?;
+    let result = ctx.rpc::<String>("remote-func", "input").await?;
     Ok(result)
 }
 ```
@@ -408,8 +442,8 @@ Use `.spawn()` for parallel remote invocations:
 ```rust
 #[resonate::function]
 async fn my_workflow(ctx: &Context) -> Result<()> {
-    let f1 = ctx.rpc::<String>("worker-a", "data".into()).spawn().await?;
-    let f2 = ctx.rpc::<String>("worker-b", "data".into()).spawn().await?;
+    let f1 = ctx.rpc::<String>("worker-a", "data").spawn()?;
+    let f2 = ctx.rpc::<String>("worker-b", "data").spawn()?;
 
     f1.await?;
     f2.await?;
