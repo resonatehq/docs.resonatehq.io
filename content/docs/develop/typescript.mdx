@@ -166,9 +166,9 @@ Like the SDK itself, the Postgres network is pre-1.0 and in active development; 
 
 ### Authentication
 
-The TypeScript SDK supports both **token-based** and **basic** authentication when connecting to a secured Resonate Server.
+The TypeScript SDK authenticates to a secured Resonate Server with a **token**.
 
-#### Token-based authentication (recommended)
+#### Token-based authentication
 
 Use JWT bearer tokens for production deployments:
 
@@ -183,6 +183,12 @@ const resonate = new Resonate({
 
 <Callout type="tip" title="Token-based authentication is recommended for production. See the [Security & Authentication](/deploy/security) guide for detailed configuration, best practices, and server setup.">
 
+</Callout>
+
+<Callout type="caution" title="Upgrading from v0.9.x">
+Earlier releases accepted `auth: { username, password }` and read `RESONATE_USERNAME` / `RESONATE_PASSWORD`, sending an `Authorization: Basic` header.
+That was removed in **v0.10.0** along with the rest of the networking rewrite, and the constructor now ignores unknown options rather than rejecting them.
+An `auth` block carried forward from v0.9.x therefore raises no error — the client simply sends unauthenticated requests. Replace it with `token`.
 </Callout>
 
 ### Concurrency
