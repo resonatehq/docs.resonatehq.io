@@ -11,14 +11,14 @@ keywords:
 ---
 
 <Callout type="info" title="SDK version">
-This page reflects `@resonatehq/sdk` v0.11.2 (current on npm). APIs are subject to change in future releases.
+This page reflects `@resonatehq/sdk` v0.11.4 (current on npm). APIs are subject to change in future releases.
 </Callout>
 
 <Callout type="note" title="Two execution engines">
 Since v0.11.0, the SDK ships two interchangeable engines: the **generator engine** (`function*` with `yield* ctx.run(fn)`, documented throughout this page) and an **async/await engine** where workflows are ordinary `async` functions and durable steps are `await ctx.run(myFn, ...args)`. The async engine is imported from `@resonatehq/sdk/async`. See [Async/await engine](#asyncawait-engine) at the end of this page for a full walkthrough and migration guide.
 </Callout>
 
-**Requires Node.js 22 or later.**
+**Requires Node.js 22 or later and npm 10 or later.**
 
 Whether you are a human or an AI agent, this skill guide will help you develop applications using the Resonate TypeScript SDK.
 Though this _is_ a skill guide, and not a detailed API reference and you will still likely need to refer to the detailed [Resonate TypeScript SDK API reference](https://resonatehq.github.io/resonate-sdk-ts/) for type definitions, defaults, and other technical details.
@@ -128,11 +128,47 @@ Local development mode can be suitable for awhile.
 However, when you want to run multiple worker processes, persist state across restarts, or share work between machines, you will need to connect to a Resonate Server.
 See the [Quickstart guide](/get-started/quickstart) or [How to run a Resonate Server](/deploy/run-server) for guidance on getting a server up and running.
 
+### Postgres-backed durable execution
+
+Alongside the in-memory local network and a remote Resonate Server, the TypeScript SDK can run durable execution directly on **Postgres** — with no separate Resonate Server process.
+The Resonate protocol runs as stored procedures in a `resonate` schema in your database (see [resonate-pg](https://github.com/resonatehq/resonate-pg)), and your workers talk to Postgres directly.
+
+The Postgres network ships as a separate package export and connects through [`pg`](https://www.npmjs.com/package/pg), which is a peer dependency — install it alongside the SDK:
+
+```shell
+npm install @resonatehq/sdk pg
+```
+
+Apply the `resonate.sql` schema (from [resonate-pg](https://github.com/resonatehq/resonate-pg)) to a Postgres 16+ database, then wire a `PostgresNetwork` into the Resonate Client:
+
+```ts title="index.ts"
+import { Resonate } from "@resonatehq/sdk";
+import { PostgresNetwork } from "@resonatehq/sdk/postgres";
+
+// Pass your Postgres connection string (for example, from the DATABASE_URL environment variable).
+const network = new PostgresNetwork({
+  connectionString: process.env.DATABASE_URL ?? "postgres://localhost:5432/mydb",
+  group: "workers", // a task targets the group (anycast); defaults to "default"
+});
+
+const resonate = new Resonate({ network });
+```
+
+`PostgresNetwork` also accepts `pid` (this process's id, which callbacks and listeners target directly; defaults to a random id), `tickMs` (the fallback poll interval, in milliseconds), and `logger`.
+
+Both execution engines work over the Postgres network — pass the same `network` option to the `Resonate` class from [`@resonatehq/sdk/async`](#asyncawait-engine).
+
+Workers receive dispatched work over Postgres `LISTEN`/`NOTIFY` (with a periodic fallback poll, so a missed notification still gets picked up), and due timers advance whenever a worker is running.
+Because there is no standalone server process, **durable sleeps and timeouts advance only while at least one worker is connected** — with every worker down, they are suspended until a worker reconnects (a standalone Resonate Server advances timers on its own).
+This keeps the durable-execution stack on infrastructure you already run, with Postgres handling promise state and routing — a good fit for serverless and Postgres-centric deployments.
+
+Like the SDK itself, the Postgres network is pre-1.0 and in active development; its API may change between releases.
+
 ### Authentication
 
-The TypeScript SDK supports both **token-based** and **basic** authentication when connecting to a secured Resonate Server.
+The TypeScript SDK authenticates to a secured Resonate Server with a **token**.
 
-#### Token-based authentication (recommended)
+#### Token-based authentication
 
 Use JWT bearer tokens for production deployments:
 
@@ -147,6 +183,12 @@ const resonate = new Resonate({
 
 <Callout type="tip" title="Token-based authentication is recommended for production. See the [Security & Authentication](/deploy/security) guide for detailed configuration, best practices, and server setup.">
 
+</Callout>
+
+<Callout type="caution" title="Upgrading from v0.9.x">
+Earlier releases accepted `auth: { username, password }` and read `RESONATE_USERNAME` / `RESONATE_PASSWORD`, sending an `Authorization: Basic` header.
+That was removed in **v0.10.0** along with the rest of the networking rewrite, and the constructor now ignores unknown options rather than rejecting them.
+An `auth` block carried forward from v0.9.x therefore raises no error — the client simply sends unauthenticated requests. Replace it with `token`.
 </Callout>
 
 ### Concurrency
