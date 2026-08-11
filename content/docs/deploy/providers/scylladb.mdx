@@ -1,0 +1,172 @@
+---
+title: Resonate on ScyllaDB
+description: Run the Resonate server protocol against a ScyllaDB cluster — setup, configuration, and what to know before production.
+keywords:
+  - deploy
+  - providers
+  - scylladb
+  - cql
+---
+
+## TL;DR
+
+[`resonate-on-scylladb`](https://github.com/resonatehq/resonate-on-scylladb) is a Go server that implements the Resonate protocol against ScyllaDB. It speaks the same HTTP/JSON protocol as the core server, so **your application code and SDK do not change** — you point `RESONATE_URL` at it.
+
+It is source-available under BUSL-1.1, not Apache 2.0, and it is early. Read [What's not there yet](#whats-not-there-yet) before you plan a production rollout.
+
+## When to use it
+
+Use it when you already run ScyllaDB and would rather not stand up a second database for durable execution. If you don't already run ScyllaDB, run the [core server](/deploy/run-server) on Postgres instead — it is the reference implementation and the default recommendation.
+
+## Requirements
+
+- A ScyllaDB cluster reachable over CQL.
+- Docker and Docker Compose for the local stack below.
+- Go 1.25.4+ to build the binary from source.
+
+## Run it locally
+
+```shell title="Start the server against a local ScyllaDB"
+git clone https://github.com/resonatehq/resonate-on-scylladb
+cd resonate-on-scylladb
+docker compose --profile server up
+```
+
+<Callout type="info" title="The server service sits behind a Compose profile">
+`docker compose up` on its own starts ScyllaDB and nothing else. The `server` service in the bundled `docker-compose.yaml` declares `profiles: [server]`, so you have to name the profile — or the service — to get a server.
+</Callout>
+
+The server listens on `:8001`. Point a worker at it exactly as you would the core server:
+
+```shell
+RESONATE_URL=http://localhost:8001
+```
+
+## Schema provisioning
+
+This is the part to get right before you go anywhere near a cluster that matters.
+
+The server only touches DDL when `--debug` (or `SERVER_DEBUG`) is set. In that mode it **drops the keyspace and recreates it** on every connect, then applies the tables. The bundled `server` service runs `serve --debug`, which is why the local stack above comes up with a working schema — and also why a local restart starts from empty.
+
+<Callout type="caution" title="Never run with debug against a cluster you care about">
+Debug mode issues `DROP KEYSPACE IF EXISTS` before creating anything. Pointing a debug-mode server at a populated keyspace destroys it. Debug mode is for local development and the test suites only.
+</Callout>
+
+Outside debug mode the server applies no DDL at all — it opens a keyspace-bound session and assumes the schema is already there. So for any real deployment, **you provision the schema yourself**.
+
+## Run against an existing cluster
+
+Create the keyspace yourself, with a replication strategy you chose deliberately — leaving it to a default is rarely right on a multi-datacenter cluster. The bundled `internal/dbms/schema.cql` opens with a bare `CREATE KEYSPACE IF NOT EXISTS resonate;` and a `USE resonate;`, so do not apply it as-is unless both the name and the default replication are what you want:
+
+```shell
+cqlsh -e "CREATE KEYSPACE resonate WITH replication = {'class': 'NetworkTopologyStrategy', 'dc1': 3};"
+```
+
+Then apply the table definitions into it. The first three lines of the file are the `CREATE KEYSPACE` and `USE` you just replaced, so skip them:
+
+```shell
+tail -n +4 internal/dbms/schema.cql > tables.cql
+cqlsh -k resonate -f tables.cql
+```
+
+Build the binary and start it pointed at the cluster, with debug off. The keyspace you provisioned has to match `SCYLLADB_KEYSPACE`:
+
+```shell
+go build -o resonate ./cmd/resonate
+
+SCYLLADB_HOSTS=node-0.example.com,node-1.example.com,node-2.example.com \
+SCYLLADB_KEYSPACE=resonate \
+SCYLLADB_TLS_ENABLED=true \
+./resonate serve
+```
+
+<Callout type="info" title="This is not the core server binary">
+The provider's CLI is also called `resonate`, and it also takes `serve` — but it is built from `resonatehq/resonate-on-scylladb`, not from the core server repository. Make sure the binary on your `PATH` is the one you meant.
+</Callout>
+
+`SCYLLADB_REPLICATION` is only read when the server creates the keyspace, which means only in debug mode. Since you provision the keyspace yourself, that setting does nothing on this path.
+
+## Configuration
+
+Configuration resolves in priority order: CLI flags, then environment variables, then an optional `resonate.yaml`, then built-in defaults.
+
+| Variable | Description |
+|---|---|
+| `SERVER_ADDR` | Server listen address (default `:8001`) |
+| `SERVER_DEBUG` | Debug mode — **drops and recreates the keyspace on connect**; never enable against real data |
+| `SERVER_LOG_LEVEL` | `debug`, `info`, `warn`, or `error` (default `info`); any other value is a fatal startup error |
+| `SCYLLADB_HOSTS` | Comma-separated seed hosts |
+| `SCYLLADB_PORT` | CQL port |
+| `SCYLLADB_USERNAME` | Username |
+| `SCYLLADB_PASSWORD` | Password |
+| `SCYLLADB_TLS_ENABLED` | Enable TLS |
+| `SCYLLADB_TLS_INSECURE` | Skip certificate verification |
+| `SCYLLADB_KEYSPACE` | Keyspace name |
+| `SCYLLADB_REPLICATION` | Replication clause used when creating the keyspace — debug mode only |
+| `TIMEOUTS_BUCKET_WIDTH` | Timeout bucket width (e.g. `1h`, `30m`) |
+| `TIMEOUTS_BUCKET_LOOKBACK` | Past buckets to scan |
+| `TIMEOUTS_SHARDS` | Shard count for the timeout tables — must match across all server instances |
+| `WORKER_TTL` | Worker row TTL (e.g. `15s`) |
+| `WORKER_TICK_INTERVAL` | Coordinator tick interval (e.g. `1s`) |
+
+The equivalent `resonate.yaml` keys are nested under `server:`, `scylladb:`, `timeouts:`, and `worker:`.
+
+## How state is stored
+
+The schema has six tables.
+
+- **`promises`** — one row per durable promise, keyed `PRIMARY KEY (origin, id)`. State fans out across many small partitions rather than concentrating into a fixed few.
+- **Task state lives on the promise row.** The `task_*` columns sit in `promises`, so acquiring, fencing, or completing a task is a single-row operation.
+- **`promise_timeouts`, `task_timeouts`, `schedule_timeouts`** — keyed `PRIMARY KEY ((bucket, shard), timeout_at, …)`. Durable timers are bucketed by time and sharded, so an expiry scan is a clustering-key range read inside one partition.
+- **`schedules`** — recurring schedules, keyed the same way as promises.
+- **`workers`** — worker liveness, with a row TTL set by `WORKER_TTL`.
+
+There is no per-execution event log. State is the current row, not a sequence to replay, so nothing accumulates without bound and a long-running execution has no history-size ceiling.
+
+`TIMEOUTS_SHARDS` sets how many partitions the timeout scan spreads across. `TIMEOUTS_BUCKET_WIDTH` and `TIMEOUTS_BUCKET_LOOKBACK` together decide how much of the recent past each tick re-scans.
+
+<Callout type="caution" title="Fix TIMEOUTS_SHARDS before data lands">
+The shard is a hash of the record id, baked into the partition key of every timeout row. Every instance must use the same value, and changing it on a populated cluster strands existing rows in partitions no server scans — durable timers stop firing, silently.
+</Callout>
+
+## How it's tested
+
+The repository ships three test suites, all runnable from a clone under Docker Compose:
+
+```shell title="Diff tests — every step checked against an in-memory oracle"
+docker compose -f docker-compose.test.yml -p resonate-diff --profile diff \
+  up --build --abort-on-container-exit --exit-code-from tester-diff
+```
+
+```shell title="Kill tests — crash mid-transaction, assert invariants on what survives"
+docker compose -f docker-compose.test.yml -p resonate-kill --profile kill \
+  up --build --abort-on-container-exit --exit-code-from tester-kill
+```
+
+```shell title="Linearizability — concurrent interleavings, model-checked"
+docker compose -f docker-compose.test.yml -p resonate-linz --profile linearizability \
+  up --build --abort-on-container-exit --exit-code-from tester-linearizability
+```
+
+The kill tests abort an operation at every cooperative yield checkpoint — reads, cursor scans, non-transactional pre-inserts, lightweight-transaction commits, rollbacks, cleanups and batches — a thousand iterations by default, and check named state invariants on whatever is left. Nine of those invariants describe *accepted* orphans: states that are harmless after an abort, because the recovery design writes a timeout entry before the transaction that commits the state change. An abort in that gap leaves a stale entry to be cleaned up rather than losing state.
+
+Linearizability is checked with the [Porcupine](https://github.com/anishathalye/porcupine) model checker against the same oracle the diff tests use.
+
+## What's not there yet
+
+Read this section before you plan a production rollout.
+
+- **No production reference deployments.** Nobody is running this in production yet.
+- **Search is unimplemented.** `task.search` returns `501`. `promise.search` and `schedule.search` aren't recognized kinds at all, so they come back as `400` with `unknown kind: <kind>` rather than `501` — worth knowing if you plan to probe for capability. Anything that depends on querying promises by tag will not work.
+- **No authentication.** An auth hook exists in the code, but nothing wires it up and its check is an unimplemented stub, so every request reaching the server is served. Put it behind your own network controls.
+- **Behavior under database-layer failure is an open question.** A repair path exists in the code but is not wired into the running server, so a lost node or a partition is not something the current tests characterize.
+- **Known bug:** deleting a schedule can leave stale rows in `schedule_timeouts`.
+- **The schema is not settled.** This is a young repository. Check open pull requests before you build tooling against the column layout above.
+- **Source-available under BUSL-1.1, not Apache 2.0.** All non-production use is free, including modifying and redistributing. There is no additional production use grant, so production use requires a commercial license from Resonate HQ until the Change Date (2030-07-01), when each released version converts to Apache 2.0. Contact `licensing@resonatehq.io`.
+
+## See also
+
+- [Server providers](/deploy/providers) — what a provider is and what else ships
+- [Resonate on NATS](/deploy/providers/nats) — the other provider
+- [Durable Execution on ScyllaDB](https://www.resonatehq.io/providers/scylladb) — the overview page
+- [resonatehq/resonate-on-scylladb](https://github.com/resonatehq/resonate-on-scylladb) — the source
