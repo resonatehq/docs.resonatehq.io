@@ -1,0 +1,168 @@
+---
+title: Resonate on NATS
+description: Run the Resonate protocol on NATS JetStream — setup, partitioning, the SDK client, and what to know before production.
+keywords:
+  - deploy
+  - providers
+  - nats
+  - jetstream
+---
+
+## TL;DR
+
+[`resonate-on-nats`](https://github.com/resonatehq/resonate-on-nats) is a Go server that implements the Resonate protocol on NATS JetStream. JetStream KV holds the state and NATS carries the messages, so the provider needs no separate database.
+
+Unlike the [ScyllaDB provider](/deploy/providers/scylladb), this one is **not drop-in**. It has no HTTP interface at all — workers reach it over NATS using the `NatsNetwork` client built into the TypeScript and Python SDKs. Your workflow code is unchanged; the client wiring is not.
+
+It is source-available under BUSL-1.1, not Apache 2.0, and it is early. Read [What's not there yet](#whats-not-there-yet) before you plan a production rollout.
+
+## When to use it
+
+Use it when NATS is already your backbone and you would rather not add a database and an HTTP service beside it. If you aren't already running NATS, run the [core server](/deploy/run-server) on Postgres instead.
+
+If you want durable execution without changing how your workers connect, the ScyllaDB provider speaks the same HTTP/JSON protocol as the core server and is the smaller change.
+
+## Requirements
+
+- **nats-server 2.14.x with JetStream enabled.** Durable timers use JetStream's built-in message schedules, and schedules carry cron-style recurrence, which landed in 2.14. The repository builds against 2.14.2, so treat 2.14 as the supported floor.
+- Go 1.25+ to build from source.
+
+## Run it
+
+Build the binary:
+
+```shell
+git clone https://github.com/resonatehq/resonate-on-nats
+cd resonate-on-nats
+go build -o resonate-on-nats .
+```
+
+For local development, `dev` starts an embedded NATS server with a fresh store in a temporary directory, discarded on exit:
+
+```shell
+./resonate-on-nats dev
+```
+
+Against a NATS deployment you already operate:
+
+```shell
+./resonate-on-nats serve --nats-url nats://localhost:4222
+```
+
+### Flags
+
+| Flag | `serve` default | `dev` default | Purpose |
+|---|---|---|---|
+| `--nats-url` | `nats://127.0.0.1:4222` | — | NATS server to connect to |
+| `--partitions` | `16` | `1` | Total partition count for the stream |
+| `--subscribe` | all | all | Partition indices this instance handles |
+| `--debug` | `false` | `true` | Enables deterministic testing endpoints |
+| `--port` | — | `4222` | Port for the embedded NATS server |
+| `--log-level` | `info` | `info` | Global flag — `debug`, `info`, `warn`, `error` |
+
+`--debug` exposes endpoints that let tests drive logical time (`debug.start`, `debug.stop`, `debug.reset`, `debug.tick`, `debug.snap`). It defaults **on** in `dev` and **off** in `serve`.
+
+<Callout type="caution" title="Debug mode is a remote wipe switch">
+`debug.reset` purges the entire stream and every key in the KV bucket, and `debug.start` halts outbox delivery server-wide. Since the server has no authentication of its own, anyone who can publish to the request subject can invoke both. Never enable `--debug` on `serve`.
+</Callout>
+
+## Partitioning across instances
+
+State lives in JetStream KV, partitioned across instances. Each instance subscribes to a subset of partitions and processes messages **serially per origin**, using optimistic concurrency for conflict-free multi-instance deployments.
+
+To run several instances, give them all the same `--partitions` and split the work with `--subscribe`:
+
+```shell
+./resonate-on-nats serve --partitions 16 --subscribe 0,1,2,3
+./resonate-on-nats serve --partitions 16 --subscribe 4,5,6,7
+```
+
+Every instance must agree on `--partitions`. Treat it the way you'd treat any partition count: pick it with room to grow, because changing it later means resharding.
+
+## Connecting workers
+
+Workers connect over NATS, not HTTP, using `NatsNetwork` — which ships inside the main SDKs rather than as a separate package.
+
+### TypeScript
+
+Requires `@resonatehq/sdk` and the `@nats-io/transport-node` peer dependency.
+
+```typescript title="worker.ts"
+import { Resonate } from "@resonatehq/sdk";
+import { NatsNetwork } from "@resonatehq/sdk/nats";
+import { connect } from "@nats-io/transport-node";
+
+const conn = await connect({ servers: "nats://localhost:4222" });
+
+const resonate = new Resonate({
+  network: new NatsNetwork({ conn }),
+});
+```
+
+### Python
+
+Requires the `nats` extra, which pulls in `nats-py`:
+
+```shell
+uv add "resonate-sdk[nats]"
+```
+
+```python title="worker.py"
+import asyncio
+
+import nats
+from resonate.resonate import Resonate
+from resonate.network.nats import NatsNetwork
+
+
+async def main():
+    conn = await nats.connect("nats://localhost:4222")
+    resonate = Resonate(network=NatsNetwork(conn))
+    ...
+
+
+asyncio.run(main())
+```
+
+`Resonate` is imported from `resonate.resonate`, not the package root, and it has to be constructed inside a running event loop — its `__init__` schedules background tasks.
+
+<Callout type="caution" title="Don't pass a URL alongside the network">
+In the Python SDK, network selection resolves `url` before `network` before the `RESONATE_URL` environment variable. If you pass a `url` **and** a `network`, the URL wins and your `NatsNetwork` is silently ignored. Pass one or the other.
+</Callout>
+
+### Other languages
+
+`NatsNetwork` exists in the TypeScript and Python SDKs only. The Go, Rust, and Java SDKs have no NATS support, so a team on those languages can't use this provider today.
+
+## Subjects and addressing
+
+Worth knowing if you run a NATS deployment with subject-level permissions.
+
+- Requests go to `resonate.requests.{base64url(origin)}`, where the encoding is unpadded base64url. The request carries a `Resonate-Reply-To` header naming a private inbox, and the reply comes back on that inbox — the server ignores the NATS reply subject.
+- Workers receive on two subjects: a unicast `resonate.recv.{group}.{pid}` and an anycast `resonate.recv.{group}`, queue-subscribed on the group so exactly one member gets each anycast message.
+- Task addresses use the `nats://` scheme; the server maps `nats://{subject}` back to a subject.
+
+Both prefixes are configurable per client (`serverTopic` / `server_topic` and `workerTopic` / `worker_topic`), and the request timeout defaults to 30 seconds.
+
+<Callout type="info" title="Keep custom group and pid values lowercase">
+Subjects are case-sensitive end to end, and nothing normalizes case for you, so a publisher and a subscriber that disagree on capitalization will not find each other. Default pids are lowercase hex, so staying lowercase keeps hand-set values consistent with them.
+</Callout>
+
+## What's not there yet
+
+- **No production reference deployments.** Nobody is running this in production yet.
+- **No search.** Neither `promise.search` nor `task.search` is a recognized kind, so both come back as `400 bad request`. Unlike the ScyllaDB provider there is no `501` stub to probe for. Anything that depends on querying promises by tag will not work.
+- **Lighter test coverage than the ScyllaDB provider.** There are unit tests over the store, schedules, and tasks, but no oracle-diff, crash, or linearizability suites of the kind [that provider ships](/deploy/providers/scylladb#how-its-tested).
+- **No authentication.** The server has no auth layer of its own. Anything protecting it has to come from your NATS deployment — accounts, users, and subject permissions.
+- **No HTTP interface.** There is no REST surface, no health endpoint, and no way to point an HTTP-based SDK client at it.
+- **TypeScript and Python only.** `NatsNetwork` ships in those two SDKs. The Go, Rust, and Java SDKs have no NATS client, so a team on those languages cannot use this provider today.
+- **The layout is not settled.** This is a young repository, and the subject scheme and partition model can still change. Check open pull requests before you build tooling against them.
+- **Source-available under BUSL-1.1, not Apache 2.0.** All non-production use is free, including modifying and redistributing. There is no additional production use grant, so production use requires a commercial license from Resonate HQ until the Change Date (2030-07-01), when each released version converts to Apache 2.0. Contact `licensing@resonatehq.io`.
+
+## See also
+
+- [Server providers](/deploy/providers) — what a provider is and what else ships
+- [Resonate on ScyllaDB](/deploy/providers/scylladb) — the other provider
+- [Durable Execution on NATS](https://www.resonatehq.io/providers/nats) — the overview page
+- [resonatehq/resonate-on-nats](https://github.com/resonatehq/resonate-on-nats) — the source
+- [resonatehq/nats-demos](https://github.com/resonatehq/nats-demos) — runnable TypeScript and Python examples

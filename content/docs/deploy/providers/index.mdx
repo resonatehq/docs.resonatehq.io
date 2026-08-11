@@ -1,0 +1,44 @@
+---
+title: Server providers
+description: Run the Resonate protocol on infrastructure you already operate — the core server, or a provider implementation built for a specific platform.
+keywords:
+  - deploy
+  - providers
+  - server
+  - scylladb
+  - nats
+---
+
+## TL;DR
+
+Durable execution is a protocol, not a product. Any platform that gives you durable storage and an atomic compare-and-swap can implement the Resonate server protocol. A **provider** is one of those implementations: a separate server binary built for a specific platform, not a storage flag on the core server. Resonate builds and maintains the two below, independently of the platforms they run on.
+
+Most teams should run the core server. Reach for a provider when the platform it targets is one you already operate and would rather not add a database beside.
+
+## What ships today
+
+| Provider | Storage | Transport | License | Drop-in? |
+|---|---|---|---|---|
+| [Core server](/deploy/run-server) | Postgres, MySQL, SQLite | HTTP | Apache 2.0 | — |
+| [ScyllaDB](/deploy/providers/scylladb) | ScyllaDB (CQL) | HTTP | Source-available (BUSL-1.1) | Yes |
+| [NATS](/deploy/providers/nats) | NATS JetStream | NATS | Source-available (BUSL-1.1) | No |
+
+"Drop-in" means the provider speaks the same HTTP/JSON protocol the core server speaks, so your SDK and your application code do not change. Workers point at a different `RESONATE_URL`.
+
+The NATS provider is not drop-in. It replaces both storage *and* transport, so it has no HTTP interface at all and workers connect over NATS using the `NatsNetwork` client built into the SDK. Your workflow code is unchanged; the client wiring is not, and only the TypeScript and Python SDKs have that client today.
+
+## What a provider is not
+
+- **Not a plugin.** There is no adapter interface to register a new backend against the core server. A provider is an independent implementation of the published protocol.
+- **Not a configuration flag.** You do not get ScyllaDB by passing an option to `resonate serve`. You run a different binary.
+- **Not necessarily Apache 2.0.** The core server is Apache 2.0. The ScyllaDB and NATS providers are source-available under BUSL-1.1 — free for development, testing, and evaluation, with production use requiring a commercial license until each version's Change Date. Read the license in the repository before you plan a production rollout.
+
+## Maturity
+
+The core server is the reference implementation and the default recommendation. The providers are newer. Both implement the core of the protocol, but neither implements search, neither has server-side authentication, and neither has a production reference deployment yet. They are also not equally proven — the ScyllaDB provider ships oracle-diff, crash, and linearizability suites; the NATS provider has unit tests only.
+
+Each provider page has a "What's not there yet" section. Read it before you commit to one.
+
+## Building your own
+
+The protocol is public. If you want durable execution on a platform that isn't listed here, the [server specification](https://distributed-async-await.io/) is the contract to implement, and the existing providers are worked examples of what a complete implementation looks like.

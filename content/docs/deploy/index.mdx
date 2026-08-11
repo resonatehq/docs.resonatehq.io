@@ -84,6 +84,8 @@ Start the Resonate server with persistent storage:
 
 The server coordinates work for all your workers.
 
+Already run ScyllaDB or NATS and would rather not add a database beside it? Resonate publishes a separate server implementation of the protocol for each, source-available under BUSL-1.1. See [Server providers](/deploy/providers).
+
 ### 3. Deploy workers
 
 Workers execute your application code:
