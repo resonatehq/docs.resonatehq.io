@@ -71,7 +71,7 @@ go mod init countdown
 go get github.com/resonatehq/resonate-sdk-go@latest
 ```
 
-No semver tag is published yet — `@latest` resolves to the latest `main` commit. See the [Go SDK guide](/develop/go) for details.
+The `0.1.0` git tag lacks the `v` prefix Go's module resolver requires, so `@latest` resolves to a pseudo-version pinned to the latest `main` commit instead. See the [Go SDK guide](/develop/go) for details.
 
 </TabItem>
 
