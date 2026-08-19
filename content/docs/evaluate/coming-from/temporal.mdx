@@ -1443,8 +1443,9 @@ This belief drives many of the design decisions in Resonate, and has resulted in
 
 This smaller API surface and desire for simplicity have also resulted in a much smaller set of components.
 
-For example, Temporal SDKs have tens of thousands of lines of code needed to manage the complexity of their implementation.
-Resonate SDKs, on the other hand, have but a few hundred lines of code.
+For example, Temporal SDKs run to tens of thousands of lines of code to manage the complexity of their implementation — roughly 48,000 in TypeScript, 69,000 in Python, and 84,000 in Go.
+The Resonate SDKs are between about 6,000 and 14,000 lines depending on the language.
+(SDK source only, excluding tests and generated protobuf bindings, measured at the time of writing — clone the repos and check.)
 
 A Temporal Service is a complex system consisting of multiple individual components, each consisting of tens of thousands of lines of code, that need to be configured, deployed, and scaled independently.
 A Resonate Server, on the other hand, is a single binary that is easy to deploy. And the Resonate system can scale by just adding more Resonate Servers, each with an underlying database.
@@ -1452,8 +1453,11 @@ A Resonate Server, on the other hand, is a single binary that is easy to deploy.
 Additionally, Temporal exposes many complex APIs to the developer which they are required to use for failure detection, load balancing, and more.
 Resonate's belief in simplicity means that much of this complexity is pushed into the platform and automatically handled for you.
 
-For example, Temporal requires the developer to work with at least 4 different timeouts to detect and handle Activity Execution failures.
-It also requires the developer to manually develop heartbeats in the Activity, and tune the performance of Workers.
-Whereas, Resonate exposes a single timeout to the developer for the resolution of the Durable Promise, and it automatically handles failure detection, heartbeating, and load balancing across Workers.
+For example, Temporal defines four separate Activity timeouts — schedule-to-close, start-to-close, schedule-to-start, and heartbeat.
+Only one of them is strictly required (either schedule-to-close or start-to-close), but each covers a different failure mode, so choosing the right combination is a decision you make per Activity.
+Long-running Activities that need failure detected before the timeout expires record heartbeats themselves, and Workers expose a set of concurrency and rate-limiting knobs to tune.
+
+Resonate exposes a single timeout to the developer — the resolution deadline of the Durable Promise.
+Failure detection, heartbeating, and load balancing across Workers are handled by the platform: the SDK heartbeats the task lease, the server notices a dead Worker, and the task is re-dispatched without any application code.
 
 Ultimately, as a developer, you will find many areas where Resonate has chosen to promote a specific model for the sake of simplicity, and to avoid indulging in what we believe to be unnecessary complexity.
