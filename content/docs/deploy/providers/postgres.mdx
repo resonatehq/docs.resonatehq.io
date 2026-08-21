@@ -1,0 +1,151 @@
+---
+title: Resonate on Postgres
+description: Run the Resonate protocol inside Postgres itself — one SQL file, no server process, with pg_cron driving the timers.
+keywords:
+  - deploy
+  - providers
+  - postgres
+  - supabase
+  - pg_cron
+---
+
+## TL;DR
+
+[`resonate-pg`](https://github.com/resonatehq/resonate-pg) implements the Resonate protocol as a schema of stored procedures. You load one SQL file into a Postgres 16+ database and the database becomes the server: storage, queue, and timer, with `pg_cron` driving all three. There is no process to deploy, no port to expose, and no binary to keep running.
+
+This is not the same thing as running the [core server](/deploy/run-server) on Postgres. There, you run a binary and Postgres is where it keeps its state. Here, there is no binary — the protocol *is* the database.
+
+It is **not drop-in**, for the opposite reason the [NATS provider](/deploy/providers/nats) isn't. NATS has no HTTP interface because it replaced the transport; this has no HTTP interface because there is no server process to host one. Workers call `resonate.resonate_rpc()` over a database connection, which needs a client that speaks SQL. Only the TypeScript SDK has one today.
+
+It is Apache 2.0, unlike the other two providers. It is also the youngest of the three — read [What's not there yet](#whats-not-there-yet) before you plan a production rollout.
+
+## When to use it
+
+Use it when you already run Postgres and want durable execution without deploying anything beside it. That is a real category: a Supabase project, a managed Postgres instance with no accompanying compute, a small service where one more process to operate is one too many.
+
+If you are willing to run a process, run the [core server](/deploy/run-server) on Postgres instead. It is the reference implementation, it has the deepest production track record, and every SDK can talk to it. Reach for this provider when *no process* is the requirement, not when Postgres is.
+
+If you are on Python, Go, Rust, or Java, this provider is not usable today — see [Connecting workers](#connecting-workers).
+
+## Requirements
+
+- **Postgres 16+.**
+- **`pg_cron`** — required. It is the sole timer driver. Without it, timers never fire: durable sleeps never wake, task timeouts never expire, and nothing tells you at runtime.
+- **`pg_net` or `pgsql_http`** — optional, and either one will do. These enable HTTP push delivery, which is how the database reaches out to your workers. Without one of them there is no push, and workers have to poll.
+
+## Run it
+
+Install the extensions, then apply the schema:
+
+```shell
+psql -d yourdb -c "create extension if not exists pg_cron; create extension if not exists pg_net;"
+psql -d yourdb -f resonate.sql
+```
+
+Applying the file also schedules the timer job — it registers `resonate_process_timeouts` with `pg_cron` to run every five seconds.
+
+<Callout type="caution" title="A missing pg_cron is a warning, not an error">
+If `pg_cron` isn't available, the install still succeeds. It raises a warning and leaves the timer unscheduled, which means promises are created and settled normally while every durable sleep hangs forever. Check for the `resonate: pg_cron enabled` notice in the install output, and confirm the job exists in `cron.job` before you trust a timer.
+
+Scheduling also degrades quietly. The installer prefers `cron.schedule_in_database` at a five-second interval and falls back through plain `cron.schedule` to a once-a-minute schedule if the shorter interval is refused. A minute-granularity fallback still works, but timer resolution drops accordingly.
+</Callout>
+
+### Supabase quickstart
+
+Supabase is the shortest path to a running instance, because both extensions are available and the whole install goes over the Management API with no connection string:
+
+```shell
+supabase projects create resonate-countdown
+supabase link --project-ref <project-ref>
+supabase db query --linked "create extension if not exists pg_cron; create extension if not exists pg_net;"
+supabase db query --linked -f resonate.sql
+```
+
+Workers then run as Edge Functions. The repository's [`example/countdown`](https://github.com/resonatehq/resonate-pg/tree/main/example/countdown) goes from an empty project to a running durable workflow in about five minutes.
+
+Supabase is a convenient host, not a boundary — `resonate-pg` is plain Postgres and runs anywhere Postgres 16+ and `pg_cron` do.
+
+## Connecting workers
+
+Workers do not point at a `RESONATE_URL`. They open a database connection and reach the protocol through a single function:
+
+```sql
+SELECT resonate.resonate_rpc('{"kind":"promise.get","head":{},"data":{"id":"invoke:foo"}}');
+```
+
+### TypeScript
+
+The [`@resonatehq/supabase`](https://jsr.io/@resonatehq/supabase) package on JSR wraps `@resonatehq/sdk` with a `Network` implementation that speaks `resonate_rpc` over a Postgres connection, plus an HTTP handler for hosting the worker in an Edge Function. Despite the name it is a Postgres client, not a Supabase-only one.
+
+The package is pre-1.0. Expect its surface to move.
+
+### Other languages
+
+There is no `resonate_rpc` client in the Python, Go, Rust, or Java SDKs, so teams on those languages cannot use this provider today. Each is tracked as an open issue on the repository.
+
+<Callout type="caution" title="The repository's SDK list is broader than what works">
+`resonate-pg`'s README links all five Resonate SDKs under "SDK" without qualification. Only TypeScript has a client that can reach `resonate_rpc`. Treat that list as the SDKs Resonate publishes, not the SDKs this provider supports.
+</Callout>
+
+## Starting a workflow
+
+Invocations start from SQL, and delivery is push-based — the database calls out to the address you give it:
+
+```sql
+SELECT resonate.invoke(
+  'countdown-1',                                    -- promise id
+  'countdown',                                      -- registered function name
+  '[3]'::jsonb,                                     -- arguments
+  'https://<project-ref>.functions.supabase.co/countdown');  -- worker address
+```
+
+The last two parameters, `version` and `timeout`, default to `1` and **24 hours from now**. A workflow still running when its timeout lands is timed out, so pass an explicit `timeout` for anything long-lived — a multi-day sleep will otherwise expire mid-run.
+
+Push delivery goes through `pg_net`'s `net.http_post` where available, falling back to `pgsql_http`. A failed push is logged as a warning rather than raised, so the workflow does not fail — but a persistently unreachable worker shows up in the Postgres log, not in your application.
+
+## How state is stored
+
+Seven tables in a `resonate` schema: `promises`, `tasks`, `task_resumes`, `callbacks`, `listeners`, `schedules`, and `outbox`. Every protocol action is a stored procedure over them, dispatched by kind through `resonate.resonate_rpc()`.
+
+The outbox is the delivery queue. `pg_cron` calls `resonate.process_timeouts()` on its schedule, which expires what is due and enqueues what is now runnable; a trigger on the outbox performs the HTTP push.
+
+Search is implemented — `promise.search`, `task.search`, and `schedule.search` all return results rather than an error, which is not true of the other two providers.
+
+## Access control
+
+Authentication is Postgres's, not the server's, and the schema is set up for that rather than left open. The install revokes all table, sequence, and function privileges from `PUBLIC`, creates a `resonate_worker` role, and grants it usage on the schema plus execute on the six functions a worker actually needs. `resonate_rpc` and the two dequeue functions are `SECURITY DEFINER`, and every function in the schema has its `search_path` pinned.
+
+Give workers the `resonate_worker` role rather than a superuser connection. Anyone who can execute `resonate_rpc` can drive the whole protocol, so the database connection is the security boundary.
+
+## How it's tested
+
+`resonate-pg` has **no test suite in the repository**. What it ships is `test/conformance.py` — a shim that exposes `resonate_rpc` over HTTP so an external, model-based conformance harness can drive the database as if it were a Resonate server. Running it means standing up that harness separately.
+
+That is materially less than either sibling: there are no unit tests of the kind the NATS provider has, and none of the oracle-diff, crash, or linearizability suites [the ScyllaDB provider ships](/deploy/providers/scylladb#how-its-tested).
+
+## What's not there yet
+
+- **Open correctness issues against task lifecycle.** The tracker carries several confirmed bugs in task leasing and settlement — a task that can be halted after it reports fulfilled, a lease claimed by `task.create` that `task.acquire` then refuses as timed out, timeout handlers redispatching workflows that are already finished, and a settlement cascade that can wake an awaiter whose own promise is already dead. Read the [open issues](https://github.com/resonatehq/resonate-pg/issues) before you commit to this provider.
+- **No test suite in the repository.** See [How it's tested](#how-its-tested).
+- **No production reference deployments.** Nobody is running this in production yet.
+- **TypeScript only.** No other SDK has a client that can reach `resonate_rpc`.
+- **The worker client is pre-1.0.** `@resonatehq/supabase` has not reached a stable release.
+- **Timers depend entirely on `pg_cron`.** There is no in-database fallback. If the cron job is unscheduled, paused, or lost in a restore, durable sleeps stop waking and nothing surfaces the failure.
+- **Retention is yours to run.** Completed workflows stay in the database until you delete them, and ids are idempotent only while their row exists — so a garbage-collection horizon shorter than your retry window turns a duplicate submission into a second execution. Schedule it deliberately:
+
+  ```sql
+  -- daily at 03:00: delete workflows finished more than 7 days ago
+  select cron.schedule('resonate-gc', '0 3 * * *',
+    $$select resonate.gc((extract(epoch from now())*1000 - 7*86400000)::bigint)$$);
+  ```
+
+- **No horizontal story beyond Postgres's own.** Throughput, connection limits, and failover are whatever your Postgres deployment provides. There is nothing to scale independently of the database.
+
+## See also
+
+- [Server providers](/deploy/providers) — what a provider is and what else ships
+- [Run the core server](/deploy/run-server) — the reference implementation, including on Postgres
+- [Resonate on NATS](/deploy/providers/nats) — the other non-drop-in provider
+- [Resonate on ScyllaDB](/deploy/providers/scylladb) — the drop-in provider
+- [Durable Execution on Postgres](https://www.resonatehq.io/providers/postgres) — the overview page
+- [resonatehq/resonate-pg](https://github.com/resonatehq/resonate-pg) — the source

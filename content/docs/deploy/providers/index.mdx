@@ -7,11 +7,12 @@ keywords:
   - server
   - scylladb
   - nats
+  - postgres
 ---
 
 ## TL;DR
 
-Durable execution is a protocol, not a product. Any platform that gives you durable storage and an atomic compare-and-swap can implement the Resonate server protocol. A **provider** is one of those implementations: a separate server binary built for a specific platform, not a storage flag on the core server. Resonate builds and maintains the two below, independently of the platforms they run on.
+Durable execution is a protocol, not a product. Any platform that gives you durable storage and an atomic compare-and-swap can implement the Resonate server protocol. A **provider** is one of those implementations: a separate artifact built for a specific platform — its own server binary, or in one case a SQL file you load into the database — not a storage flag on the core server. Resonate builds and maintains the three below, independently of the platforms they run on.
 
 Most teams should run the core server. Reach for a provider when the platform it targets is one you already operate and would rather not add a database beside.
 
@@ -22,20 +23,33 @@ Most teams should run the core server. Reach for a provider when the platform it
 | [Core server](/deploy/run-server) | Postgres, MySQL, SQLite | HTTP | Apache 2.0 | — |
 | [ScyllaDB](/deploy/providers/scylladb) | ScyllaDB (CQL) | HTTP | Source-available (BUSL-1.1) | Yes |
 | [NATS](/deploy/providers/nats) | NATS JetStream | NATS | Source-available (BUSL-1.1) | No |
+| [Postgres](/deploy/providers/postgres) | Postgres | HTTP push (`pg_net`) | Apache 2.0 | No |
 
 "Drop-in" means the provider speaks the same HTTP/JSON protocol the core server speaks, so your SDK and your application code do not change. Workers point at a different `RESONATE_URL`.
 
 The NATS provider is not drop-in. It replaces both storage *and* transport, so it has no HTTP interface at all and workers connect over NATS using the `NatsNetwork` client built into the SDK. Your workflow code is unchanged; the client wiring is not, and only the TypeScript and Python SDKs have that client today.
 
+The Postgres provider is not drop-in either, for a different reason. There is no server process to point a URL at — workers reach the protocol by calling a function inside the database, which needs a client that speaks SQL rather than HTTP. Only the TypeScript SDK has one today.
+
+<Callout type="info" title="Postgres appears twice, and the difference matters">
+The core server *supports* Postgres: you run a binary, and Postgres is where it keeps its state. The Postgres provider *is* Postgres: there is no binary at all. Storage, queue, and timer are the database itself, with `pg_cron` driving all three. If you want a Resonate server that happens to store data in Postgres, run the core server. If you want durable execution with no process to deploy beside your database, read on.
+</Callout>
+
 ## What a provider is not
 
 - **Not a plugin.** There is no adapter interface to register a new backend against the core server. A provider is an independent implementation of the published protocol.
-- **Not a configuration flag.** You do not get ScyllaDB by passing an option to `resonate serve`. You run a different binary.
-- **Not necessarily Apache 2.0.** The core server is Apache 2.0. The ScyllaDB and NATS providers are source-available under BUSL-1.1 — free for development, testing, and evaluation, with production use requiring a commercial license until each version's Change Date. Read the license in the repository before you plan a production rollout.
+- **Not a configuration flag.** You do not get ScyllaDB by passing an option to `resonate serve`. You run a different binary. You do not get the Postgres provider by pointing `resonate serve` at a Postgres database — that is the core server using Postgres for storage, which is a different thing.
+- **Licensing varies.** The core server and the Postgres provider are Apache 2.0. The ScyllaDB and NATS providers are source-available under BUSL-1.1 — free for development, testing, and evaluation, with production use requiring a commercial license until each version's Change Date. Read the license in the repository before you plan a production rollout.
 
 ## Maturity
 
-The core server is the reference implementation and the default recommendation. The providers are newer. Both implement the core of the protocol, but neither implements search, neither has server-side authentication, and neither has a production reference deployment yet. They are also not equally proven — the ScyllaDB provider ships oracle-diff, crash, and linearizability suites; the NATS provider has unit tests only.
+The core server is the reference implementation and the default recommendation. The providers are newer, and they are not equally proven.
+
+- **ScyllaDB** ships oracle-diff, crash, and linearizability suites — the deepest test coverage of the three.
+- **NATS** has unit tests over the store, schedules, and tasks, but none of those suites.
+- **Postgres** has no test suite in the repository at all. What it ships is a shim that lets an external conformance harness drive the database, and there are open correctness issues against task leasing and settlement that the tracker records honestly.
+
+None of the three has a production reference deployment yet. Neither ScyllaDB nor NATS implements search; the Postgres provider does. Server-side authentication is absent from ScyllaDB and NATS, while the Postgres provider inherits Postgres's own — a dedicated role and an explicit grant surface.
 
 Each provider page has a "What's not there yet" section. Read it before you commit to one.
 
