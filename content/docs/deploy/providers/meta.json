@@ -1,4 +1,4 @@
 {
   "title": "Server providers",
-  "pages": ["scylladb", "nats"]
+  "pages": ["scylladb", "nats", "postgres"]
 }
