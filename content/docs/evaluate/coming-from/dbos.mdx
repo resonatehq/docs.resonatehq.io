@@ -223,7 +223,7 @@ Resonate promotes a procedural programming model that lets you compose functions
 async def factorial(ctx: Context, n: int) -> int:
     if n <= 1:
         return 1
-    r = await ctx.options(target="factorial-workers").rpc("factorial", n - 1)
+    r = await ctx.options(target="factorial-worker").rpc("factorial", n - 1)
     return n * r
 
 
@@ -638,13 +638,20 @@ def dispatch_order_workflow(order_id):
         update_order_progress(order_id)
 ```
 
-```python title="Resonate — example-durable-sleep-py/worker.py"
+```python title="Resonate — durable sleep"
+from datetime import timedelta
+
+
 @resonate.register
 async def sleeping_workflow(ctx: Context, wf_id: str, secs: float) -> str:
     print(f"Workflow {wf_id} starting, will sleep for {secs} seconds.")
     await ctx.sleep(timedelta(seconds=secs))    # timedelta, not a bare number
     return f"Workflow {wf_id} completed after sleeping for {secs} seconds."
 ```
+
+<Callout type="caution" title="The linked example passes a bare float">
+`Context.sleep` is typed `sleep(self, duration: timedelta)` on `resonate-sdk` 0.7.4. `example-durable-sleep-py/worker.py` still calls `ctx.sleep(secs)` with a float — the sample above is the correct form, and the example repository needs the same fix.
+</Callout>
 
 <SeeItInAction repo="example-durable-sleep-py" />
 
@@ -878,7 +885,9 @@ async def foo(ctx: Context, workflow_id: str) -> str:
 # gateway.py — resolve from anywhere by promise id
 from resonate.types import Value
 
-await resonate.promises.resolve(promise_id, Value(data=data))
+
+async def approve(promise_id: str, data: str) -> None:
+    await resonate.promises.resolve(promise_id, Value(data=data))
 ```
 
 </TabItem>
@@ -1038,7 +1047,11 @@ def checkout_workflow():
 ```
 
 ```python title="Resonate — example-money-transfer-py/main.py"
-async def transfer_money(ctx: Context, transfer_id, source, target, amount, *, simulate_credit_failure=False):
+from resonate.retry import Never
+
+
+async def transfer_money(ctx: Context, source, target, amount, *, simulate_credit_failure=False):
+    transfer_id = ctx.info.id                    # the workflow id is the transfer id
     await ctx.run(apply_entry, f"{transfer_id}-debit", source, -amount, "debit")
     try:
         await ctx.options(retry_policy=Never()).run(

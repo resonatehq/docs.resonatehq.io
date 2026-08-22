@@ -775,7 +775,7 @@ func sleepingWorkflow(ctx *resonate.Context, args SleepArgs) (string, error) {
 
 Start many units of work in parallel, then join all results. In Temporal you spawn activities (or children) without awaiting, then await them together. Resonate is the same shape: start each with a non-blocking invocation, then await each promise.
 
-<Callout type="info" title="The only per-SDK wrinkle">
+<Callout type="info" title="Spawning differs per SDK">
 The non-blocking spawn step — TS `ctx.beginRun`, Rust `.spawn()`, Go `ctx.RPC` — each returns a future immediately; you await them after all are started. Python needs no separate spawn call: `ctx.run`/`ctx.rpc` already return a future the moment they're called, so fanning out is just calling several before awaiting any of them.
 </Callout>
 
@@ -909,7 +909,11 @@ async def workflow_compensation(self):
 ```
 
 ```python title="Resonate — example-money-transfer-py/main.py"
-async def transfer_money(ctx: Context, transfer_id, source, target, amount, *, simulate_credit_failure=False):
+from resonate.retry import Never
+
+
+async def transfer_money(ctx: Context, source, target, amount, *, simulate_credit_failure=False):
+    transfer_id = ctx.info.id                    # the workflow id is the transfer id
     await ctx.run(apply_entry, f"{transfer_id}-debit", source, -amount, "debit")
     try:
         await ctx.options(retry_policy=Never()).run(
