@@ -72,10 +72,10 @@ def baz(_: Context, greetee: str) -> str:
     return f"Hello {greetee} from baz!"
 
 @resonate.register
-def foo(ctx: Context, greetee: str) -> Generator[Any, Any, str]:
+async def foo(ctx: Context, greetee: str) -> str:
     foo_greeting = f"Hello {greetee} from foo!"
-    bar_greeting = yield ctx.run(bar, greetee=greetee)
-    baz_greeting = yield ctx.run(baz, greetee=greetee)
+    bar_greeting = await ctx.run(bar, greetee=greetee)
+    baz_greeting = await ctx.run(baz, greetee=greetee)
     greeting = f"{foo_greeting} {bar_greeting} {baz_greeting}"
     return greeting
 ```
@@ -220,15 +220,16 @@ Resonate promotes a procedural programming model that lets you compose functions
 
 ```python
 @resonate.register
-def factorial(ctx: Context, n: int) -> int:
+async def factorial(ctx: Context, n: int) -> int:
     if n <= 1:
         return 1
-    r = yield ctx.rpc("factorial", n - 1).options(target="poll://any@factorial-worker", id=f"factorial-{n-1}")
+    r = await ctx.options(target="factorial-worker").rpc("factorial", n - 1)
     return n * r
 
 
-def main():
-    result = factorial.run("factorial-5", n=5)
+async def main():
+    handle = resonate.run("factorial-5", factorial, n=5)
+    result = await handle.result()
     print(result)
 ```
 
@@ -373,9 +374,9 @@ DBOS(config=config)
 **Resonate** — no database, no server:
 
 ```python
-from resonate import Resonate
+from resonate.resonate import Resonate
 
-resonate = Resonate.local()
+resonate = Resonate()  # no url, no RESONATE_URL/RESONATE_HOST env -> in-memory, no server
 
 # ...
 ```
@@ -496,12 +497,12 @@ def process_tasks(tasks):
 ```
 
 ```python title="Resonate — example-fan-out-fan-in-py/workflow.py"
-# fan-out: rfi() returns a handle immediately
-email_p = yield ctx.rfi(send_email, event).options(id=f"{ctx.id}.email")
-sms_p   = yield ctx.rfi(send_sms, event).options(id=f"{ctx.id}.sms")
+# fan-out: ctx.run returns a future immediately, without blocking
+email_f = ctx.run(send_email, event)
+sms_f = ctx.run(send_sms, event)
 # fan-in: await each
-email = yield email_p
-sms   = yield sms_p
+email = await email_f
+sms = await sms_f
 ```
 
 <SeeItInAction repo="example-fan-out-fan-in-py" />
@@ -613,7 +614,7 @@ for i, f := range futures {                              // fan-in
 DBOS workflows pause with `DBOS.sleep`, which records the wakeup time in the database so the sleep survives crashes and restarts. Resonate's equivalent is `ctx.sleep` — a single durable promise that survives crashes.
 
 <Callout type="caution" title="Watch the time units">
-Both systems vary the unit by SDK. DBOS: TypeScript `DBOS.sleep` takes **milliseconds**, Python `DBOS.sleep` takes **seconds**, Go `dbos.Sleep` takes a `time.Duration`. Resonate matches almost exactly: TypeScript **milliseconds**, Python **seconds**, Go and Rust a native `Duration`.
+Both systems vary the unit by SDK. DBOS: TypeScript `DBOS.sleep` takes **milliseconds**, Python `DBOS.sleep` takes **seconds**, Go `dbos.Sleep` takes a `time.Duration`. Resonate: TypeScript **milliseconds**, Python a `timedelta` (`ctx.sleep(timedelta(seconds=...))`), Go and Rust a native `Duration`.
 </Callout>
 
 <Tabs
@@ -637,13 +638,20 @@ def dispatch_order_workflow(order_id):
         update_order_progress(order_id)
 ```
 
-```python title="Resonate — example-durable-sleep-py/worker.py"
+```python title="Resonate — durable sleep"
+from datetime import timedelta
+
+
 @resonate.register
-def sleeping_workflow(ctx: Context, wf_id: str, secs: float):
+async def sleeping_workflow(ctx: Context, wf_id: str, secs: float) -> str:
     print(f"Workflow {wf_id} starting, will sleep for {secs} seconds.")
-    yield ctx.sleep(secs)                      # seconds (float)
+    await ctx.sleep(timedelta(seconds=secs))    # timedelta, not a bare number
     return f"Workflow {wf_id} completed after sleeping for {secs} seconds."
 ```
+
+<Callout type="caution" title="The linked example passes a bare float">
+`Context.sleep` is typed `sleep(self, duration: timedelta)` on `resonate-sdk` 0.7.4. `example-durable-sleep-py/worker.py` still calls `ctx.sleep(secs)` with a float — the sample above is the correct form, and the example repository needs the same fix.
+</Callout>
 
 <SeeItInAction repo="example-durable-sleep-py" />
 
@@ -859,21 +867,27 @@ DBOS.send(payment_id, payment_status, PAYMENT_STATUS)
 
 ```python title="Resonate — example-human-in-the-loop-py"
 # worker.py
-@resonate.register()
-def foo(ctx, workflow_id):
-    blocking_promise = yield ctx.promise()
-    yield ctx.lfc(send_email, blocking_promise.id)
+@resonate.register
+async def foo(ctx: Context, workflow_id: str) -> str:
+    blocking_promise = ctx.promise()
+    promise_id = await blocking_promise.id()
+    await ctx.run(send_email, promise_id)
     # ...
     # wait for the promise to be resolved
-    yield blocking_promise
+    data = await blocking_promise
     # ...
+    return data
 ```
 
 <SeeItInAction repo="example-human-in-the-loop-py" />
 
 ```python
 # gateway.py — resolve from anywhere by promise id
-resonate.promises.resolve(id=promise_id, ikey=promise_id)
+from resonate.types import Value
+
+
+async def approve(promise_id: str, data: str) -> None:
+    await resonate.promises.resolve(promise_id, Value(data=data))
 ```
 
 </TabItem>
@@ -1033,16 +1047,20 @@ def checkout_workflow():
 ```
 
 ```python title="Resonate — example-money-transfer-py/main.py"
-def transfer_money(ctx, transfer_id, source, target, amount, *, simulate_credit_failure=False):
-    yield ctx.run(apply_entry, f"{transfer_id}-debit", source, -amount, "debit")
+from resonate.retry import Never
+
+
+async def transfer_money(ctx: Context, source, target, amount, *, simulate_credit_failure=False):
+    transfer_id = ctx.info.id                    # the workflow id is the transfer id
+    await ctx.run(apply_entry, f"{transfer_id}-debit", source, -amount, "debit")
     try:
-        yield ctx.run(
+        await ctx.options(retry_policy=Never()).run(
             credit_target, f"{transfer_id}-credit", target, amount,
             fail=simulate_credit_failure,
-        ).options(retry_policy=Never())
+        )
     except Exception as err:
         # compensate inline
-        yield ctx.run(apply_entry, f"{transfer_id}-reversal", source, amount, "reversal")
+        await ctx.run(apply_entry, f"{transfer_id}-reversal", source, amount, "reversal")
         return {"transfer_id": transfer_id, "status": "compensated", "error": str(err)}
     return {"transfer_id": transfer_id, "status": "committed"}
 ```
@@ -1189,8 +1207,9 @@ Consider the following Resonate example.
 
 ```python
 # worker.py
-resonate = Resonate.remote(
-    group="workers"
+resonate = Resonate(
+    url="http://localhost:8001",
+    group="workers",
     # ...
 )
 ```
@@ -1199,13 +1218,15 @@ resonate = Resonate.remote(
 
 ```python
 # client.py
-resonate = Resonate.remote(
-    group="client"
+resonate = Resonate(
+    url="http://localhost:8001",
+    group="client",
 )
 
-def main():
+async def main():
     # ...
-    result = resonate.options(target="poll://any@workers").rpc(promise_id, "function_name", params)
+    handle = resonate.options(target="poll://any@workers").rpc(promise_id, "function_name", params)
+    result = await handle.result()
 ```
 
     </TabItem>

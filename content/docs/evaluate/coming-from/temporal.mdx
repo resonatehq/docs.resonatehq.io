@@ -79,8 +79,8 @@ def bar(_: Context, greetee: str) -> str:
     return f"Hello {greetee} from bar!"
 
 @resonate.register
-def foo(ctx: Context, greetee: str) -> Generator[Any, Any, str]:
-    bar_greeting = yield ctx.run(bar, greetee=greetee)
+async def foo(ctx: Context, greetee: str) -> str:
+    bar_greeting = await ctx.run(bar, greetee=greetee)
     return bar_greeting
 ```
 
@@ -230,15 +230,16 @@ How might you implement it in Temporal?
 
 ```python
 @resonate.register
-def factorial(ctx: Context, n: int) -> int:
+async def factorial(ctx: Context, n: int) -> int:
     if n <= 1:
         return 1
-    r = yield ctx.rpc("factorial", n - 1).options(target="poll://any@factorial-worker", id=f"factorial-{n-1}")
+    r = await ctx.options(target="factorial-workers").rpc("factorial", n - 1)
     return n * r
 
 
-def main():
-    result = factorial.run("factorial-5", n=5)
+async def main():
+    handle = resonate.run("factorial-5", factorial, n=5)
+    result = await handle.result()
     print(result)
 ```
 
@@ -369,9 +370,9 @@ Resonate offers a zero-dependency development experience, where a Worker (single
     <TabItem value="python">
 
 ```python
-from resonate import Resonate
+from resonate.resonate import Resonate
 
-resonate = Resonate.local()
+resonate = Resonate()  # no url, no RESONATE_URL/RESONATE_HOST env -> in-memory, no server
 
 #...
 ```
@@ -549,25 +550,26 @@ Then, you can resolve it from anywhere, optionally sending data into the functio
 
 ```python
 # worker.py
-@resonate.register()
-def foo(ctx: Context) -> None:
-    blocking_promise = yield ctx.promise()
-    # ...
+@resonate.register
+async def foo(ctx: Context) -> str:
+    blocking_promise = ctx.promise()
+    promise_id = await blocking_promise.id()
+    # ... hand promise_id to the human, e.g. via a leaf that emails/pages them ...
     # wait for the promise to be resolved
-    data = yield blocking_promise
+    data = await blocking_promise
     # ...
+    return data
 ```
 
 <SeeItInAction repo="example-human-in-the-loop-py" />
 
 ```python
 # client.py
-def main():
+from resonate.types import Value
+
+async def main():
     # ...
-    resonate.promises.resolve(
-        id=promise_id,
-        data=json.dumps(data)
-    )
+    await resonate.promises.resolve(promise_id, Value(data=data))
 ```
 
     </TabItem>
@@ -669,7 +671,7 @@ resonate promises resolve <promise-id> --value '{"headers": {}, "data": "\"appro
 Temporal's `sleep-for-days` shows a durable timer racing against a signal. Resonate's equivalent is `ctx.sleep` — a single durable promise that survives crashes.
 
 <Callout type="caution" title="Watch the time units">
-Temporal accepts human strings (`'30 days'`) or a `timedelta`. Resonate's units differ **per SDK**: TypeScript takes **milliseconds**, Python takes **seconds**, Go and Rust take a native `Duration`. Converting `'30 days'` for the TS SDK means `30 * 24 * 60 * 60 * 1000`.
+Temporal accepts human strings (`'30 days'`) or a `timedelta`. Resonate's units differ **per SDK**: TypeScript takes **milliseconds**, Python takes a `timedelta`, Go and Rust take a native `Duration`. Converting `'30 days'` for the TS SDK means `30 * 24 * 60 * 60 * 1000`.
 </Callout>
 
 <Tabs
@@ -692,8 +694,8 @@ await workflow.sleep(timedelta(days=30))   # timedelta
 
 ```python title="Resonate — example-durable-sleep-py/worker.py"
 @resonate.register
-def sleeping_workflow(ctx: Context, wf_id: str, secs: float):
-    yield ctx.sleep(secs)                   # seconds (float)
+async def sleeping_workflow(ctx: Context, wf_id: str, secs: float) -> str:
+    await ctx.sleep(timedelta(seconds=secs))    # timedelta, not a bare number
     return f"Workflow {wf_id} slept for {secs} seconds."
 ```
 
@@ -773,8 +775,8 @@ func sleepingWorkflow(ctx *resonate.Context, args SleepArgs) (string, error) {
 
 Start many units of work in parallel, then join all results. In Temporal you spawn activities (or children) without awaiting, then await them together. Resonate is the same shape: start each with a non-blocking invocation, then await each promise.
 
-<Callout type="info" title="The only per-SDK wrinkle">
-The non-blocking spawn primitive's name — TS `ctx.beginRun`, Python `ctx.rfi`, Rust `.spawn()`, Go `ctx.RPC` — each returns a future immediately; you await them after all are started.
+<Callout type="info" title="Spawning differs per SDK">
+The non-blocking spawn step — TS `ctx.beginRun`, Rust `.spawn()`, Go `ctx.RPC` — each returns a future immediately; you await them after all are started. Python needs no separate spawn call: `ctx.run`/`ctx.rpc` already return a future the moment they're called, so fanning out is just calling several before awaiting any of them.
 </Callout>
 
 <Tabs
@@ -799,12 +801,12 @@ results = await asyncio.gather(
 ```
 
 ```python title="Resonate — example-fan-out-fan-in-py/workflow.py"
-# fan-out: rfi() returns a handle immediately
-email_p = yield ctx.rfi(send_email, event).options(id=f"{ctx.id}.email")
-sms_p   = yield ctx.rfi(send_sms, event).options(id=f"{ctx.id}.sms")
+# fan-out: ctx.run returns a future immediately, without blocking
+email_f = ctx.run(send_email, event)
+sms_f = ctx.run(send_sms, event)
 # fan-in: await each
-email = yield email_p
-sms   = yield sms_p
+email = await email_f
+sms = await sms_f
 ```
 
 <SeeItInAction repo="example-fan-out-fan-in-py" />
@@ -907,16 +909,20 @@ async def workflow_compensation(self):
 ```
 
 ```python title="Resonate — example-money-transfer-py/main.py"
-def transfer_money(ctx, transfer_id, source, target, amount, *, simulate_credit_failure=False):
-    yield ctx.run(apply_entry, f"{transfer_id}-debit", source, -amount, "debit")
+from resonate.retry import Never
+
+
+async def transfer_money(ctx: Context, source, target, amount, *, simulate_credit_failure=False):
+    transfer_id = ctx.info.id                    # the workflow id is the transfer id
+    await ctx.run(apply_entry, f"{transfer_id}-debit", source, -amount, "debit")
     try:
-        yield ctx.run(
+        await ctx.options(retry_policy=Never()).run(
             credit_target, f"{transfer_id}-credit", target, amount,
             fail=simulate_credit_failure,
-        ).options(retry_policy=Never())
+        )
     except Exception as err:
         # compensate inline
-        yield ctx.run(apply_entry, f"{transfer_id}-reversal", source, amount, "reversal")
+        await ctx.run(apply_entry, f"{transfer_id}-reversal", source, amount, "reversal")
         return {"transfer_id": transfer_id, "status": "compensated", "error": str(err)}
     return {"transfer_id": transfer_id, "status": "committed"}
 ```
@@ -1148,7 +1154,7 @@ The Go SDK also has `ctx.Detached` for the unbounded case; the shipped example u
 <TabItem value="python">
 
 <Callout type="caution" title="No Resonate Python infinite-workflow example yet">
-`example-infinite-workflow-py` does not exist. Temporal's source is `samples-python/hello/hello_continue_as_new.py` (`workflow.continue_as_new(iteration + 1)`). The Resonate equivalent is a plain generator loop (`while … : yield ctx.run(...) ; yield ctx.sleep(...)`), with `ctx.detached(self, n + 1)` for the unbounded case — but until an example ships, treat this as a known gap.
+`example-infinite-workflow-py` does not exist. Temporal's source is `samples-python/hello/hello_continue_as_new.py` (`workflow.continue_as_new(iteration + 1)`). The Resonate equivalent is a plain `while` loop (`while … : await ctx.run(...) ; await ctx.sleep(...)`), with `ctx.detached("workflow_name", n + 1)` for the unbounded case (`detached` dispatches by registered name, not by function reference) — but until an example ships, treat this as a known gap.
 </Callout>
 
 </TabItem>
@@ -1279,8 +1285,9 @@ Resonate will automatically load balance the invocations across the Workers in t
 
 ```python
 # worker.py
-resonate = Resonate.remote(
-    group="workers"
+resonate = Resonate(
+    url="http://localhost:8001",
+    group="workers",
     # ...
 )
 ```
@@ -1289,13 +1296,15 @@ resonate = Resonate.remote(
 
 ```python
 # client.py
-resonate = Resonate.remote(
-    group="client"
+resonate = Resonate(
+    url="http://localhost:8001",
+    group="client",
 )
 
-def main():
+async def main():
     # ...
-    result = resonate.options(target="poll://any@workers").rpc(promise_id, "function_name", params)
+    handle = resonate.options(target="poll://any@workers").rpc(promise_id, "function_name", params)
+    result = await handle.result()
 ```
 
     </TabItem>
