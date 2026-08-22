@@ -9,7 +9,7 @@ keywords:
 ---
 
 <Callout type="info" title="SDK version">
-This page reflects `@resonatehq/sdk` v0.11.4 (TypeScript, current on npm), `resonate-sdk` v0.7.4 (Python), `resonate-sdk` v0.6.0 (Rust, on crates.io), and the Resonate Go SDK (pre-release — no semver tag yet; tracks `main`).
+This page reflects `@resonatehq/sdk` v0.11.4 (TypeScript, current on npm), `resonate-sdk` v0.7.4 (Python), `resonate-sdk` v0.6.0 (Rust, on crates.io), and the Resonate Go SDK 0.1.0.
 </Callout>
 
 <Callout type="info" title="About the code">
@@ -819,7 +819,7 @@ dbos.RegisterWorkflow(dbosCtx, func(ctx dbos.DBOSContext, scheduledTime time.Tim
 ```
 
 <Callout type="caution" title="No Resonate Go schedule example yet">
-There is no `example-schedule-go` yet. The Go SDK's schedules API landed recently (it tracks `main`); until a worked example ships, treat the Go scheduling cell as a known gap rather than a verified sample.
+There is no `example-schedule-go` yet. The Go SDK's schedules API shipped in the tagged `0.1.0` release; until a worked example ships, treat the Go scheduling cell as a known gap rather than a verified sample.
 </Callout>
 
 </TabItem>
@@ -985,8 +985,8 @@ func foo(ctx *resonate.Context, _ struct{}) (string, error) {
 <SeeItInAction repo="example-human-in-the-loop-go" />
 
 ```shell
-# The Go SDK has no high-level promises sub-client yet (pre-release), so
-# resolve the latent promise from outside via the Resonate CLI or server API:
+# Resolve the latent promise from outside the running program — e.g. a human
+# approving the request via the Resonate CLI or server API:
 resonate promises resolve <promise-id> --value '{"headers": {}, "data": "\"approved\""}'
 ```
 
