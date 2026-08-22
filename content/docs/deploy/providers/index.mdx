@@ -23,7 +23,7 @@ Most teams should run the core server. Reach for a provider when the platform it
 | [Core server](/deploy/run-server) | Postgres, MySQL, SQLite | HTTP | Apache 2.0 | — |
 | [ScyllaDB](/deploy/providers/scylladb) | ScyllaDB (CQL) | HTTP | Source-available (BUSL-1.1) | Yes |
 | [NATS](/deploy/providers/nats) | NATS JetStream | NATS | Source-available (BUSL-1.1) | No |
-| [Postgres](/deploy/providers/postgres) | Postgres | HTTP push (`pg_net`) | Apache 2.0 | No |
+| [Postgres](/deploy/providers/postgres) | Postgres | SQL (`resonate_rpc`); optional HTTP push | Apache 2.0 | No |
 
 "Drop-in" means the provider speaks the same HTTP/JSON protocol the core server speaks, so your SDK and your application code do not change. Workers point at a different `RESONATE_URL`.
 

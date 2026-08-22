@@ -77,6 +77,20 @@ SELECT resonate.resonate_rpc('{"kind":"promise.get","head":{},"data":{"id":"invo
 
 The [`@resonatehq/supabase`](https://jsr.io/@resonatehq/supabase) package on JSR wraps `@resonatehq/sdk` with a `Network` implementation that speaks `resonate_rpc` over a Postgres connection, plus an HTTP handler for hosting the worker in an Edge Function. Despite the name it is a Postgres client, not a Supabase-only one.
 
+```typescript
+import { type Context, Resonate } from "jsr:@resonatehq/supabase@0.4.1";
+
+const resonate = new Resonate();
+
+resonate.register("countdown", async function countdown(ctx: Context, n: number) {
+  // ... your workflow
+});
+
+resonate.httpHandler();
+```
+
+There is no URL to configure — the connection comes from the environment. The full worker is in [`example/countdown/index.ts`](https://github.com/resonatehq/resonate-pg/blob/main/example/countdown/index.ts).
+
 The package is pre-1.0. Expect its surface to move.
 
 ### Other languages
