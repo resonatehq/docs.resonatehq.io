@@ -1,6 +1,6 @@
 ---
 title: How Resonate is tested
-description: How Resonate uses deterministic simulation testing (DST) to find concurrency and failure bugs conventional tests miss — server, every SDK, and a Lean 4 spec.
+description: How Resonate is tested — an executable Lean 4 specification checked at build time, differential random testing of the server against an independent oracle, and deterministic simulation testing (DST) of the TypeScript SDK.
 keywords:
   - evaluate
   - testing
@@ -14,55 +14,66 @@ keywords:
 This page reflects Resonate Server v0.9.8, `@resonatehq/sdk` v0.11.4 (TypeScript), `resonate-sdk` v0.7.4 (Python), `resonate-sdk` v0.6.0 (Rust), `resonate-sdk` v0.1.1 (Java), and the Resonate Go SDK 0.1.0.
 </Callout>
 
-Resonate's correctness story rests on three foundations that reinforce each other: an executable formal specification of the protocol in Lean 4, differential random testing of the server implementation against a pure in-memory reference model, and deterministic simulation testing of the TypeScript SDK. Unit, integration, and end-to-end test suites across all five SDKs sit alongside these.
+Resonate's correctness story rests on three layers, each covering a different surface: an executable formal specification of the protocol in Lean 4, differential random testing of the server against an independent in-memory oracle, and deterministic simulation testing of the TypeScript SDK. Unit, integration, and end-to-end suites across all five SDKs sit alongside these. Deterministic simulation currently covers the TypeScript SDK; the other SDKs are tested conventionally, against a live server.
+
+## Determinism is a protocol feature
+
+Resonate's determinism hooks live in the protocol itself, not in a simulator wrapped around the code under test.
+
+When the server runs with `debug = true` in its config, every request envelope may carry a `resonate:debug_time` field, and the handler uses that value as "now" instead of the wall clock ([`src/util.rs`](https://github.com/resonatehq/resonate/blob/main/src/util.rs), [`src/server.rs`](https://github.com/resonatehq/resonate/blob/main/src/server.rs)). Handlers take time as a parameter rather than reading an ambient clock, so a test controls every time value the handler path observes — timers, timeouts, and schedules fire exactly when the test drives them to. With `debug = false` (the default), the field is stripped and the server runs on wall-clock time.
+
+Deterministic tests therefore run against the real server binary, over its real HTTP interface, with no separate simulator build to keep in sync with production code. And because the hook is part of the protocol rather than any one codebase, a harness built on it can drive any server that implements the protocol — the conformance testbed below leans on exactly this.
 
 ## The Lean 4 abstract machine
 
-The Distributed Async Await protocol is specified twice, on purpose. [`resonatehq/resonate-specification`](https://github.com/resonatehq/resonate-specification) is the executable abstract machine in Lean 4 — the normative, machine-checkable definition of the protocol's core handlers and state transitions: promises, tasks, and schedules. The [prose specification](https://distributed-async-await.io/spec) is the human-readable companion that explains the same protocol. Where prose and Lean disagree, the Lean model wins.
+The Distributed Async Await protocol — the protocol every Resonate server and SDK speaks — is specified twice, on purpose. [`resonatehq/resonate-specification`](https://github.com/resonatehq/resonate-specification) is the executable abstract machine in Lean 4 — the normative, machine-checkable definition of the protocol's handlers and state transitions: promises, tasks, and schedules. The [prose specification](https://distributed-async-await.io/spec) is the human-readable companion that explains the same protocol. Where prose and Lean disagree, the Lean model wins.
 
-The Lean model encodes each protocol handler as a pure, deterministic, total function:
+The model encodes each protocol handler as a pure, deterministic function:
 
 ```lean
--- every handler has this shape:
--- M = StateM ServerState, so "now" is the only input that carries time
-def promiseCreate (req : PromiseCreateReq) (now : Nat) : M PromiseCreateRes
+-- every handler has this shape: "now" is the only input that carries time
+def promiseCreate (req : PromiseCreateReq) (now : Nat) : H PromiseCreateRes := do
+  ...
 ```
 
-State is touched only through named atomic effects — `getPromise` / `setPromise`, `getTask` / `setTask`, `getSchedule` / `setSchedule` / `delSchedule`, timeout management, and outbox writes. Handlers compose these effects and nothing else, which makes the model directly auditable and buildable with a single command:
+Handlers read state and emit named effects — `setPromise`, `setTask`, `setSchedule`, outbox writes — and nothing else, which keeps the model directly auditable ([`spec/02-abstract`](https://github.com/resonatehq/resonate-specification/tree/main/spec/02-abstract)). It builds with a single command:
 
 ```shell title="Build the Lean model"
-cd spec && lake build
+lake build spec    # the specification — the fast loop
+lake build valid   # the trace checker
+lake build         # everything, including the decide sweeps (minutes)
 ```
 
-The model currently covers twenty handlers in full: five promise handlers (create, get, settle, register\_callback, register\_listener), ten task handlers (get, create, acquire, fence, heartbeat, suspend, fulfill, release, halt, continue), three schedule handlers (get, create, delete), and the two internal transitions (resume, timeouts). The three search handlers return a placeholder `501` response while their specs are being written.
+The model specifies 18 of the 21 handlers a client can reach in full: five promise handlers (`promiseCreate`, `promiseGet`, `promiseSettle`, `promiseRegisterCallback`, `promiseRegisterListener`), ten task handlers (`taskGet`, `taskCreate`, `taskAcquire`, `taskFence`, `taskHeartbeat`, `taskSuspend`, `taskFulfill`, `taskRelease`, `taskHalt`, `taskContinue`), and three schedule handlers (`scheduleGet`, `scheduleCreate`, `scheduleDelete`). The three search handlers are stubbed at `501` while their specs are being written. Alongside these sit six internal steps — the transitions background jobs fire: promise timeout, listener drain, callback drain, lease timeout, retry dispatch, and schedule firing ([`spec/02-abstract/internal.lean`](https://github.com/resonatehq/resonate-specification/blob/main/spec/02-abstract/internal.lean)).
 
-The model also states the protocol's central safety property — the durable-execution guarantee — as an executable predicate, in [`spec/02-actions/04-guarantee.lean`](https://github.com/resonatehq/resonate-specification/blob/main/spec/02-actions/04-guarantee.lean):
+### The property catalogue
 
-```lean title="The durable-execution guarantee"
-def durableExecutionGuarantee (s : ServerState) : Bool :=
-  s.tasks.all (fun t =>
-    match t.state with
-    | .pending | .acquired | .halted | .fulfilled =>
-      true
-    | .suspended =>
-      match s.promises.find? (·.id == t.id) with
-      | none => true
-      | some tP =>
-        if tP.state != .pending || tP.timeoutAt <= tP.createdAt then
-          true
-        else
-          let awaitedIds := t.resumes
-          let anySettled := s.promises.any (fun p =>
-            awaitedIds.contains p.id && awaitedSettledLive p tP)
-          if !anySettled then
-            true
-          else
-            hasExecuteInOutbox t.id s.outbox)
+The model carries a catalogue of 95 decidable properties — invariants over server state, stated as executable predicates in [`spec/02-abstract/properties.lean`](https://github.com/resonatehq/resonate-specification/blob/main/spec/02-abstract/properties.lean). They're checked two ways.
+
+First, by exhaustive sweep: [`spec/04-theorems/properties-check.lean`](https://github.com/resonatehq/resonate-specification/blob/main/spec/04-theorems/properties-check.lean) evaluates the full catalogue over every script of length up to three drawn from an eleven-step adversarial alphabet — 1,464 scripts in total — and the sweep is a theorem proved by `decide`, meaning Lean's kernel runs the entire check during `lake build`. A green build *is* the certificate; there's no separate test run to forget. What the sweep certifies is bounded — every behavior reachable in three steps; beyond that it says nothing — which is why the catalogue is checked a second way.
+
+Second, by proof: 32 of the 95 properties are proved as theorems that hold along *all* reachable traces, at any depth ([`spec/04-theorems/holds.lean`](https://github.com/resonatehq/resonate-specification/blob/main/spec/04-theorems/holds.lean)). The remaining 63 are backed by the sweep alone so far, and the file says so.
+
+The protocol's central liveness property — settle a promise, and its awaiters come back — is stated in [`spec/04-theorems/liveness.lean`](https://github.com/resonatehq/resonate-specification/blob/main/spec/04-theorems/liveness.lean):
+
+```lean title="The central liveness property"
+def EventuallyAwaiterResumed : Prop :=
+  ∀ tr : Trace, Valid true tr → ClockAdvances tr →
+    WeaklyFairOn tr isSettlementStep → WeaklyFairOn tr isCallbackStep →
+    ∀ (t : Nat) (a x : String),
+      (∃ p, promiseAt (tr t).state a = some p ∧
+              p.state ≠ .pending ∧ p.callbacks.contains x = true) →
+      ∃ u : Nat, t ≤ u ∧
+        (∀ p, promiseAt (tr u).state a = some p → p.callbacks.contains x = false) ∧
+        (∀ w, taskAt (tr u).state x = some w →
+           w.state = .fulfilled ∨ (w.state ≠ .suspended ∧ w.resumes.contains a = true))
 ```
 
-In words: if a task has suspended on awaited promises, and one of those promises settles while the task's own promise is still pending and unexpired, an `execute` message must be queued. The same file checks the predicate against concrete scenarios; a general theorem over all reachable states is not yet proven, and the file says so.
+In words: on any valid trace where the clock keeps advancing and the settlement and callback steps are treated fairly, once a promise settles, every task awaiting it is eventually resumed — or the task's own timeout won the race first, in which case the timeout path owns the cleanup. The statement quantifies over infinite traces, so it can't be proved by enumeration; what the repo proves instead are its bounded shadows — `boundedWakeSweep` checks the wake obligation over the full 1,464-script corpus, and a companion theorem, `wake_requires_fairness`, shows the fairness assumptions aren't decorative: drop them and the obligation genuinely fails.
 
-Having the protocol in two representations is the point: the Lean model is the definition the compiler checks, and the prose specification explains the same rules for human readers. Anyone can audit one against the other.
+### Holding real servers to the model
+
+The spec repo also ships a trace checker, [`valid/`](https://github.com/resonatehq/resonate-specification/tree/main/valid): capture real traffic from a running server as newline-delimited JSON, one event per external call, and ask whether the abstract machine can account for it. Two implementations answer that question — `valid/lean`, which searches for an accepting run of the Lean machine, and `valid/porc`, a Go port of the same machine wired into the [Porcupine](https://github.com/anishathalye/porcupine) linearizability checker. They're ports of one model, so agreement between them catches drift and translation errors; a regression test pins the exact event at which both checkers refute a known-bad capture. Conformance here is an instrument, not a per-build gate: a server is held to the model when its traffic is captured and run through the checker.
 
 ## Resonate Server
 
@@ -70,13 +81,11 @@ The Resonate Server ([`resonatehq/resonate`](https://github.com/resonatehq/reson
 
 ### Differential random testing
 
-[`diff/differential.rs`](https://github.com/resonatehq/resonate/blob/main/diff/differential.rs) defines a test named `differential_random`. It drives the same randomly-generated sequence of API operations through multiple backends at once — always an in-memory SQLite instance and an in-memory Oracle reference model; optionally Postgres and MySQL when environment variables supply connection URLs. After every operation the test asserts two things: that every backend returned the same HTTP status and response body, and that the complete server state (promises, tasks, messages, timeouts) matches across all backends.
+[`diff/differential.rs`](https://github.com/resonatehq/resonate/blob/main/diff/differential.rs) defines a test named `differential_random`. It drives one randomly-generated sequence of API operations through multiple backends at once — always an in-memory SQLite instance and the Oracle reference model; Postgres and MySQL too, when environment variables supply connection URLs. Every operation must produce the same HTTP status and response body from every backend. State is cross-checked as well: narrower checks around each operation, and a comparison of the full snapshot — promises, tasks, callbacks, listeners, messages, timeouts — at every 200-step batch boundary. The test is sequential, one operation at a time; concurrent histories are the linearizability checker's job below.
 
-The Oracle is a pure Rust in-memory implementation of the protocol state machine, derived from the same handler rules encoded in the Lean 4 model. A disagreement between the Oracle and any concrete storage backend is an immediate test failure, with a precise field-level diff showing the divergence.
+The Oracle ([`src/oracle.rs`](https://github.com/resonatehq/resonate/blob/main/src/oracle.rs)) is a second, independent, in-memory implementation of the protocol state machine, written separately from the storage backends rather than derived from them. When implementations that share only the protocol agree on every response and every snapshot, agreement is evidence; a disagreement is an immediate test failure with a field-level diff of the divergence.
 
-Coverage is enforced: the test runs until all twenty-two operation kinds in the API have each produced at least one 2xx response, then continues until no new operation signatures appear for twenty consecutive batches of two hundred steps. CI runs this against all three storage backends — SQLite, Postgres, and MySQL — as a matrix on every pull request.
-
-To run it locally:
+Generation is steered: uncovered operations are forced first, and the run ends only after all twenty-two operation kinds are covered *and* twenty consecutive 200-step batches produce no new (operation, status, state-shape) combination — a stopping heuristic over the protocol surface, not a code-coverage measure — capped at 200,000 steps. In CI the test runs on every pull request as part of `cargo test --all-features`, against SQLite and the Oracle; the Postgres and MySQL backends are exercised locally:
 
 ```shell title="Run the differential test locally"
 # SQLite + Oracle only (no external database required):
@@ -94,7 +103,7 @@ The server's unit tests run with `cargo test --all-features` and cover configura
 
 ### Conformance and linearizability
 
-A separate conformance testbed is checked out and run in the server's CI matrix on every pull request (visible in [`ci.yml`](https://github.com/resonatehq/resonate/blob/main/.github/workflows/ci.yml)): state-machine transition tests, randomized fuzz runs, and linearizability checking of concurrent operation histories with [Porcupine](https://github.com/anishathalye/porcupine). The testbed itself is not yet public — the CI steps that fetch and run it are.
+A separate CI job (visible in [`ci.yml`](https://github.com/resonatehq/resonate/blob/main/.github/workflows/ci.yml)) runs the conformance testbed against the server on every pull request, as a matrix over all three storage backends — SQLite, Postgres, and MySQL. The testbed drives the server over HTTP: state-machine transition tests, randomized fuzz runs against a reference model, and linearizability checking of concurrent operation histories with [Porcupine](https://github.com/anishathalye/porcupine). The testbed itself is not yet public — the CI steps that fetch and run it are.
 
 ## TypeScript SDK
 
@@ -104,11 +113,9 @@ The TypeScript SDK ([`resonatehq/resonate-sdk-ts`](https://github.com/resonatehq
 
 The DST harness lives in [`sim/`](https://github.com/resonatehq/resonate-sdk-ts/tree/main/sim) and runs on a schedule via [`.github/workflows/dst.yml`](https://github.com/resonatehq/resonate-sdk-ts/blob/main/.github/workflows/dst.yml) — every twenty minutes, across Ubuntu, Windows, and macOS, against Node 18, 20, and 22.
 
-The harness uses a seeded linear-congruential PRNG. From a single integer seed, it derives the full behavior of the run: which function to invoke at each step, whether a message is dropped, duplicated, or delayed, and whether a worker process goes inactive. Configurable probabilities — `dropProb`, `duplProb`, `randomDelay`, `deactivateProb`, `activateProb` — default to values drawn from the same PRNG so the entire run is reproducible from the seed alone.
+The harness uses a seeded linear-congruential PRNG. From a single integer seed, it derives the full behavior of the run: which function to invoke at each step, whether a message is dropped, duplicated, or delayed, and whether a worker process drops out and comes back. A default run executes 10,000 steps across three simulated worker processes and one simulated server process, exercising recursive fan-out patterns and multi-step chained functions. The simulation wraps the SDK's real core logic in a simulated network: the code under test is the code you'd ship. The transport standing in for the network is not — transport-level bugs are the end-to-end suites' job.
 
-A default run executes 10,000 steps. Three simulated worker processes and one simulated server process receive and process messages inside the harness, exercising recursive fan-out patterns (Fibonacci with local and remote calls) and multi-step chained functions.
-
-Determinism is verified explicitly: CI runs each seed twice and diffs the two log files. Different output from the same seed is a failing run. When a run fails, a GitHub issue is filed automatically with the seed, the commit SHA, and the exact command to reproduce it — [issue #414](https://github.com/resonatehq/resonate-sdk-ts/issues/414) is one such report, filed by the harness with the seed, commit, and command included:
+Determinism is verified explicitly: CI runs each seed twice and diffs the two logs. Same seed, different output is a failing run — a check that exists to catch nondeterminism itself, the one bug class that would quietly destroy the reproducibility everything else depends on. When a run fails, a GitHub issue is filed automatically with the seed, the commit SHA, and the exact command to reproduce it — [issue #414](https://github.com/resonatehq/resonate-sdk-ts/issues/414) is one such report:
 
 ```shell title="Reproduce a DST failure"
 npm run dst -- --seed <seed> --steps 10000
@@ -122,7 +129,7 @@ The Jest suite covers the core execution engine, coroutine scheduling, retry pol
 
 The Python SDK ([`resonatehq/resonate-sdk-py`](https://github.com/resonatehq/resonate-sdk-py)) runs `pytest` with branch coverage on Python 3.12, 3.13, and 3.14 across Ubuntu, macOS, and Windows.
 
-The suite includes [`tests/test_invariants.py`](https://github.com/resonatehq/resonate-sdk-py/blob/main/tests/test_invariants.py), which formalizes the structural replay contract of the SDK's execution tree model. The invariants capture properties from the internal `tree.md` specification — among them that a node's settler type is fixed across replays (R1), that settled promise records never retreat to pending (R2), that the execution tree reaches a fixed point after the first replay under an unchanged cache, and that the frontier shrinks monotonically as steps settle. Each invariant is driven across a battery of workflow shapes, and the test asserts the property at every step of the settle-to-done trajectory rather than only at the final state.
+The suite includes [`tests/test_invariants.py`](https://github.com/resonatehq/resonate-sdk-py/blob/main/tests/test_invariants.py), which formalizes the structural replay contract of the SDK's execution tree model. The invariants capture properties from the internal `tree.md` specification — among them that a node's settler type is fixed across replays, that settled promise records never retreat to pending, that the execution tree reaches a fixed point after the first replay under an unchanged cache, and that the frontier shrinks monotonically as steps settle. Each invariant is driven across a battery of workflow shapes, and the test asserts the property at every step of the settle-to-done trajectory rather than only at the final state.
 
 CI also runs the Python SDK's examples end-to-end against a live Resonate server binary, downloaded from the public release page.
 
@@ -136,7 +143,7 @@ The Go SDK ([`resonatehq/resonate-sdk-go`](https://github.com/resonatehq/resonat
 
 ## Java SDK
 
-The Java SDK ([`resonatehq/resonate-sdk-java`](https://github.com/resonatehq/resonate-sdk-java)) compiles against Java 21 and runs its test suite against Java 21, 24, and 25 via `./gradlew test`. CI also runs the SDK's examples end-to-end against a live server.
+The Java SDK ([`resonatehq/resonate-sdk-java`](https://github.com/resonatehq/resonate-sdk-java)) compiles against Java 21 and runs its test suite against Java 21, 24, and 25 via `./gradlew test`. The suite includes [`InvariantsTest.java`](https://github.com/resonatehq/resonate-sdk-java/blob/main/src/test/java/io/resonatehq/resonate/InvariantsTest.java), a port of the Python SDK's replay-invariant suite — the same structural contract, checked in a second language. CI also runs the SDK's examples end-to-end against a live server.
 
 ## Where to go next
 
